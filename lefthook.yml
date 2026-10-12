@@ -1,0 +1,15 @@
+# コミット前のチェック。`pnpm install` で自動的に有効になる
+pre-commit:
+  parallel: true
+  commands:
+    secrets:
+      run: sh scripts/check-secrets.sh
+    lint:
+      glob: "*.{ts,js}"
+      run: pnpm exec eslint {staged_files}
+    format:
+      glob: "*.{ts,js,json,md,yml,yaml}"
+      run: pnpm exec prettier --check {staged_files}
+    typecheck:
+      glob: "*.ts"
+      run: pnpm typecheck
