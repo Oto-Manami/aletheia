@@ -116,4 +116,87 @@ describe("公開スキーマのすべての表", () => {
       ].sort(),
     );
   });
+
+  it("表に説明（コメント）が付いている", async () => {
+    const { rows } = await pool.query<{ name: string }>(
+      `select c.relname as name from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname in ('public', 'app') and c.relkind = 'r'
+         and obj_description(c.oid, 'pg_class') is null`,
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it("外部キーの列には索引がある（削除・結合が遅くならないように）", async () => {
+    const { rows } = await pool.query<{ fk: string }>(
+      `select format('%s(%s)', con.conrelid::regclass, a.attname) as fk
+       from pg_constraint con
+       join pg_namespace n on n.oid = con.connamespace
+       join pg_attribute a on a.attrelid = con.conrelid and a.attnum = con.conkey[1]
+       where con.contype = 'f' and n.nspname in ('public', 'app')
+         and not exists (
+           select 1 from pg_index i
+           where i.indrelid = con.conrelid and i.indkey[0] = con.conkey[1]
+         )
+       order by 1`,
+    );
+    expect(rows).toEqual([]);
+  });
+});
+
+describe("関数", () => {
+  // 拡張機能の関数を除いた、このプロジェクトの関数
+  const ownFunctions = `
+    select p.oid, format('%s.%s', n.nspname, p.proname) as name, p.prosecdef, p.proconfig
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'app')
+      and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')`;
+
+  it("すべての関数が search_path を固定している（関数の乗っ取りを防ぐ）", async () => {
+    const { rows } = await pool.query<{ name: string }>(
+      `select name from (${ownFunctions}) f
+       where not exists (select 1 from unnest(coalesce(proconfig, '{}')) c where c like 'search_path=%')`,
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it("未ログインの利用者・公開用ロールは、どの関数も実行できない", async () => {
+    const { rows } = await pool.query<{ name: string; role: string }>(
+      `select name, r.role from (${ownFunctions}) f
+       cross join (values ('anon'), ('aletheia_public_export')) as r(role)
+       where has_function_privilege(r.role, f.oid, 'execute')
+         -- トリガー用の関数は直接呼び出せないため除く
+         and (select prorettype from pg_proc where oid = f.oid) <> 'trigger'::regtype`,
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it("内部の権限で動く関数（security definer）は、決めたものだけ", async () => {
+    const { rows } = await pool.query<{ name: string }>(
+      `select name from (${ownFunctions}) f where prosecdef order by 1`,
+    );
+    expect(rows.map((r) => r.name)).toEqual([
+      "app.current_clearance",
+      "app.is_admin",
+      "app.record_history",
+    ]);
+  });
+});
+
+describe("公開用のビュー", () => {
+  it("すべて security_barrier が付いている（条件をすり抜ける関数の悪用を防ぐ）", async () => {
+    const { rows } = await pool.query<{ name: string }>(
+      `select c.relname as name from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public_export' and c.relkind = 'v'
+         and not coalesce('security_barrier=true' = any(c.reloptions), false)`,
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it("公開用のスキーマには、ビュー以外の物を置かない", async () => {
+    const { rows } = await pool.query<{ name: string }>(
+      `select c.relname as name from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public_export' and c.relkind <> 'v'`,
+    );
+    expect(rows).toEqual([]);
+  });
 });

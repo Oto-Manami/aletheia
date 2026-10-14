@@ -10,7 +10,19 @@ describe("閲覧サイト（ログインした利用者）", () => {
       const viewer = await createUser(c, { clearance: "internal" });
       await actAs(c, "authenticated", viewer);
       const seen = await ids(c, "select id from public.entities");
-      expect(seen).toEqual([d.person, d.otherMember, d.internalPerson, d.venue].sort());
+      expect(seen).toEqual(
+        [
+          d.person,
+          d.otherMember,
+          d.internalPerson,
+          d.venue,
+          d.mergedPerson,
+          d.group,
+          d.publicSong,
+          d.internalSong,
+        ].sort(),
+      );
+      expect(seen).not.toContain(d.confidentialPerson);
       expect(seen).not.toContain(d.school);
       expect(seen).not.toContain(d.unclassified);
     }));
@@ -24,12 +36,29 @@ describe("閲覧サイト（ログインした利用者）", () => {
       expect(await ids(c, "select id from public.events")).not.toContain(d.internalEvent);
     }));
 
+  it("上限が confidential の利用者には confidential まで見え、restricted は見えない", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      const viewer = await createUser(c, { clearance: "confidential" });
+      await actAs(c, "authenticated", viewer);
+      const seen = await ids(c, "select id from public.entities");
+      expect(seen).toContain(d.confidentialPerson);
+      expect(seen).not.toContain(d.school);
+      expect(seen).not.toContain(d.unclassified);
+      expect(await ids(c, "select id from public.statements")).not.toContain(d.restrictedStatement);
+    }));
+
   it("利用者の登録がない人には何も見えない", () =>
     withRollback(async (c) => {
       await seed(c);
       const stranger = await createUser(c);
       await actAs(c, "authenticated", stranger);
-      for (const table of ["entities", "posts", "assets", "asset_texts", "statements", "links"]) {
+      const { rows } = await c.query<{ name: string }>(
+        `select c.relname as name from pg_class c join pg_namespace n on n.oid = c.relnamespace
+         where n.nspname = 'public' and c.relkind = 'r'`,
+      );
+      expect(rows.length).toBeGreaterThan(0);
+      for (const table of rows.map((r) => r.name)) {
         expect(await ids(c, `select id from public.${table}`), table).toEqual([]);
       }
     }));
@@ -84,6 +113,26 @@ describe("閲覧サイト（ログインした利用者）", () => {
       await actAs(c, "authenticated", me);
       const { rows } = await c.query("select user_id from app.user_profiles");
       expect(rows).toEqual([{ user_id: me }]);
+    }));
+
+  it("自分の公開区分の上限や役割を書き換えられない", () =>
+    withRollback(async (c) => {
+      const me = await createUser(c, { clearance: "public" });
+      await actAs(c, "authenticated", me);
+      expect(
+        await expectError(
+          c,
+          "update app.user_profiles set clearance = 'restricted' where user_id = $1",
+          [me],
+        ),
+      ).toBe("42501");
+      expect(
+        await expectError(
+          c,
+          "insert into app.user_profiles (user_id, role, clearance) values ($1, 'admin', 'restricted')",
+          [me],
+        ),
+      ).toBe("42501");
     }));
 
   it("変更履歴は見えない", () =>
