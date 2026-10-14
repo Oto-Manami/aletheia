@@ -11,9 +11,10 @@ async function publicTables(): Promise<string[]> {
 }
 
 describe("公開スキーマのすべての表", () => {
-  it("中核の表がそろっている", async () => {
+  it("表がそろっている", async () => {
     expect(await publicTables()).toEqual(
       [
+        // 中核
         "asset_files",
         "asset_texts",
         "assets",
@@ -31,6 +32,19 @@ describe("公開スキーマのすべての表", () => {
         "statements",
         "terms",
         "vocabularies",
+        // 解釈の層
+        "notes",
+        "articles",
+        "article_refs",
+        // 運用
+        "coverage_lenses",
+        "coverage_scopes",
+        "coverage_checks",
+        "coverage_candidates",
+        "merge_candidates",
+        "jobs",
+        "job_runs",
+        "quality_issues",
       ].sort(),
     );
   });

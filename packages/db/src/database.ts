@@ -4,6 +4,7 @@
  */
 
 import type { ColumnType } from "kysely";
+import type { IPostgresInterval } from "postgres-interval";
 
 export type AppRole = "admin" | "viewer";
 
@@ -22,6 +23,8 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
 export type Int8 = ColumnType<string, bigint | number | string, bigint | number | string>;
 
 export type IntakeState = "approved" | "on_hold" | "pending" | "rejected";
+
+export type Interval = ColumnType<IPostgresInterval, IPostgresInterval | number | string, IPostgresInterval | number | string>;
 
 export type Json = JsonValue;
 
@@ -57,6 +60,21 @@ export interface AppHistory {
   table_schema: string;
 }
 
+export interface AppQualityFindings {
+  check_key: string | null;
+  detail: Json | null;
+  severity: string | null;
+  target_id: string | null;
+  target_type: string | null;
+}
+
+export interface AppStaleJobs {
+  expected_interval: Interval | null;
+  key: string | null;
+  last_succeeded_at: Timestamp | null;
+  name: string | null;
+}
+
 export interface AppUserProfiles {
   clearance: Generated<Classification>;
   created_at: Generated<Timestamp>;
@@ -64,6 +82,29 @@ export interface AppUserProfiles {
   role: Generated<AppRole>;
   updated_at: Generated<Timestamp>;
   user_id: string;
+}
+
+export interface ArticleRefs {
+  article_id: string;
+  classification: Generated<Classification>;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  ref_id: string;
+  ref_type: string;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface Articles {
+  author_id: string | null;
+  body: Generated<string>;
+  classification: Generated<Classification>;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  published_at: Timestamp | null;
+  slug: string;
+  status: Generated<string>;
+  title: string;
+  updated_at: Generated<Timestamp>;
 }
 
 export interface AssetFiles {
@@ -140,6 +181,57 @@ export interface ContentGroups {
   kind: string;
   note: string | null;
   representative_asset_id: string | null;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface CoverageCandidates {
+  classification: Generated<Classification>;
+  created_at: Generated<Timestamp>;
+  decided_at: Timestamp | null;
+  decided_by: string | null;
+  detail: Generated<Json>;
+  event_id: string | null;
+  fingerprint: string;
+  id: Generated<string>;
+  kind: string;
+  state: Generated<string>;
+  summary: string;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface CoverageChecks {
+  channel_id: string;
+  checked_at: Generated<Timestamp>;
+  checked_by: string | null;
+  classification: Generated<Classification>;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  item_date: string | null;
+  lens_keys: string[];
+  note: string | null;
+  post_id: string | null;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface CoverageLenses {
+  classification: Generated<Classification>;
+  created_at: Generated<Timestamp>;
+  description: string | null;
+  id: Generated<string>;
+  key: string;
+  name: string;
+  position: Generated<number>;
+  records: string | null;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface CoverageScopes {
+  channel_id: string;
+  classification: Generated<Classification>;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  in_scope: boolean;
+  lens_id: string;
   updated_at: Generated<Timestamp>;
 }
 
@@ -261,6 +353,31 @@ export interface IntakeItems {
   updated_at: Generated<Timestamp>;
 }
 
+export interface JobRuns {
+  classification: Generated<Classification>;
+  created_at: Generated<Timestamp>;
+  detail: Generated<Json>;
+  error: string | null;
+  finished_at: Timestamp | null;
+  id: Generated<string>;
+  items_processed: number | null;
+  job_id: string;
+  started_at: Generated<Timestamp>;
+  status: Generated<string>;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface Jobs {
+  classification: Generated<Classification>;
+  created_at: Generated<Timestamp>;
+  enabled: Generated<boolean>;
+  expected_interval: Interval;
+  id: Generated<string>;
+  key: string;
+  name: string;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface Links {
   classification: Generated<Classification>;
   confidence: Generated<Numeric>;
@@ -277,6 +394,32 @@ export interface Links {
   role: string;
   to_id: string;
   to_type: string;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface MergeCandidates {
+  classification: Generated<Classification>;
+  created_at: Generated<Timestamp>;
+  decided_at: Timestamp | null;
+  decided_by: string | null;
+  evidence: Json | null;
+  id: Generated<string>;
+  kind: string;
+  left_id: string;
+  right_id: string;
+  score: Numeric | null;
+  state: Generated<string>;
+  updated_at: Generated<Timestamp>;
+}
+
+export interface Notes {
+  author_id: string | null;
+  body: string;
+  classification: Generated<Classification>;
+  created_at: Generated<Timestamp>;
+  id: Generated<string>;
+  target_id: string;
+  target_type: string;
   updated_at: Generated<Timestamp>;
 }
 
@@ -446,6 +589,22 @@ export interface PublicExportVocabularies {
   name: string | null;
 }
 
+export interface QualityIssues {
+  check_key: string;
+  classification: Generated<Classification>;
+  created_at: Generated<Timestamp>;
+  detail: Generated<Json>;
+  first_seen_at: Generated<Timestamp>;
+  id: Generated<string>;
+  last_seen_at: Generated<Timestamp>;
+  resolved_at: Timestamp | null;
+  severity: string;
+  state: Generated<string>;
+  target_id: string;
+  target_type: string;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface Statements {
   classification: Generated<Classification>;
   confidence: Generated<Numeric>;
@@ -498,12 +657,20 @@ export interface Vocabularies {
 
 export interface DB {
   "app.history": AppHistory;
+  "app.quality_findings": AppQualityFindings;
+  "app.stale_jobs": AppStaleJobs;
   "app.user_profiles": AppUserProfiles;
+  article_refs: ArticleRefs;
+  articles: Articles;
   asset_files: AssetFiles;
   asset_texts: AssetTexts;
   assets: Assets;
   channels: Channels;
   content_groups: ContentGroups;
+  coverage_candidates: CoverageCandidates;
+  coverage_checks: CoverageChecks;
+  coverage_lenses: CoverageLenses;
+  coverage_scopes: CoverageScopes;
   entities: Entities;
   entity_identifiers: EntityIdentifiers;
   entity_relations: EntityRelations;
@@ -511,7 +678,11 @@ export interface DB {
   event_participants: EventParticipants;
   events: Events;
   intake_items: IntakeItems;
+  job_runs: JobRuns;
+  jobs: Jobs;
   links: Links;
+  merge_candidates: MergeCandidates;
+  notes: Notes;
   posts: Posts;
   "public_export.asset_texts": PublicExportAssetTexts;
   "public_export.assets": PublicExportAssets;
@@ -526,6 +697,7 @@ export interface DB {
   "public_export.statements": PublicExportStatements;
   "public_export.terms": PublicExportTerms;
   "public_export.vocabularies": PublicExportVocabularies;
+  quality_issues: QualityIssues;
   statements: Statements;
   terms: Terms;
   vocabularies: Vocabularies;
