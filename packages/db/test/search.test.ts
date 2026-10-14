@@ -51,4 +51,28 @@ describe("全文検索", () => {
       });
       await c.query("rollback to savepoint s");
     }));
+
+  it("件数の上限を守る", () =>
+    withRollback(async (c) => {
+      await seed(c);
+      const admin = await createUser(c, { role: "admin", clearance: "restricted" });
+      await actAs(c, "authenticated", admin);
+      const { rows } = await c.query("select asset_id from public.search_texts('お菓子', 1)");
+      expect(rows).toHaveLength(1);
+      const { rows: atLeastOne } = await c.query(
+        "select asset_id from public.search_texts('お菓子', 0)",
+      );
+      expect(atLeastOne).toHaveLength(1);
+    }));
+
+  it("人物の別名でも見つかる", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      await c.query("set local search_path = public, extensions");
+      const { rows } = await c.query<{ id: string }>(
+        "select id from public.entities where canonical_name &@~ $1 or reading &@~ $1 or aliases &@~ $1",
+        ["はなちゃん"],
+      );
+      expect(rows.map((r) => r.id)).toEqual([d.person]);
+    }));
 });
