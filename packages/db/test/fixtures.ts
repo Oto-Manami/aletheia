@@ -217,7 +217,147 @@ export async function seed(c: Client) {
     classification: "public",
   });
 
+  // 公開区分ごとの人物・統合済みの人物
+  const confidentialPerson = await insert(c, "public.entities", {
+    type: "person",
+    canonical_name: "機密 六郎",
+    classification: "confidential",
+  });
+  const mergedPerson = await insert(c, "public.entities", {
+    type: "person",
+    canonical_name: "試験 はな子",
+    merged_into: person,
+    classification: "public",
+  });
+
+  // エンティティ同士の関係
+  const group = await insert(c, "public.entities", {
+    type: "group",
+    canonical_name: "架空グループ",
+    classification: "public",
+  });
+  const memberOf = await insert(c, "public.entity_relations", {
+    subject_id: person,
+    object_id: group,
+    relation: "member_of",
+    valid_from: "2024-01-01",
+    valid_from_precision: "day",
+    classification: "public",
+  });
+  const relationToInternal = await insert(c, "public.entity_relations", {
+    subject_id: internalPerson,
+    object_id: group,
+    relation: "member_of",
+    classification: "public",
+  });
+  const rejectedRelation = await insert(c, "public.entity_relations", {
+    subject_id: otherMember,
+    object_id: group,
+    relation: "member_of",
+    origin: "ai",
+    confidence: 0.5,
+    review_state: "rejected",
+    classification: "public",
+  });
+
+  // 出来事の中身（セットリスト）
+  const publicSong = await insert(c, "public.entities", {
+    type: "work",
+    subtype: "song",
+    canonical_name: "架空の歌",
+    classification: "public",
+  });
+  const internalSong = await insert(c, "public.entities", {
+    type: "work",
+    subtype: "song",
+    canonical_name: "未発表の歌",
+    classification: "internal",
+  });
+  const songItem = await insert(c, "public.event_items", {
+    event_id: venueEvent,
+    position: 1,
+    item_type: "song",
+    work_id: publicSong,
+    classification: "public",
+  });
+  const titledInternalSongItem = await insert(c, "public.event_items", {
+    event_id: venueEvent,
+    position: 2,
+    item_type: "song",
+    work_id: internalSong,
+    title: "新曲",
+    classification: "public",
+  });
+  const untitledInternalSongItem = await insert(c, "public.event_items", {
+    event_id: venueEvent,
+    position: 3,
+    item_type: "song",
+    work_id: internalSong,
+    classification: "public",
+  });
+
+  // 上位が非公開の出来事
+  const childOfInternalEvent = await insert(c, "public.events", {
+    parent_id: internalEvent,
+    kind: "event",
+    title: "内部の出来事の一部",
+    starts_on: "2026-07-01",
+    date_precision: "day",
+    classification: "public",
+  });
+
+  // 発信者が非公開の情報源
+  const internalOwnerChannel = await insert(c, "public.channels", {
+    key: "sns:internal_owner",
+    name: "テスト SNS 2",
+    kind: "sns",
+    owner_entity_id: internalPerson,
+    availability: "free",
+    item_unit: "post",
+    classification: "public",
+  });
+
+  // 語彙
+  const vocabulary = await insert(c, "public.vocabularies", {
+    key: "content_kind",
+    name: "素材の種類",
+    classification: "public",
+  });
+  const publicTerm = await insert(c, "public.terms", {
+    vocabulary_id: vocabulary,
+    name: "自撮り",
+    classification: "public",
+  });
+  const internalTerm = await insert(c, "public.terms", {
+    vocabulary_id: vocabulary,
+    name: "内部の分類",
+    classification: "internal",
+  });
+  const childOfInternalTerm = await insert(c, "public.terms", {
+    vocabulary_id: vocabulary,
+    parent_id: internalTerm,
+    name: "内部の分類の下位",
+    classification: "public",
+  });
+
   return {
+    confidentialPerson,
+    mergedPerson,
+    group,
+    memberOf,
+    relationToInternal,
+    rejectedRelation,
+    publicSong,
+    internalSong,
+    songItem,
+    titledInternalSongItem,
+    untitledInternalSongItem,
+    childOfInternalEvent,
+    internalOwnerChannel,
+    vocabulary,
+    publicTerm,
+    internalTerm,
+    childOfInternalTerm,
     person,
     otherMember,
     internalPerson,

@@ -120,4 +120,69 @@ describe("紐付けの整合", () => {
         ),
       ).toBe("23514");
     }));
+
+  it("紐付けの付け替え先も実在しなければならない", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      expect(
+        await expectError(c, "update public.links set to_id = $1 where id = $2", [
+          "00000000-0000-0000-0000-000000000000",
+          d.authorLink,
+        ]),
+      ).toBe("23503");
+    }));
+});
+
+describe("日付と状態の整合", () => {
+  it("日付には精度が必要", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      expect(
+        await expectError(
+          c,
+          "insert into public.posts (channel_id, external_id, published_date) values ($1, 'x1', '2026-10-01')",
+          [d.freeChannel],
+        ),
+      ).toBe("23514");
+      expect(
+        await expectError(
+          c,
+          "insert into public.events (kind, starts_on) values ('live', '2026-10-01')",
+        ),
+      ).toBe("23514");
+    }));
+
+  it("終わりが始まりより前の出来事は登録できない", () =>
+    withRollback(async (c) => {
+      expect(
+        await expectError(
+          c,
+          "insert into public.events (kind, starts_on, ends_on, date_precision) values ('live', '2026-10-02', '2026-10-01', 'day')",
+        ),
+      ).toBe("23514");
+    }));
+
+  it("承認・却下した下書きには確認日時が必要", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      expect(
+        await expectError(
+          c,
+          "insert into public.intake_items (channel_id, external_id, captured_at, draft, state) values ($1, 'x2', now(), '{}', 'approved')",
+          [d.freeChannel],
+        ),
+      ).toBe("23514");
+    }));
+
+  it("言明には値が必要", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      expect(
+        await expectError(
+          c,
+          "insert into public.statements (subject_id, property, speaker_type) values ($1, 'nickname', 'self')",
+          [d.person],
+        ),
+      ).toBe("23514");
+    }));
 });

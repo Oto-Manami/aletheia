@@ -69,4 +69,31 @@ describe("変更履歴", () => {
       );
       expect(rows).toEqual([{ moved: true }]);
     }));
+
+  it("利用者の公開区分の変更も残る", () =>
+    withRollback(async (c) => {
+      const viewer = await createUser(c, { clearance: "internal" });
+      await c.query("update app.user_profiles set clearance = 'confidential' where user_id = $1", [
+        viewer,
+      ]);
+      const { rows } = await c.query<{ clearance: string }>(
+        `select old_row ->> 'clearance' as clearance from app.history
+         where table_name = 'user_profiles' and row_id = $1`,
+        [viewer],
+      );
+      expect(rows).toEqual([{ clearance: "internal" }]);
+    }));
+
+  it("直接接続での変更は、変更者が空になる（API が別途記録する）", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      await c.query("update public.events set title = 'y' where id = $1", [d.venueEvent]);
+      const { rows } = await c.query<{ changed_by: string | null; db_user: string }>(
+        "select changed_by, db_user from app.history where row_id = $1",
+        [d.venueEvent],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.changed_by).toBeNull();
+      expect(rows[0]?.db_user).not.toBe("");
+    }));
 });
