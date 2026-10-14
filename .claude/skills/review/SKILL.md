@@ -40,7 +40,7 @@ description: aletheia の変更をプルリクエストに出す前に行うセ�
 ## 5. 品質チェック
 
 - `pnpm check`（lint・format・typecheck）が通るか
-- `pnpm test:db` が通るか（Docker を使えない環境では、PGroonga を入れた PostgreSQL に `reset:shim` で適用して実行する）
+- `pnpm test` が通るか（Docker を使えない環境では、PGroonga を入れた PostgreSQL に `reset:shim` で適用して実行する）
 - プルリクエストを出した後、CI がすべて成功したか確認する
 
 ## 6. 書き方

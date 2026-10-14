@@ -1,0 +1,22 @@
+{
+  "name": "@aletheia/intake",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aletheia/db": "workspace:*",
+    "kysely": "0.29.6",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
+    "vitest": "^5.0.4"
+  }
+}

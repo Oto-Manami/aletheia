@@ -1,10 +1,10 @@
-import { type Client, insert } from "./helpers.ts";
+import { insert, type Queryable } from "./sql.ts";
 
 /**
  * 公開区分・有料無料・承認状態の組み合わせをひととおり含むテスト用データ。
  * 人物・情報源の名前は架空のもの。
  */
-export async function seed(c: Client) {
+export async function seed(c: Queryable) {
   const person = await insert(c, "public.entities", {
     type: "person",
     canonical_name: "試験 花子",

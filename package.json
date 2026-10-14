@@ -11,9 +11,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r --if-present typecheck",
-    "test:db": "pnpm --filter @aletheia/db test",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck",
-    "prepare": "lefthook install || true"
+    "prepare": "lefthook install || true",
+    "test": "pnpm -r --workspace-concurrency=1 --if-present test"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
