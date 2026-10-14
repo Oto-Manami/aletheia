@@ -15,11 +15,13 @@
 
 ## データベースの規約
 
-- 構造の正は `supabase/migrations/` の SQL。適用済みのマイグレーションは書き換えず、新しいファイルを追加する
+- 構造の正は `supabase/migrations/` の SQL。取り込み済みのマイグレーションは書き換えず、新しいファイルを追加する（`scripts/check-migrations.sh` が検査する）
+- マイグレーションを変えたら、型の定義を作り直す（`pnpm --filter @aletheia/db gen:types`。CI が鮮度を検査する）
 - 新しい表を作るときは次をそろえる（`structure.test.ts` が検査する）
   - `id uuid`、`classification`（既定 `restricted`、not null）、`created_at` / `updated_at`
   - 行レベルセキュリティ・閲覧のポリシー・バックアップ用のポリシー
   - 変更履歴（`record_history`）と `touch_updated_at` のトリガー
+  - 表の説明（`comment on table`）と、外部キーの列の索引
   - 公開サイトに出すものは `public_export` にビューを作る。条件は「`public` かつ 有料でない かつ 承認済み」で、参照先が見えない行は出さない
 - 紐付け・関係・出演・言明には出どころ列（`origin` / `confidence` / `evidence` / `review_state` ほか）を付ける
 - 語彙のキーは snake_case。種類・役割・属性の値は、コードに固定せずデータとして持てる形にする

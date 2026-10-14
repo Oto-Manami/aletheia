@@ -4,6 +4,9 @@ pre-commit:
   commands:
     secrets:
       run: sh scripts/check-secrets.sh
+    migrations:
+      glob: "supabase/migrations/*.sql"
+      run: sh scripts/check-migrations.sh
     lint:
       glob: "*.{ts,js}"
       run: pnpm exec eslint {staged_files}
