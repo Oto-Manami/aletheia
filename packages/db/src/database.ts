@@ -60,6 +60,14 @@ export interface AppHistory {
   table_schema: string;
 }
 
+export interface AppQualityFindings {
+  check_key: string | null;
+  detail: Json | null;
+  severity: string | null;
+  target_id: string | null;
+  target_type: string | null;
+}
+
 export interface AppStaleJobs {
   expected_interval: Interval | null;
   key: string | null;
@@ -649,6 +657,7 @@ export interface Vocabularies {
 
 export interface DB {
   "app.history": AppHistory;
+  "app.quality_findings": AppQualityFindings;
   "app.stale_jobs": AppStaleJobs;
   "app.user_profiles": AppUserProfiles;
   article_refs: ArticleRefs;

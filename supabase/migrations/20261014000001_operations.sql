@@ -356,38 +356,24 @@ create index quality_issues_open_idx on public.quality_issues (severity, check_k
 --
 -- 見つかった問題は quality_issues に追加・更新し、見つからなくなった問題は resolved にする。
 -- 人が ignored にした問題は、再び見つかっても ignored のまま残す。
-create function app.run_quality_checks() returns table (check_key text, open_count bigint)
-language plpgsql
-set search_path = ''
-as $$
-#variable_conflict use_column
-declare
-  today date := (now() at time zone 'Asia/Tokyo')::date;
-begin
-  drop table if exists pg_temp.qc_found;
-  create temporary table qc_found (
-    check_key text, target_type text, target_id uuid, severity text, detail jsonb
-  ) on commit drop;
-
-  insert into pg_temp.qc_found
-  select 'asset_without_post', 'asset', a.id, 'warning', '{}'::jsonb
+-- 検査で見つかる問題の一覧（この時点の状態）
+create view app.quality_findings with (security_invoker) as
+  select 'asset_without_post'::text as check_key, 'asset'::text as target_type, a.id as target_id,
+    'warning'::text as severity, '{}'::jsonb as detail
   from public.assets a
-  where a.post_id is null;
-
-  insert into pg_temp.qc_found
+  where a.post_id is null
+union all
   select 'stored_without_file', 'asset', a.id, 'error', '{}'::jsonb
   from public.assets a
   where a.file_policy = 'stored' and a.media_type <> 'text'
-    and not exists (select 1 from public.asset_files f where f.asset_id = a.id and f.variant = 'original');
-
-  insert into pg_temp.qc_found
+    and not exists (select 1 from public.asset_files f where f.asset_id = a.id and f.variant = 'original')
+union all
   select 'file_unverified', 'asset_file', f.id, 'warning',
     jsonb_build_object('verified_at', f.verified_at)
   from public.asset_files f
   where f.variant = 'original'
-    and (f.verified_at is null or f.verified_at < now() - interval '90 days');
-
-  insert into pg_temp.qc_found
+    and (f.verified_at is null or f.verified_at < now() - interval '90 days')
+union all
   select 'asset_unlinked', 'asset', a.id, 'warning', '{}'::jsonb
   from public.assets a
   where not exists (
@@ -395,21 +381,18 @@ begin
       where l.review_state = 'accepted'
         and ((l.from_type = 'asset' and l.from_id = a.id)
           or (l.from_type = 'post' and l.from_id = a.post_id)))
-    and not exists (select 1 from public.statements s where s.evidence_asset_id = a.id);
-
-  insert into pg_temp.qc_found
+    and not exists (select 1 from public.statements s where s.evidence_asset_id = a.id)
+union all
   select 'statement_without_evidence', 'statement', s.id, 'warning', '{}'::jsonb
   from public.statements s
-  where s.review_state = 'accepted' and s.evidence_asset_id is null;
-
-  insert into pg_temp.qc_found
+  where s.review_state = 'accepted' and s.evidence_asset_id is null
+union all
   select 'overdue_announcement', 'event', e.id, 'warning',
     jsonb_build_object('starts_on', e.starts_on)
   from public.events e
-  where coalesce(e.ends_on, e.starts_on) < today
-    and exists (select 1 from public.event_participants p where p.event_id = e.id and p.status = 'scheduled');
-
-  insert into pg_temp.qc_found
+  where coalesce(e.ends_on, e.starts_on) < (now() at time zone 'Asia/Tokyo')::date
+    and exists (select 1 from public.event_participants p where p.event_id = e.id and p.status = 'scheduled')
+union all
   select 'entity_unused', 'entity', e.id, 'info', '{}'::jsonb
   from public.entities e
   where e.merged_into is null
@@ -422,22 +405,33 @@ begin
     and not exists (select 1 from public.event_items i where i.work_id = e.id)
     and not exists (select 1 from public.channels c where c.owner_entity_id = e.id);
 
-  -- 見つかった問題を追加・更新する（直った後に再発したものは開き直す）
-  insert into public.quality_issues as q (check_key, target_type, target_id, severity, detail, classification)
-  select f.check_key, f.target_type, f.target_id, f.severity, f.detail, 'internal' from pg_temp.qc_found f
-  on conflict (check_key, target_type, target_id) do update
-    set last_seen_at = now(),
-        severity = excluded.severity,
-        detail = excluded.detail,
-        state = case when q.state = 'ignored' then 'ignored' else 'open' end,
-        resolved_at = case when q.state = 'ignored' then q.resolved_at end;
-
-  -- 見つからなくなった問題を直ったことにする
+create function app.run_quality_checks() returns table (check_key text, open_count bigint)
+language plpgsql
+set search_path = ''
+as $$
+#variable_conflict use_column
+begin
+  -- 見つかった問題を追加・更新し（直った後に再発したものは開き直す）、
+  -- 見つからなくなった問題を直ったことにする。両者は対象の行が重ならない
+  with found as (
+    select * from app.quality_findings
+  ),
+  upserted as (
+    insert into public.quality_issues as q (check_key, target_type, target_id, severity, detail, classification)
+    select f.check_key, f.target_type, f.target_id, f.severity, f.detail, 'internal' from found f
+    on conflict (check_key, target_type, target_id) do update
+      set last_seen_at = now(),
+          severity = excluded.severity,
+          detail = excluded.detail,
+          state = case when q.state = 'ignored' then 'ignored' else 'open' end,
+          resolved_at = case when q.state = 'ignored' then q.resolved_at end
+    returning 1
+  )
   update public.quality_issues q
   set state = 'resolved', resolved_at = now()
   where q.state = 'open'
     and not exists (
-      select 1 from pg_temp.qc_found f
+      select 1 from found f
       where f.check_key = q.check_key and f.target_type = q.target_type and f.target_id = q.target_id);
 
   return query
