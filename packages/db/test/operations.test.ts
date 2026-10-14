@@ -274,3 +274,27 @@ describe("データ品質の検査", () => {
       expect(second).toEqual(first);
     }));
 });
+
+describe("一覧の無い情報源", () => {
+  it("どこまで探したかを日付で記録し、変更は履歴に残る", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      await c.query("update public.channels set searched_through = '2026-10-14' where id = $1", [
+        d.mixedChannel,
+      ]);
+      await c.query("update public.channels set searched_through = '2026-10-15' where id = $1", [
+        d.mixedChannel,
+      ]);
+      const { rows } = await c.query<{ searched_through: string }>(
+        "select searched_through::text from public.channels where id = $1",
+        [d.mixedChannel],
+      );
+      expect(rows).toEqual([{ searched_through: "2026-10-15" }]);
+      const { rows: history } = await c.query<{ before: string | null }>(
+        `select old_row ->> 'searched_through' as before from app.history
+         where table_name = 'channels' and row_id = $1 order by id`,
+        [d.mixedChannel],
+      );
+      expect(history.map((h) => h.before)).toEqual([null, "2026-10-14"]);
+    }));
+});

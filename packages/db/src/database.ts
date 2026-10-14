@@ -171,6 +171,10 @@ export interface Channels {
   kind: string;
   name: string;
   owner_entity_id: string | null;
+  /**
+   * 一覧の無い情報源で、どの日付（JST）の分まで探したか。一覧のある情報源では null
+   */
+  searched_through: string | null;
   updated_at: Generated<Timestamp>;
 }
 
