@@ -352,6 +352,14 @@ export interface IntakeItems {
   review_note: string | null;
   reviewed_at: Timestamp | null;
   reviewed_by: string | null;
+  /**
+   * 取り込みの経路。fetch（定期取得）/ discord（入口チャンネル）/ migration（初回の移行）/ archive:<名前>（他のアーカイブ）
+   */
+  route: string;
+  /**
+   * 経路の側での ID（Discord のメッセージ ID、他のアーカイブの ID など）
+   */
+  route_ref: string | null;
   staged_files: Generated<Json>;
   state: Generated<IntakeState>;
   updated_at: Generated<Timestamp>;

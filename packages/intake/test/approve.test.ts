@@ -110,12 +110,18 @@ function blogDraft(d: Seed): DraftInput {
   };
 }
 
-async function intake(c: Queryable, d: Seed, draft: unknown, externalId = "9001") {
+async function intake(
+  c: Queryable,
+  d: Seed,
+  draft: unknown,
+  { externalId = "9001", route = "discord" }: { externalId?: string; route?: string } = {},
+) {
   return insert(c, "public.intake_items", {
     channel_id: d.freeChannel,
     external_id: externalId,
     captured_at: "2026-10-12T21:35:00+09:00",
     draft: JSON.stringify(draft),
+    route,
   });
 }
 
@@ -135,8 +141,10 @@ describe("承認", () => {
 
       const result = await approveIntakeIn(trx, id, { reviewerId: reviewer });
 
+      expect(result.mode).toBe("created");
       expect(result.counts).toEqual({
         assets: 3,
+        skippedAssets: 0,
         texts: 1,
         files: 2,
         links: 3,
@@ -323,6 +331,7 @@ describe("承認", () => {
       .values({
         channel_id: channel.id,
         external_id: "1",
+        route: "discord",
         captured_at: new Date(),
         draft: JSON.stringify(draft),
       })
@@ -353,6 +362,142 @@ describe("承認", () => {
       await db.deleteFrom("channels").where("id", "=", channel.id).execute();
     }
   });
+});
+
+describe("別の経路からの補完", () => {
+  /** 他のアーカイブから届いた、同じ投稿の下書き。写真 1 は同じもの、写真 3 は新しいもの */
+  function archiveDraft(d: Seed): DraftInput {
+    return {
+      version: 1,
+      post: { archived_url: "https://archive.example.com/9001", classification: "public" },
+      assets: [
+        {
+          ref: "same-body",
+          media_type: "text",
+          texts: [
+            {
+              text_type: "body",
+              content: "今日は試験 次郎さんとお菓子を食べました。{{asset:photo-1}}",
+            },
+          ],
+        },
+        { ref: "same-photo", media_type: "image", sha256: "b".repeat(64) },
+        {
+          ref: "new-photo",
+          media_type: "image",
+          sha256: "e".repeat(64),
+          files: [{ variant: "original", provider: "gdrive", storage_key: "drive-file-3" }],
+        },
+      ],
+      links: [
+        // 既にある紐付けと同じもの（加えない）
+        {
+          from: "post",
+          to_type: "entity",
+          to_id: d.person,
+          role: "author",
+          origin: "import",
+          confidence: 1,
+        },
+        // 新しい写真への紐付け
+        {
+          from: { asset: "new-photo" },
+          to_type: "entity",
+          to_id: d.person,
+          role: "appears",
+          origin: "import",
+          confidence: 0.9,
+        },
+        // 同じ写真への新しい紐付けは、既にある素材につなぐ
+        {
+          from: { asset: "same-photo" },
+          to_type: "event",
+          to_id: d.publicEvent,
+          role: "about",
+          origin: "import",
+          confidence: 0.6,
+        },
+      ],
+      statements: [
+        {
+          subject_id: d.person,
+          property: "favorite_food",
+          value_text: "お菓子",
+          stated_on: "2026-10-12",
+          stated_on_precision: "day",
+          speaker_type: "self",
+          speaker_entity_id: d.person,
+          evidence_asset: "same-body",
+          origin: "import",
+          confidence: 0.7,
+        },
+      ],
+    };
+  }
+
+  it("同じ投稿が別の経路から届いたら、新しく作らずに足りないものだけを加える", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const first = await approveIntakeIn(trx, await intake(c, d, blogDraft(d)));
+      const second = await approveIntakeIn(
+        trx,
+        await intake(c, d, archiveDraft(d), { route: "archive:other" }),
+      );
+
+      expect(second.mode).toBe("supplemented");
+      expect(second.postId).toBe(first.postId);
+      expect(second.counts).toMatchObject({
+        assets: 1,
+        skippedAssets: 2,
+        files: 1,
+        links: 2,
+        statements: 0,
+      });
+      // 同じ素材は既にある素材を指す
+      expect(second.assetIds["same-photo"]).toBe(first.assetIds["photo-1"]);
+      expect(second.assetIds["same-body"]).toBe(first.assetIds["body"]);
+
+      const { rows } = await c.query<{ position: number; sha256: string | null }>(
+        "select position, sha256 from public.assets where post_id = $1 order by position",
+        [first.postId],
+      );
+      // 新しい素材は末尾に並ぶ
+      expect(rows.map((r) => r.position)).toEqual([1, 2, 3, 4]);
+      expect(rows[3]?.sha256).toBe("e".repeat(64));
+      expect(
+        await count(c, "select count(*) as n from public.posts where external_id = '9001'", []),
+      ).toBe(1);
+    }));
+
+  it("投稿の項目は、空いているところだけを埋め、既にある値は変えない", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const first = await approveIntakeIn(trx, await intake(c, d, blogDraft(d)));
+      const archive = archiveDraft(d);
+      archive.post.title = "別のタイトル";
+      await approveIntakeIn(trx, await intake(c, d, archive, { route: "archive:other" }));
+      const { rows } = await c.query<{ title: string; archived_url: string }>(
+        "select title, archived_url from public.posts where id = $1",
+        [first.postId],
+      );
+      expect(rows).toEqual([
+        { title: "お菓子の日", archived_url: "https://archive.example.com/9001" },
+      ]);
+    }));
+
+  it("どの経路から届いたかは、下書きとして経路ごとに残る", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      await approveIntakeIn(trx, await intake(c, d, blogDraft(d)));
+      await approveIntakeIn(trx, await intake(c, d, archiveDraft(d), { route: "archive:other" }));
+      const { rows } = await c.query<{ route: string; state: string }>(
+        "select route, state from public.intake_items where external_id = '9001' order by route",
+      );
+      expect(rows).toEqual([
+        { route: "archive:other", state: "approved" },
+        { route: "discord", state: "approved" },
+      ]);
+    }));
 });
 
 describe("却下・保留", () => {
