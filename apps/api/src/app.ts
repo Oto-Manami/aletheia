@@ -9,6 +9,7 @@
 // | POST     | /intake/:id/approve       | 承認して事実の層に反映する         |
 // | POST     | /intake/:id/reject        | 却下する                           |
 // | POST     | /intake/:id/hold          | 保留する                           |
+// | POST     | /resolve                  | URL から情報源と外部 ID を判定する |
 
 import type { Database } from "@aletheia/db/client";
 import {
@@ -19,6 +20,7 @@ import {
   rejectIntake,
 } from "@aletheia/intake";
 import { Hono } from "hono";
+import { sql } from "kysely";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { type Actor, type AuthEnv, type AuthOptions, requireAdmin } from "./auth.ts";
@@ -43,6 +45,39 @@ const decisionBody = z.object({
 });
 
 const approveBody = decisionBody.extend({ draft: z.unknown().optional() });
+
+const resolveBody = z.object({ url: z.url() });
+
+/**
+ * 情報源の設定（channels.config.url_patterns）で、URL がどの情報源のどの投稿かを判定する。
+ * パターンは正規表現で、名前つきグループ id が外部 ID になる。
+ * 例: { "url_patterns": ["^https://x\\.com/example/status/(?<id>\\d+)"] }
+ */
+export function matchUrl(
+  url: string,
+  channels: { key: string; config: unknown }[],
+): { channel_key: string; external_id: string }[] {
+  const matches: { channel_key: string; external_id: string }[] = [];
+  for (const ch of channels) {
+    const patterns = (ch.config as { url_patterns?: unknown } | null)?.url_patterns;
+    if (!Array.isArray(patterns)) continue;
+    for (const pattern of patterns) {
+      if (typeof pattern !== "string") continue;
+      let re: RegExp;
+      try {
+        re = new RegExp(pattern);
+      } catch {
+        continue;
+      }
+      const id = re.exec(url)?.groups?.["id"];
+      if (id) {
+        matches.push({ channel_key: ch.key, external_id: id });
+        break;
+      }
+    }
+  }
+  return matches;
+}
 
 const listQuery = z.object({
   state: z.enum(["pending", "approved", "rejected", "on_hold"]).default("pending"),
@@ -83,6 +118,25 @@ export function createApp(db: Database, auth: AuthOptions) {
 
   app.use("/intake/*", requireAdmin(db, auth));
   app.use("/intake", requireAdmin(db, auth));
+  app.use("/resolve", requireAdmin(db, auth));
+
+  app.post("/resolve", async (c) => {
+    const body = await parseBody(c.req.raw, resolveBody);
+    const channels = await db
+      .selectFrom("channels")
+      .select(["key", "config"])
+      .where(sql<boolean>`config ? 'url_patterns'`)
+      .orderBy("key")
+      .execute();
+    const matches = matchUrl(body.url, channels);
+    if (matches.length === 0) {
+      throw new HTTPException(404, { message: "この URL に当てはまる情報源がありません" });
+    }
+    if (matches.length > 1) {
+      return c.json({ error: "複数の情報源に当てはまります", candidates: matches }, 409);
+    }
+    return c.json(matches[0]);
+  });
 
   app.get("/intake", async (c) => {
     const q = listQuery.safeParse(c.req.query());

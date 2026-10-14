@@ -13,4 +13,6 @@ export default tseslint.config(
     },
   },
   { files: ["**/*.js"], ...tseslint.configs.disableTypeChecked },
+  // テストでは、モックの関数をそのまま expect に渡す
+  { files: ["**/test/**/*.ts"], rules: { "@typescript-eslint/unbound-method": "off" } },
 );
