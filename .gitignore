@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+
+# 鍵・接続情報（.env.example だけを入れる）
+.env
+.env.*
+!.env.example
+
+# Supabase CLI の作業用ファイル
+supabase/.temp/
+supabase/.branches/

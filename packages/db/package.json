@@ -1,0 +1,15 @@
+{
+  "name": "@aletheia/db",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "reset:shim": "node scripts/reset-without-supabase.ts"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
+    "vitest": "^5.0.4"
+  }
+}
