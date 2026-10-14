@@ -5,11 +5,18 @@
   "scripts": {
     "typecheck": "tsc -p .",
     "test": "vitest run",
-    "reset:shim": "node scripts/reset-without-supabase.ts"
+    "reset:shim": "node scripts/reset-without-supabase.ts",
+    "gen:types": "kysely-codegen --dialect postgres --include-pattern \"{public,public_export,app}.*\" --date-parser string --out-file src/database.ts",
+    "check:types": "kysely-codegen --dialect postgres --include-pattern \"{public,public_export,app}.*\" --date-parser string --out-file src/database.ts --verify"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",
+    "kysely": "0.29.6",
+    "kysely-codegen": "0.20.0",
     "pg": "^8.23.1",
     "vitest": "^5.0.4"
+  },
+  "exports": {
+    "./database": "./src/database.ts"
   }
 }

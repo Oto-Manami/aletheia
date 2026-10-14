@@ -29,6 +29,28 @@ jobs:
       - run: pnpm format:check
       - run: pnpm typecheck
 
+  rules:
+    name: 規約（マイグレーション・ワークフロー・リンク）
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ACTIONLINT_VERSION: 1.7.7
+      LYCHEE_VERSION: 0.18.1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: マイグレーションの規約（取り込み済みのものを書き換えていないか）
+        run: sh scripts/check-migrations.sh "origin/${{ github.base_ref || 'main' }}"
+      - name: ワークフローの検査（actionlint）
+        run: |
+          curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" | tar xz actionlint
+          ./actionlint
+      - name: ドキュメントのリンク切れ（リポジトリ内）
+        run: |
+          curl -sSfL "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz" | tar xz
+          ./lychee --offline --no-progress --include-fragments --exclude-path node_modules '**/*.md'
+
   secrets:
     name: 鍵の混入チェック
     runs-on: ubuntu-latest
@@ -64,6 +86,12 @@ jobs:
           version: 2.120.0
       - name: データベースを立ち上げ、マイグレーションを適用する
         run: supabase db start
+      - name: 関数の静的検査（plpgsql_check）
+        run: supabase db lint --local --level warning --fail-on warning
+      - name: 型の定義がデータベースと一致しているか
+        run: pnpm --filter @aletheia/db check:types
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
       - name: テスト
         run: pnpm test:db
         env:
