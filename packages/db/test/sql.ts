@@ -1,4 +1,5 @@
 // データベースへの問い合わせの小さな道具（接続を持たない。他のパッケージのテストからも使う）
+import { CompiledQuery, type QueryResult } from "kysely";
 import type { QueryResultRow } from "pg";
 
 /** pg のクライアントと、Kysely のトランザクションをつないだものの共通の形 */
@@ -7,6 +8,18 @@ export interface Queryable {
     text: string,
     params?: unknown[],
   ): Promise<{ rows: R[] }>;
+}
+
+/** Kysely の接続（トランザクションを含む）を、生の SQL でも使える形にする */
+export function asQueryable(db: {
+  executeQuery<R>(query: CompiledQuery<R>): Promise<QueryResult<R>>;
+}): Queryable {
+  return {
+    async query<R extends QueryResultRow = QueryResultRow>(text: string, params: unknown[] = []) {
+      const result = await db.executeQuery<R>(CompiledQuery.raw(text, params));
+      return { rows: [...result.rows] };
+    },
+  };
 }
 
 export type Classification = "public" | "internal" | "confidential" | "restricted";

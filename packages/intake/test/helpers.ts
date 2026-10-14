@@ -1,8 +1,7 @@
 import { createDb } from "@aletheia/db/client";
 import type { DB } from "@aletheia/db/database";
-import type { Queryable } from "@aletheia/db/testing/sql";
-import { CompiledQuery, type Transaction } from "kysely";
-import type { QueryResultRow } from "pg";
+import { asQueryable, type Queryable } from "@aletheia/db/testing/sql";
+import type { Transaction } from "kysely";
 import { afterAll } from "vitest";
 
 export const db = createDb(
@@ -15,16 +14,6 @@ afterAll(async () => {
 });
 
 class Rollback extends Error {}
-
-/** Kysely のトランザクションを、生の SQL でも使える形にする */
-export function asQueryable(trx: Transaction<DB>): Queryable {
-  return {
-    async query<R extends QueryResultRow = QueryResultRow>(text: string, params: unknown[] = []) {
-      const result = await trx.executeQuery<R>(CompiledQuery.raw(text, params));
-      return { rows: [...result.rows] };
-    },
-  };
-}
 
 /** テストごとにトランザクションを張り、最後に必ず取り消す */
 export async function withTrx(
