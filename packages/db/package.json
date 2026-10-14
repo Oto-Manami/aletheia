@@ -11,13 +11,18 @@
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",
-    "kysely": "0.29.6",
     "kysely-codegen": "0.20.0",
-    "pg": "^8.23.1",
     "postgres-interval": "1.2.0",
     "vitest": "^5.0.4"
   },
   "exports": {
-    "./database": "./src/database.ts"
+    "./database": "./src/database.ts",
+    "./client": "./src/client.ts",
+    "./testing/sql": "./test/sql.ts",
+    "./testing/fixtures": "./test/fixtures.ts"
+  },
+  "dependencies": {
+    "kysely": "0.29.6",
+    "pg": "^8.23.1"
   }
 }
