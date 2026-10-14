@@ -17,7 +17,7 @@
 
 - 構造の正は `supabase/migrations/` の SQL。取り込み済みのマイグレーションは書き換えず、新しいファイルを追加する（`scripts/check-migrations.sh` が検査する）
 - マイグレーションを変えたら、型の定義を作り直す（`pnpm --filter @aletheia/db gen:types`。CI が鮮度を検査する）
-- 新しい表を作るときは次をそろえる（`structure.test.ts` が検査する）
+- 新しい表を作るときは次をそろえる（`structure.test.ts` が検査する）。行レベルセキュリティ・権限・トリガーは `select app.protect_table('public.<表>')` でまとめて付ける
   - `id uuid`、`classification`（既定 `restricted`、not null）、`created_at` / `updated_at`
   - 行レベルセキュリティ・閲覧のポリシー・バックアップ用のポリシー
   - 変更履歴（`record_history`）と `touch_updated_at` のトリガー

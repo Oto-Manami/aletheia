@@ -14,6 +14,7 @@
     "kysely": "0.29.6",
     "kysely-codegen": "0.20.0",
     "pg": "^8.23.1",
+    "postgres-interval": "1.2.0",
     "vitest": "^5.0.4"
   },
   "exports": {
