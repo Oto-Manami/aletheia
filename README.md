@@ -22,7 +22,7 @@
 | `supabase/migrations/` | データベースの構造（正）。Supabase CLI で適用する                                                              |
 | `packages/db/`         | データベースへの接続、型の定義、データベースのテスト（公開区分・公開用の書き出し・変更履歴・検索・整合・運用） |
 | `packages/intake/`     | 取り込みの下書きの形と、承認・却下・保留の処理                                                                 |
-| `apps/`                | API・Bot・閲覧サイト（これから追加）                                                                           |
+| `apps/api/`            | 承認・取り込みの API（Bot・閲覧サイトから呼ぶ）                                                                |
 
 ## データベースのロール
 
@@ -46,7 +46,7 @@
 pnpm install          # コミット前のチェック（lefthook）も有効になる
 cp .env.example .env
 supabase start        # 手元にデータベースを立ち上げ、マイグレーションを適用する
-pnpm test             # データベース・承認の処理のテスト
+pnpm test             # データベース・承認の処理・API のテスト
 pnpm check            # lint・format・typecheck
 ```
 

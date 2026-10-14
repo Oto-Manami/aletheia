@@ -340,7 +340,12 @@ export function approveIntake(
   intakeId: string,
   options: ApproveOptions = {},
 ): Promise<ApproveResult> {
-  return db.transaction().execute((trx) => approveIntakeIn(trx, intakeId, options));
+  return inTransaction(db, (trx) => approveIntakeIn(trx, intakeId, options));
+}
+
+/** 既にトランザクションの中なら、そのまま使う（入れ子のトランザクションは作らない） */
+function inTransaction<T>(db: Database, fn: (trx: Trx) => Promise<T>): Promise<T> {
+  return db.isTransaction ? fn(db as Trx) : db.transaction().execute(fn);
 }
 
 async function decide(
@@ -379,4 +384,22 @@ export function holdIntakeIn(
   options: { reviewerId?: string; note?: string } = {},
 ): Promise<void> {
   return decide(trx, intakeId, "on_hold", options);
+}
+
+/** 下書きを却下する（トランザクションを張って行う） */
+export function rejectIntake(
+  db: Database,
+  intakeId: string,
+  options: { reviewerId?: string; note?: string } = {},
+): Promise<void> {
+  return inTransaction(db, (trx) => rejectIntakeIn(trx, intakeId, options));
+}
+
+/** 判断を保留する（トランザクションを張って行う） */
+export function holdIntake(
+  db: Database,
+  intakeId: string,
+  options: { reviewerId?: string; note?: string } = {},
+): Promise<void> {
+  return inTransaction(db, (trx) => holdIntakeIn(trx, intakeId, options));
 }
