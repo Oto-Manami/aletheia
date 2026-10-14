@@ -29,10 +29,14 @@ export interface ApproveOptions {
 }
 
 export interface ApproveResult {
+  /** created: 新しい投稿を作った / supplemented: 別の経路から既に入っていた投稿を補完した */
+  mode: "created" | "supplemented";
   postId: string;
   assetIds: Record<string, string>;
   counts: {
     assets: number;
+    /** 既にある素材と同じだったため加えなかった数 */
+    skippedAssets: number;
     texts: number;
     files: number;
     links: number;
@@ -58,6 +62,69 @@ async function lockUndecided(trx: Trx, intakeId: string) {
   return intake;
 }
 
+interface KnownAsset {
+  id: string;
+  position: number | null;
+  media_type: string;
+  sha256: string | null;
+  phash: string | null;
+  body: string | null;
+}
+
+async function existingAssets(trx: Trx, postId: string): Promise<KnownAsset[]> {
+  return trx
+    .selectFrom("assets as a")
+    .select((eb) => [
+      "a.id",
+      "a.position",
+      "a.media_type",
+      "a.sha256",
+      "a.phash",
+      eb
+        .selectFrom("asset_texts as t")
+        .select("t.content")
+        .whereRef("t.asset_id", "=", "a.id")
+        .orderBy("t.created_at")
+        .limit(1)
+        .as("body"),
+    ])
+    .where("a.post_id", "=", postId)
+    .execute();
+}
+
+/** 同じ素材か（SHA-256 か見た目のハッシュが一致する。テキストは本文が一致する） */
+function isSameAsset(known: KnownAsset, a: Draft["assets"][number]): boolean {
+  if (a.sha256 && known.sha256 === a.sha256) return true;
+  if (a.phash && known.phash === a.phash) return true;
+  if (a.media_type === "text" && known.media_type === "text" && !a.sha256) {
+    const body = a.texts[0]?.content;
+    return body !== undefined && known.body === body;
+  }
+  return false;
+}
+
+async function hasSameStatement(
+  trx: Trx,
+  s: Omit<
+    Draft["statements"][number],
+    "evidence_asset" | "accepted" | "evidence" | "classification"
+  >,
+  evidenceAssetId: string | null,
+): Promise<boolean> {
+  const same = await trx
+    .selectFrom("statements")
+    .select("id")
+    .where("subject_id", "=", s.subject_id)
+    .where("property", "=", s.property)
+    .where("value_text", "is not distinct from", s.value_text ?? null)
+    .where("value_entity_id", "is not distinct from", s.value_entity_id ?? null)
+    .where("value_date", "is not distinct from", s.value_date ?? null)
+    .where("speaker_entity_id", "is not distinct from", s.speaker_entity_id ?? null)
+    .where("evidence_asset_id", "is not distinct from", evidenceAssetId)
+    .executeTakeFirst();
+  return same !== undefined;
+}
+
 export function parseDraft(value: unknown): Draft {
   const result = draftSchema.safeParse(value);
   if (!result.success) {
@@ -77,27 +144,10 @@ export async function approveIntakeIn(
   const reviewedBy = options.reviewerId ?? null;
   const inherit = draft.post.classification;
 
-  const post = await trx
-    .insertInto("posts")
-    .values({
-      channel_id: intake.channel_id,
-      external_id: intake.external_id,
-      captured_at: intake.captured_at,
-      title: draft.post.title ?? null,
-      published_at: draft.post.published_at ?? null,
-      published_date: draft.post.published_date ?? null,
-      published_date_precision: draft.post.published_date_precision ?? null,
-      url: draft.post.url ?? null,
-      archived_url: draft.post.archived_url ?? null,
-      availability: draft.post.availability ?? null,
-      classification: draft.post.classification,
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-
   const assetIds: Record<string, string> = {};
   const counts: ApproveResult["counts"] = {
     assets: 0,
+    skippedAssets: 0,
     texts: 0,
     files: 0,
     links: 0,
@@ -106,13 +156,69 @@ export async function approveIntakeIn(
     rejectedStatements: 0,
   };
 
-  for (const [index, a] of draft.assets.entries()) {
+  // 同じ投稿が別の経路から既に入っていれば、新しく作らずに補完する
+  const existing = await trx
+    .selectFrom("posts")
+    .selectAll()
+    .where("channel_id", "=", intake.channel_id)
+    .where("external_id", "=", intake.external_id)
+    .executeTakeFirst();
+  const mode: ApproveResult["mode"] = existing ? "supplemented" : "created";
+
+  const postFields = {
+    title: draft.post.title ?? null,
+    published_at: draft.post.published_at ?? null,
+    published_date: draft.post.published_date ?? null,
+    published_date_precision: draft.post.published_date_precision ?? null,
+    url: draft.post.url ?? null,
+    archived_url: draft.post.archived_url ?? null,
+    availability: draft.post.availability ?? null,
+  };
+
+  let postId: string;
+  if (existing) {
+    postId = existing.id;
+    // 既にある値は変えず、空いている項目だけを埋める
+    const patch = Object.fromEntries(
+      Object.entries(postFields).filter(
+        ([key, value]) => value !== null && existing[key as keyof typeof existing] === null,
+      ),
+    );
+    if (Object.keys(patch).length > 0) {
+      await trx.updateTable("posts").set(patch).where("id", "=", postId).execute();
+    }
+  } else {
+    const post = await trx
+      .insertInto("posts")
+      .values({
+        channel_id: intake.channel_id,
+        external_id: intake.external_id,
+        captured_at: intake.captured_at,
+        ...postFields,
+        classification: draft.post.classification,
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    postId = post.id;
+  }
+
+  const known = existing ? await existingAssets(trx, postId) : [];
+  let nextPosition = known.reduce((max, k) => Math.max(max, k.position ?? 0), 0) + 1;
+
+  for (const a of draft.assets) {
+    const duplicate = known.find((k) => isSameAsset(k, a));
+    if (duplicate) {
+      // 同じ素材は加えない。紐付け・言明は既にある素材につなぐ
+      assetIds[a.ref] = duplicate.id;
+      counts.skippedAssets++;
+      continue;
+    }
     const classification = a.classification ?? inherit;
     const { id } = await trx
       .insertInto("assets")
       .values({
-        post_id: post.id,
-        position: index + 1,
+        post_id: postId,
+        position: nextPosition++,
         media_type: a.media_type,
         title: a.title ?? null,
         description: a.description ?? null,
@@ -166,11 +272,11 @@ export async function approveIntakeIn(
   };
 
   for (const l of draft.links) {
-    await trx
+    const inserted = await trx
       .insertInto("links")
       .values({
         from_type: l.from === "post" ? "post" : "asset",
-        from_id: l.from === "post" ? post.id : assetIdOf(l.from.asset),
+        from_id: l.from === "post" ? postId : assetIdOf(l.from.asset),
         to_type: l.to_type,
         to_id: l.to_id,
         role: l.role,
@@ -182,18 +288,25 @@ export async function approveIntakeIn(
         reviewed_at: new Date(),
         classification: l.classification ?? inherit,
       })
-      .execute();
+      // 補完のとき、既にある紐付けは加えない
+      .onConflict((oc) =>
+        oc.columns(["from_type", "from_id", "to_type", "to_id", "role"]).doNothing(),
+      )
+      .executeTakeFirst();
+    if (Number(inserted.numInsertedOrUpdatedRows ?? 0) === 0) continue;
     if (l.accepted) counts.links++;
     else counts.rejectedLinks++;
   }
 
   for (const s of draft.statements) {
     const { evidence_asset, accepted, evidence, classification, ...fields } = s;
+    const evidenceAssetId = evidence_asset ? assetIdOf(evidence_asset) : null;
+    if (existing && (await hasSameStatement(trx, fields, evidenceAssetId))) continue;
     await trx
       .insertInto("statements")
       .values({
         ...fields,
-        evidence_asset_id: evidence_asset ? assetIdOf(evidence_asset) : null,
+        evidence_asset_id: evidenceAssetId,
         evidence: evidence ? JSON.stringify(evidence) : null,
         review_state: accepted ? "accepted" : "rejected",
         reviewed_by: reviewedBy,
@@ -218,7 +331,7 @@ export async function approveIntakeIn(
     .where("id", "=", intakeId)
     .execute();
 
-  return { postId: post.id, assetIds, counts };
+  return { mode, postId, assetIds, counts };
 }
 
 /** 下書きを承認し、事実の層に反映する。途中で失敗したら何も反映しない */

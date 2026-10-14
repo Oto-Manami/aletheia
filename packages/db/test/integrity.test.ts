@@ -16,14 +16,54 @@ describe("同一性", () => {
       ).toBe("23505");
     }));
 
-  it("同じ取り込みの下書きは 1 件にしかならない", () =>
+  it("同じ経路からの同じ投稿の下書きは 1 件にしかならない", () =>
     withRollback(async (c) => {
       const d = await seed(c);
-      const row = [d.freeChannel, "9001", "2026-10-13T12:00:00+09:00", "{}"];
       const sql =
-        "insert into public.intake_items (channel_id, external_id, captured_at, draft) values ($1, $2, $3, $4)";
+        "insert into public.intake_items (channel_id, external_id, captured_at, draft, route) values ($1, $2, $3, $4, $5)";
+      const row = [d.freeChannel, "9001", "2026-10-13T12:00:00+09:00", "{}", "discord"];
       await c.query(sql, row);
       expect(await expectError(c, sql, row)).toBe("23505");
+      // 別の経路からなら、同じ投稿でも下書きを持てる（承認すると既存の投稿への補完になる）
+      await c.query(sql, [
+        d.freeChannel,
+        "9001",
+        "2026-10-13T12:00:00+09:00",
+        "{}",
+        "archive:other",
+      ]);
+    }));
+
+  it("取り込みの経路は決まった形で指定する", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      const sql =
+        "insert into public.intake_items (channel_id, external_id, captured_at, draft, route) values ($1, 'x', now(), '{}', $2)";
+      expect(await expectError(c, sql, [d.freeChannel, "somewhere"])).toBe("23514");
+      expect(await expectError(c, sql, [d.freeChannel, "archive:"])).toBe("23514");
+      expect(
+        await expectError(
+          c,
+          "insert into public.intake_items (channel_id, external_id, captured_at, draft) values ($1, 'y', now(), '{}')",
+          [d.freeChannel],
+        ),
+      ).toBe("23502");
+    }));
+
+  it("ゲーム・ファンクラブの情報源を登録できる", () =>
+    withRollback(async (c) => {
+      for (const [key, kind] of [
+        ["game:test_game:photo", "game"],
+        ["fanclub:movie", "fanclub"],
+      ]) {
+        await insert(c, "public.channels", { key, name: key, kind, item_unit: "post" });
+      }
+      expect(
+        await expectError(
+          c,
+          "insert into public.channels (key, name, kind, item_unit) values ('x:y', 'x', 'unknown_kind', 'post')",
+        ),
+      ).toBe("23514");
     }));
 
   it("表記の揺れ（全角・半角・空白）がある同じ名前の人物は登録できない", () =>
@@ -168,7 +208,7 @@ describe("日付と状態の整合", () => {
       expect(
         await expectError(
           c,
-          "insert into public.intake_items (channel_id, external_id, captured_at, draft, state) values ($1, 'x2', now(), '{}', 'approved')",
+          "insert into public.intake_items (channel_id, external_id, captured_at, draft, state, route) values ($1, 'x2', now(), '{}', 'approved', 'discord')",
           [d.freeChannel],
         ),
       ).toBe("23514");
