@@ -59,6 +59,8 @@
 }
 ```
 
+- 複数ページのコンテンツは 1 ページ（見開きなら 1 枚）を 1 素材にし、`attributes` にページ番号（`page_from` / `page_to`、表紙などは `page_label`）を入れる。映像の切り出しは `clip_from` / `clip_to`（秒）
+- 紐付けの行き先（`to_type`）は `entity` / `event` / `event_item`（記事・コーナー・曲）/ `term`。誌面のスキャンは掲載記事に `part_of` でつなぐ
 - 日付のみは `YYYY-MM-DD`（JST の暦日）、日時はタイムゾーンつき
 - 人が付けたもの（`origin: "human"`、既定）の確信度は 1。承認の画面で人が書き換えた提案は、`origin: "human"`・確信度 1 にして渡す（最初に提案した機械の情報は `evidence` に残す）
 - 情報源・外部 ID・取り込みの経路・取得日時は、下書きではなく `intake_items` の列に持つ

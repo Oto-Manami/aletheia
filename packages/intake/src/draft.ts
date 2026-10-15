@@ -53,6 +53,28 @@ const file = z.object({
   byte_size: nonNegativeInt.optional(),
 });
 
+const pageNumber = z.number().int().min(1);
+const assetAttributes = z
+  .looseObject({
+    page_from: pageNumber.optional(),
+    page_to: pageNumber.optional(),
+    page_label: z.string().min(1).optional(),
+    clip_from: z.number().min(0).optional(),
+    clip_to: z.number().positive().optional(),
+  })
+  .refine(
+    (a) => a.page_to === undefined || (a.page_from !== undefined && a.page_to >= a.page_from),
+    {
+      message: "page_to には page_from 以上の値と、page_from が必要です",
+    },
+  )
+  .refine(
+    (a) => a.clip_to === undefined || (a.clip_from !== undefined && a.clip_to > a.clip_from),
+    {
+      message: "clip_to には clip_from より大きい値と、clip_from が必要です",
+    },
+  );
+
 const asset = z
   .object({
     ref,
@@ -71,6 +93,8 @@ const asset = z
     width: z.number().int().positive().optional(),
     height: z.number().int().positive().optional(),
     original_filename: z.string().optional(),
+    /** 誌面のページ（page_from / page_to / page_label）、映像の切り出し（clip_from / clip_to、秒）など */
+    attributes: assetAttributes.optional(),
     classification: classification.optional(),
     texts: z.array(text).default([]),
     files: z.array(file).default([]),
@@ -83,7 +107,8 @@ const link = z
   .object({
     /** "post" は投稿そのもの、{ asset: ref } は投稿の中の素材 */
     from: z.union([z.literal("post"), z.object({ asset: ref })]),
-    to_type: z.enum(["entity", "event", "term"]),
+    /** event_item は出来事の中身（記事・コーナー・曲） */
+    to_type: z.enum(["entity", "event", "event_item", "term"]),
     to_id: uuid,
     role: key,
     classification: classification.optional(),
