@@ -2,6 +2,7 @@
 import { seed } from "@aletheia/db/testing/fixtures";
 import { insert } from "@aletheia/db/testing/sql";
 import { describe, expect, it } from "vitest";
+import { matchUrl } from "../src/app.ts";
 import { tokenFor, withApi } from "./helpers.ts";
 
 type Seed = Awaited<ReturnType<typeof seed>>;
@@ -235,4 +236,57 @@ describe("承認・却下・保留", () => {
         { external_id: "9102", state: "on_hold" },
       ]);
     }));
+});
+
+describe("URL から情報源を判定する", () => {
+  it("情報源の設定のパターンで、情報源と外部 ID を返す", () =>
+    withApi(async ({ c, call }) => {
+      await insert(c, "public.channels", {
+        key: "x:test_account",
+        name: "テスト X",
+        kind: "sns",
+        item_unit: "post",
+        config: JSON.stringify({
+          url_patterns: ["^https://(x|twitter)\\.com/test_account/status/(?<id>\\d+)"],
+        }),
+      });
+      const res = await call("POST", "/resolve", {
+        url: "https://x.com/test_account/status/12345?s=20",
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ channel_key: "x:test_account", external_id: "12345" });
+
+      const old = await call("POST", "/resolve", {
+        url: "https://twitter.com/test_account/status/678",
+      });
+      expect(await old.json()).toEqual({ channel_key: "x:test_account", external_id: "678" });
+    }));
+
+  it("当てはまらなければ 404、複数に当てはまれば候補を返す", () =>
+    withApi(async ({ c, call }) => {
+      for (const key of ["web:a", "web:b"]) {
+        await insert(c, "public.channels", {
+          key,
+          name: key,
+          kind: "web",
+          item_unit: "post",
+          config: JSON.stringify({ url_patterns: ["^https://example\\.com/articles/(?<id>\\d+)"] }),
+        });
+      }
+      expect(
+        (await call("POST", "/resolve", { url: "https://unknown.example.org/1" })).status,
+      ).toBe(404);
+      const both = await call("POST", "/resolve", { url: "https://example.com/articles/9" });
+      expect(both.status).toBe(409);
+      expect(((await both.json()) as { candidates: unknown[] }).candidates).toHaveLength(2);
+    }));
+
+  it("壊れたパターンは無視する", () => {
+    expect(
+      matchUrl("https://example.com/1", [
+        { key: "a", config: { url_patterns: ["(unclosed"] } },
+        { key: "b", config: { url_patterns: ["^https://example\\.com/(?<id>\\d+)$"] } },
+      ]),
+    ).toEqual([{ channel_key: "b", external_id: "1" }]);
+  });
 });

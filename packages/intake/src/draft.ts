@@ -134,6 +134,8 @@ export const draftSchema = z
     assets: z.array(asset).default([]),
     links: z.array(link).default([]),
     statements: z.array(statement).default([]),
+    /** 取り込みの文脈（投稿者のメモ、元のメッセージなど）。承認の判断に使い、事実の層には入らない */
+    context: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((draft, ctx) => {
     const refs = new Set<string>();
