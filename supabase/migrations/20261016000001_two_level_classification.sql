@@ -123,7 +123,6 @@ as $$
 declare
   v text := regexp_replace(app.normalize_text(coalesce(value, '')), '\s', '', 'g');
   s text := regexp_replace(app.normalize_text(coalesce(source, '')), '\s', '', 'g');
-  i integer;
 begin
   if length(v) < min_length or length(s) < min_length then
     return false;
