@@ -70,3 +70,22 @@ export async function withApi(fn: (ctx: Ctx) => Promise<void>): Promise<void> {
     await trx.rollback().execute();
   }
 }
+
+/** Discord でログインした利用者を作り、閲覧サイトの利用者として登録する。返り値はログインの ID */
+export async function discordUser(
+  c: Queryable,
+  userId: string,
+  role: "admin" | "viewer",
+  discordId = String(100000000000000000n + BigInt(parseInt(userId.slice(0, 8), 16))),
+): Promise<string> {
+  await c.query("insert into auth.users (id) values ($1)", [userId]);
+  await c.query(
+    "insert into auth.identities (user_id, provider, provider_id, identity_data) values ($1, 'discord', $2, '{}')",
+    [userId, discordId],
+  );
+  await c.query("insert into app.user_profiles (discord_user_id, role) values ($1, $2)", [
+    discordId,
+    role,
+  ]);
+  return userId;
+}

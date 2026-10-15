@@ -43,15 +43,29 @@ export async function actAsOwner(c: Client): Promise<void> {
   await c.query("select set_config('request.jwt.claims', '', true)");
 }
 
+/** 架空の Discord のユーザー ID（18 桁） */
+export function fakeDiscordId(): string {
+  return String(100000000000000000n + BigInt(Math.floor(Math.random() * 1e15)));
+}
+
+/**
+ * Discord でログインした利用者を作る。profile を渡すと、閲覧サイトの利用者として登録する。
+ * 返り値はログインの ID（auth.users.id）
+ */
 export async function createUser(
   c: Client,
   profile?: { role?: "admin" | "viewer" },
+  discordId: string = fakeDiscordId(),
 ): Promise<string> {
   const id = randomUUID();
   await c.query("insert into auth.users (id) values ($1)", [id]);
+  await c.query(
+    "insert into auth.identities (user_id, provider, provider_id, identity_data) values ($1, 'discord', $2, '{}')",
+    [id, discordId],
+  );
   if (profile) {
-    await c.query("insert into app.user_profiles (user_id, role) values ($1, $2)", [
-      id,
+    await c.query("insert into app.user_profiles (discord_user_id, role) values ($1, $2)", [
+      discordId,
       profile.role ?? "viewer",
     ]);
   }

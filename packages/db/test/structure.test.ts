@@ -193,6 +193,7 @@ describe("関数", () => {
       `select name from (${ownFunctions}) f where prosecdef order by 1`,
     );
     expect(rows.map((r) => r.name)).toEqual([
+      "app.current_discord_user_id",
       "app.is_admin",
       "app.is_member",
       "app.record_history",
