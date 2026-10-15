@@ -214,3 +214,38 @@ describe("公開用ロール", () => {
       expect(await expectError(c, "select * from app.user_profiles")).toBe("42501");
     }));
 });
+
+describe("出来事の中身への紐付け", () => {
+  it("公開の素材から公開の中身への紐付けは出し、非公開の中身への紐付けは出さない", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      const toPublic = await insert(c, "public.links", {
+        from_type: "asset",
+        from_id: d.freePost.asset,
+        to_type: "event_item",
+        to_id: d.songItem,
+        role: "part_of",
+        classification: "public",
+      });
+      const toHidden = await insert(c, "public.links", {
+        from_type: "asset",
+        from_id: d.freePost.asset,
+        to_type: "event_item",
+        to_id: d.untitledPrivateSongItem,
+        role: "part_of",
+        classification: "public",
+      });
+      await c.query("update public.assets set attributes = $2 where id = $1", [
+        d.freePost.asset,
+        JSON.stringify({ page_from: 12, page_to: 13 }),
+      ]);
+      await actAs(c, "aletheia_public_export");
+      const links = await ids(c, "select id from public_export.links");
+      expect(links).toContain(toPublic);
+      expect(links).not.toContain(toHidden);
+      const { rows } = await c.query("select attributes from public_export.assets where id = $1", [
+        d.freePost.asset,
+      ]);
+      expect(rows).toEqual([{ attributes: { page_from: 12, page_to: 13 } }]);
+    }));
+});

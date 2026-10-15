@@ -535,3 +535,65 @@ describe("却下・保留", () => {
       expect((e as IntakeError).code).toBe("not_found");
     }));
 });
+
+describe("複数ページのコンテンツ", () => {
+  it("ページ番号つきのスキャンを、号の中の記事に紐付けて承認できる", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const issue = await insert(c, "public.events", {
+        kind: "publication",
+        title: "架空雑誌 2026 年 11 月号",
+        starts_on: "2026-09-28",
+        date_precision: "day",
+      });
+      const gravure = await insert(c, "public.event_items", {
+        event_id: issue,
+        position: 1,
+        item_type: "page",
+        title: "グラビア",
+        attributes: JSON.stringify({ page_from: 12, page_to: 19 }),
+      });
+      const draft: DraftInput = {
+        version: 1,
+        post: {
+          published_date: "2026-09-28",
+          published_date_precision: "day",
+          classification: "public",
+        },
+        assets: [
+          { ref: "cover", media_type: "image", attributes: { page_label: "表紙" } },
+          { ref: "p12-13", media_type: "image", attributes: { page_from: 12, page_to: 13 } },
+          { ref: "p14", media_type: "image", attributes: { page_from: 14, page_to: 14 } },
+        ],
+        links: [
+          { from: { asset: "p12-13" }, to_type: "event_item", to_id: gravure, role: "part_of" },
+          { from: { asset: "p14" }, to_type: "event_item", to_id: gravure, role: "part_of" },
+          { from: "post", to_type: "event", to_id: issue, role: "about" },
+        ],
+      };
+      const { postId, counts } = await approveIntakeIn(trx, await intake(c, d, draft));
+      expect(counts).toMatchObject({ assets: 3, links: 3 });
+      const { rows } = await c.query<{ position: number; attributes: unknown }>(
+        "select position, attributes from public.assets where post_id = $1 order by position",
+        [postId],
+      );
+      expect(rows).toEqual([
+        { position: 1, attributes: { page_label: "表紙" } },
+        { position: 2, attributes: { page_from: 12, page_to: 13 } },
+        { position: 3, attributes: { page_from: 14, page_to: 14 } },
+      ]);
+    }));
+
+  it("ページ番号の形が正しくなければ、下書きの形の誤りとして断る", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const draft: DraftInput = {
+        version: 1,
+        post: { classification: "public" },
+        assets: [{ ref: "p", media_type: "image", attributes: { page_from: 13, page_to: 12 } }],
+      };
+      const id = await intake(c, d, draft, { externalId: "9300" });
+      const err = await expectFailure(c, () => approveIntakeIn(trx, id));
+      expect((err as IntakeError).code).toBe("invalid_draft");
+    }));
+});

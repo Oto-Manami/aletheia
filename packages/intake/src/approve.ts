@@ -234,6 +234,7 @@ export async function approveIntakeIn(
         width: a.width ?? null,
         height: a.height ?? null,
         original_filename: a.original_filename ?? null,
+        attributes: JSON.stringify(a.attributes ?? {}),
         classification,
       })
       .returning("id")

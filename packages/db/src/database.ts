@@ -121,6 +121,10 @@ export interface AssetFiles {
 }
 
 export interface Assets {
+  /**
+   * 素材の種類ごとの属性。誌面のページ（page_from / page_to / page_label）、映像の切り出し（clip_from / clip_to、秒）
+   */
+  attributes: Generated<Json>;
   byte_size: Int8 | null;
   classification: Generated<Classification>;
   content_at: Timestamp | null;
@@ -454,6 +458,7 @@ export interface Posts {
 }
 
 export interface PublicExportAssets {
+  attributes: Json | null;
   content_at: Timestamp | null;
   content_date: string | null;
   content_date_precision: DatePrecision | null;

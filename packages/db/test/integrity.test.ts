@@ -226,3 +226,57 @@ describe("日付と状態の整合", () => {
       ).toBe("23514");
     }));
 });
+
+describe("複数ページのコンテンツ", () => {
+  it("ページ番号・切り出しの範囲は、正しい形のものだけ入る", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      const sql =
+        "insert into public.assets (post_id, position, media_type, attributes) values ($1, $2, 'image', $3)";
+      let position = 10;
+      const ok = async (attributes: unknown) => {
+        await c.query(sql, [d.freePost.post, position++, JSON.stringify(attributes)]);
+      };
+      const ng = async (attributes: unknown) =>
+        expectError(c, sql, [d.freePost.post, position++, JSON.stringify(attributes)]);
+
+      await ok({ page_from: 12, page_to: 12 });
+      await ok({ page_from: 12, page_to: 13 });
+      await ok({ page_label: "表紙" });
+      await ok({ clip_from: 0, clip_to: 90.5 });
+      for (const bad of [
+        { page_from: 0 },
+        { page_from: 13, page_to: 12 },
+        { page_to: 12 },
+        { page_from: "12" },
+        { page_from: 1.5 },
+        { clip_from: 10, clip_to: 5 },
+        { clip_to: 5 },
+        { clip_from: "0" },
+      ]) {
+        expect(await ng(bad), JSON.stringify(bad)).toBe("23514");
+      }
+    }));
+
+  it("素材を出来事の中身（記事・企画）に紐付けられ、紐付いている中身は削除できない", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      await insert(c, "public.links", {
+        from_type: "asset",
+        from_id: d.freePost.asset,
+        to_type: "event_item",
+        to_id: d.songItem,
+        role: "part_of",
+      });
+      expect(
+        await expectError(
+          c,
+          "insert into public.links (from_type, from_id, to_type, to_id, role) values ('asset', $1, 'event_item', $2, 'part_of')",
+          [d.freePost.asset, "00000000-0000-0000-0000-000000000000"],
+        ),
+      ).toBe("23503");
+      expect(
+        await expectError(c, "delete from public.event_items where id = $1", [d.songItem]),
+      ).toBe("23503");
+    }));
+});
