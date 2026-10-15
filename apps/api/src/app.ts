@@ -10,6 +10,7 @@
 // | POST     | /intake/:id/reject        | 却下する                           |
 // | POST     | /intake/:id/hold          | 保留する                           |
 // | POST     | /resolve                  | URL から情報源と外部 ID を判定する |
+// | POST     | /files/staging            | ファイルを承認待ちの場所に保存する |
 
 import type { Database } from "@aletheia/db/client";
 import {
@@ -23,7 +24,9 @@ import { Hono } from "hono";
 import { sql } from "kysely";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
+import type { FileStore } from "@aletheia/storage";
 import { type Actor, type AuthEnv, type AuthOptions, requireAdmin } from "./auth.ts";
+import { finalizeApprovedFiles, moveRejectedFiles, stageFile } from "./files.ts";
 
 const uuid = z.uuid();
 
@@ -79,6 +82,13 @@ export function matchUrl(
   return matches;
 }
 
+const stagingQuery = z.object({
+  route: z.string().regex(/^(fetch|discord|migration|archive:[a-z0-9_-]+)$/),
+  ref: z.string().min(1),
+  index: z.coerce.number().int().min(1),
+  name: z.string().min(1),
+});
+
 const listQuery = z.object({
   state: z.enum(["pending", "approved", "rejected", "on_hold"]).default("pending"),
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -111,7 +121,7 @@ function idParam(value: string): string {
   return value;
 }
 
-export function createApp(db: Database, auth: AuthOptions) {
+export function createApp(db: Database, auth: AuthOptions, files?: FileStore) {
   const app = new Hono<AuthEnv>();
 
   app.get("/health", (c) => c.json({ ok: true }));
@@ -119,6 +129,25 @@ export function createApp(db: Database, auth: AuthOptions) {
   app.use("/intake/*", requireAdmin(db, auth));
   app.use("/intake", requireAdmin(db, auth));
   app.use("/resolve", requireAdmin(db, auth));
+  app.use("/files/*", requireAdmin(db, auth));
+
+  app.post("/files/staging", async (c) => {
+    if (!files) throw new HTTPException(503, { message: "ファイルの保存先が設定されていません" });
+    const q = stagingQuery.safeParse(c.req.query());
+    if (!q.success)
+      throw new HTTPException(400, { message: "条件が正しくありません", cause: q.error.issues });
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    if (bytes.byteLength === 0) throw new HTTPException(400, { message: "ファイルが空です" });
+    const staged = await stageFile(files, {
+      route: q.data.route,
+      routeRef: q.data.ref,
+      index: q.data.index,
+      name: q.data.name,
+      contentType: c.req.header("content-type") ?? null,
+      bytes,
+    });
+    return c.json(staged, 201);
+  });
 
   app.post("/resolve", async (c) => {
     const body = await parseBody(c.req.raw, resolveBody);
@@ -217,7 +246,9 @@ export function createApp(db: Database, auth: AuthOptions) {
       ...(body.draft !== undefined ? { draft: body.draft } : {}),
       ...(body.note ? { note: body.note } : {}),
     });
-    return c.json(result);
+    // 承認が確定した後に、ファイルを本来の場所へ移す。失敗しても承認は取り消さない
+    const filesReport = files ? await finalizeApprovedFiles(db, files, id, result.postId) : null;
+    return c.json({ ...result, files: filesReport });
   });
 
   for (const [action, run] of [
@@ -232,7 +263,9 @@ export function createApp(db: Database, auth: AuthOptions) {
         ...(reviewerId ? { reviewerId } : {}),
         ...(body.note ? { note: body.note } : {}),
       });
-      return c.json({ ok: true });
+      const filesReport =
+        action === "reject" && files ? await moveRejectedFiles(db, files, id) : null;
+      return c.json({ ok: true, files: filesReport });
     });
   }
 

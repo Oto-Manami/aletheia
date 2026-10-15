@@ -12,3 +12,4 @@ coverage/
 # Supabase CLI の作業用ファイル
 supabase/.temp/
 supabase/.branches/
+.files/

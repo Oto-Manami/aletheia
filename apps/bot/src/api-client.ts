@@ -28,6 +28,21 @@ export interface ApiClient {
     issues: { path?: (string | number)[]; message?: string }[];
   }>;
   decide(id: string, action: "approve" | "reject" | "hold", reviewerId: string): Promise<unknown>;
+  /** ファイルを API に渡して、承認待ちの場所に保存してもらう */
+  stage(
+    bytes: Uint8Array,
+    meta: { ref: string; index: number; name: string; contentType: string | null },
+  ): Promise<StagedFile>;
+}
+
+export interface StagedFile {
+  provider: string;
+  storage_key: string;
+  sha256: string;
+  size: number;
+  name: string;
+  staged_name: string;
+  content_type: string | null;
 }
 
 export function createApiClient(
@@ -62,5 +77,28 @@ export function createApiClient(
     getIntake: (id) => call("GET", `/intake/${id}`),
     decide: (id, action, reviewerId) =>
       call("POST", `/intake/${id}/${action}`, { reviewer_id: reviewerId }),
+    async stage(bytes, meta) {
+      const params = new URLSearchParams({
+        route: "discord",
+        ref: meta.ref,
+        index: String(meta.index),
+        name: meta.name,
+      });
+      const res = await fetchImpl(new URL(`/files/staging?${params.toString()}`, baseUrl), {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": meta.contentType ?? "application/octet-stream",
+        },
+        body: bytes,
+      });
+      const json: unknown = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message =
+          (json as { error?: string }).error ?? `ファイルを保存できません（${res.status}）`;
+        throw new ApiError(res.status, message, json);
+      }
+      return json as StagedFile;
+    },
   };
 }

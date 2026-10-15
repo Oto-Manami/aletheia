@@ -8,15 +8,37 @@ const schema = z.object({
   /** 閲覧サイトのログインを確かめる公開鍵の場所（Supabase の JWKS） */
   SUPABASE_JWKS_URL: z.url(),
   PORT: z.coerce.number().int().positive().default(8787),
+  /** ファイルの保存先。drive（本番）か local（開発用。手元のフォルダ） */
+  FILE_STORE: z.enum(["drive", "local"]).default("local"),
+  LOCAL_STORE_DIR: z.string().default(".files"),
+  /** Drive に接続するための、専用アカウントの OAuth の設定（FILE_STORE=drive のとき） */
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REFRESH_TOKEN: z.string().optional(),
+  /** アーカイブの最上位のフォルダの ID */
+  DRIVE_ROOT_FOLDER_ID: z.string().optional(),
 });
 
 export type Config = z.output<typeof schema>;
+
+const driveKeys = [
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "GOOGLE_REFRESH_TOKEN",
+  "DRIVE_ROOT_FOLDER_ID",
+] as const;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const result = schema.safeParse(env);
   if (!result.success) {
     const problems = result.error.issues.map((i) => `- ${i.path.join(".")}: ${i.message}`);
     throw new Error(`設定が足りないか、正しくありません:\n${problems.join("\n")}`);
+  }
+  if (result.data.FILE_STORE === "drive") {
+    const missing = driveKeys.filter((k) => !result.data[k]);
+    if (missing.length > 0) {
+      throw new Error(`FILE_STORE=drive には次の設定が必要です: ${missing.join(", ")}`);
+    }
   }
   return result.data;
 }

@@ -1,7 +1,6 @@
 // Bot の処理の中身。Discord との接続（main.ts）から切り離し、テストできるようにする
 
-import { createHash } from "node:crypto";
-import { ApiError, type ApiClient } from "./api-client.ts";
+import { ApiError, type ApiClient, type StagedFile } from "./api-client.ts";
 import { type Card, cardActionOf, intakeIdFromFooter, renderCard } from "./card.ts";
 import {
   buildDraft,
@@ -18,7 +17,7 @@ export interface Deps {
   /** Discord の利用者 ID → 閲覧サイトの利用者 ID（承認できる運営者） */
   operators: Record<string, string>;
   viewerUrl?: string;
-  /** 添付ファイルを取得する（SHA-256 を計算するため） */
+  /** 添付ファイルを Discord から取得する */
   download: (url: string) => Promise<Uint8Array>;
 }
 
@@ -28,18 +27,30 @@ export type IntakeOutcome =
   | { kind: "created"; intakeId: string; card: Card }
   | { kind: "duplicate" };
 
-export async function hashAttachments(
-  attachments: IncomingAttachment[],
-  download: Deps["download"],
-): Promise<IncomingAttachment[]> {
-  return Promise.all(
-    attachments.map(async (a) => ({
-      ...a,
-      sha256: createHash("sha256")
-        .update(await download(a.url))
-        .digest("hex"),
-    })),
-  );
+/**
+ * 添付ファイルを取得して API に渡し、承認待ちの場所に保存してもらう。
+ * Discord の添付ファイルの URL は時間が経つと使えなくなるため、受け付けた時点で保存する
+ */
+export async function stageAttachments(
+  message: IncomingMessage,
+  deps: Deps,
+): Promise<{ attachments: IncomingAttachment[]; staged: StagedFile[] }> {
+  const staged: StagedFile[] = [];
+  for (const [i, a] of message.attachments.entries()) {
+    const bytes = await deps.download(a.url);
+    staged.push(
+      await deps.api.stage(bytes, {
+        ref: message.id,
+        index: i + 1,
+        name: a.name,
+        contentType: a.contentType,
+      }),
+    );
+  }
+  return {
+    attachments: message.attachments.map((a, i) => ({ ...a, sha256: staged[i]!.sha256 })),
+    staged,
+  };
 }
 
 /** 入口チャンネルへの投稿から下書きを作る */
@@ -71,7 +82,7 @@ export async function handleIntakeMessage(
     source = { channel_key: defaults.fallback_channel, external_id: `discord-${message.id}` };
   }
 
-  const attachments = await hashAttachments(message.attachments, deps.download);
+  const { attachments, staged } = await stageAttachments(message, deps);
   const draft = buildDraft({ ...message, attachments }, parsed, defaults);
   try {
     const created = await deps.api.createIntake({
@@ -81,13 +92,7 @@ export async function handleIntakeMessage(
       route_ref: message.id,
       captured_at: message.createdAt.toISOString(),
       draft,
-      staged_files: attachments.map((a) => ({
-        discord_url: a.url,
-        name: a.name,
-        content_type: a.contentType,
-        size: a.size,
-        sha256: a.sha256,
-      })),
+      staged_files: staged,
     });
     const card = renderCard(
       {
