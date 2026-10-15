@@ -33,7 +33,7 @@ describe("変更履歴", () => {
   it("誰が変更したかを記録する", () =>
     withRollback(async (c) => {
       const d = await seed(c);
-      const admin = await createUser(c, { role: "admin", clearance: "restricted" });
+      const admin = await createUser(c, { role: "admin" });
       await c.query("select set_config('request.jwt.claims', $1, true)", [
         JSON.stringify({ sub: admin }),
       ]);
@@ -70,18 +70,16 @@ describe("変更履歴", () => {
       expect(rows).toEqual([{ moved: true }]);
     }));
 
-  it("利用者の公開区分の変更も残る", () =>
+  it("利用者の役割の変更も残る", () =>
     withRollback(async (c) => {
-      const viewer = await createUser(c, { clearance: "internal" });
-      await c.query("update app.user_profiles set clearance = 'confidential' where user_id = $1", [
-        viewer,
-      ]);
-      const { rows } = await c.query<{ clearance: string }>(
-        `select old_row ->> 'clearance' as clearance from app.history
+      const viewer = await createUser(c, {});
+      await c.query("update app.user_profiles set role = 'admin' where user_id = $1", [viewer]);
+      const { rows } = await c.query<{ role: string }>(
+        `select old_row ->> 'role' as role from app.history
          where table_name = 'user_profiles' and row_id = $1`,
         [viewer],
       );
-      expect(rows).toEqual([{ clearance: "internal" }]);
+      expect(rows).toEqual([{ role: "viewer" }]);
     }));
 
   it("直接接続での変更は、変更者が空になる（API が別途記録する）", () =>

@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 
-const classification = z.enum(["public", "internal", "confidential", "restricted"]);
+const classification = z.enum(["public", "private"]);
 const datePrecision = z.enum(["year", "month", "day", "minute", "second"]);
 const origin = z.enum(["human", "rule", "ai", "import"]);
 /** 語彙のキー（snake_case） */

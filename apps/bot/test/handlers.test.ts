@@ -24,7 +24,7 @@ function deps(api: ApiClient): Deps {
     channels: {
       "in-x": { classification: "public" },
       "in-print": {
-        classification: "internal",
+        classification: "public",
         availability: "paid",
         fallback_channel: "other:discord",
       },

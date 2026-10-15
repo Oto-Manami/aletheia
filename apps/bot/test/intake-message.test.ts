@@ -81,28 +81,20 @@ describe("下書きの組み立て", () => {
     expect(draft.context).toMatchObject({ memo: "告知", discord_channel: "in-x" });
   });
 
-  it("💰 は有料にし、公開区分を内部以上にする", () => {
+  it("💰 は有料にするだけで、公開区分は変えない", () => {
     const draft = buildDraft(message({ authorReactions: ["💰"] }), parsed, {
       classification: "public",
     });
-    expect(draft.post).toMatchObject({ availability: "paid", classification: "internal" });
+    expect(draft.post).toMatchObject({ availability: "paid", classification: "public" });
   });
 
-  it("👥・🔒 は機密以上にする。既に狭いものは広げない", () => {
-    expect(
-      buildDraft(message({ authorReactions: ["👥"] }), parsed, { classification: "public" }).post,
-    ).toMatchObject({
-      classification: "confidential",
-    });
-    expect(
-      buildDraft(message({ authorReactions: ["🔒"] }), parsed, { classification: "internal" }).post,
-    ).toMatchObject({
-      classification: "confidential",
-    });
-    expect(
-      buildDraft(message({ authorReactions: ["🔒"] }), parsed, { classification: "restricted" })
-        .post.classification,
-    ).toBe("restricted");
+  it("👥・🔒 は非公開にする", () => {
+    for (const reaction of ["👥", "🔒"]) {
+      expect(
+        buildDraft(message({ authorReactions: [reaction] }), parsed, { classification: "public" })
+          .post.classification,
+      ).toBe("private");
+    }
   });
 
   it("日付は精度つきで入れる", () => {

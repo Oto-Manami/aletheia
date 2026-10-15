@@ -50,7 +50,7 @@ function blogDraft(d: Seed): DraftInput {
         ref: "photo-2",
         media_type: "image",
         sha256: "c".repeat(64),
-        classification: "internal",
+        classification: "private",
         files: [{ variant: "original", provider: "gdrive", storage_key: "drive-file-2" }],
       },
     ],
@@ -220,7 +220,7 @@ describe("承認", () => {
       expect(rows).toEqual([
         { position: 1, media_type: "text", classification: "public" },
         { position: 2, media_type: "image", classification: "public" },
-        { position: 3, media_type: "image", classification: "internal" },
+        { position: 3, media_type: "image", classification: "private" },
       ]);
     }));
 
@@ -315,7 +315,7 @@ describe("承認", () => {
       .executeTakeFirstOrThrow();
     const draft: DraftInput = {
       version: 1,
-      post: { classification: "internal" },
+      post: { classification: "private" },
       assets: [{ ref: "photo", media_type: "image", sha256: "d".repeat(64) }],
       links: [
         {

@@ -57,7 +57,7 @@ describe("公開スキーマのすべての表", () => {
     expect(rows).toEqual([]);
   });
 
-  it("公開区分の列を持ち、既定値は restricted", async () => {
+  it("公開区分の列を持ち、既定値は private", async () => {
     const { rows } = await pool.query<{
       table_name: string;
       column_default: string | null;
@@ -72,7 +72,7 @@ describe("公開スキーマのすべての表", () => {
     );
     for (const r of rows) {
       expect(r, r.table_name).toMatchObject({
-        column_default: "'restricted'::classification",
+        column_default: "'private'::classification",
         is_nullable: "NO",
       });
     }
@@ -173,15 +173,19 @@ describe("関数", () => {
     expect(rows).toEqual([]);
   });
 
-  it("未ログインの利用者・公開用ロールは、どの関数も実行できない", async () => {
+  it("未ログインの利用者・公開用ロールは、決めたもの以外の関数を実行できない", async () => {
     const { rows } = await pool.query<{ name: string; role: string }>(
       `select name, r.role from (${ownFunctions}) f
        cross join (values ('anon'), ('aletheia_public_export')) as r(role)
        where has_function_privilege(r.role, f.oid, 'execute')
          -- トリガー用の関数は直接呼び出せないため除く
-         and (select prorettype from pg_proc where oid = f.oid) <> 'trigger'::regtype`,
+         and (select prorettype from pg_proc where oid = f.oid) <> 'trigger'::regtype
+       order by 1, 2`,
     );
-    expect(rows).toEqual([]);
+    // 公開用のビューの条件（有料の原文の再現）に使う関数だけは、公開用ロールも実行できる
+    expect(rows).toEqual([
+      { name: "app.statement_reproduces_paid_text", role: "aletheia_public_export" },
+    ]);
   });
 
   it("内部の権限で動く関数（security definer）は、決めたものだけ", async () => {
@@ -189,9 +193,10 @@ describe("関数", () => {
       `select name from (${ownFunctions}) f where prosecdef order by 1`,
     );
     expect(rows.map((r) => r.name)).toEqual([
-      "app.current_clearance",
       "app.is_admin",
+      "app.is_member",
       "app.record_history",
+      "app.statement_reproduces_paid_text",
     ]);
   });
 });

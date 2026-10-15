@@ -54,15 +54,11 @@ describe("認証", () => {
   it("ログインした管理者は使え、閲覧のみの利用者・登録の無い人は使えない", () =>
     withApi(async ({ c, call }) => {
       const admin = await insert(c, "auth.users", { id: "11111111-1111-4111-8111-111111111111" });
-      await c.query(
-        "insert into app.user_profiles (user_id, role, clearance) values ($1, 'admin', 'restricted')",
-        [admin],
-      );
+      await c.query("insert into app.user_profiles (user_id, role) values ($1, 'admin')", [admin]);
       const viewer = await insert(c, "auth.users", { id: "22222222-2222-4222-8222-222222222222" });
-      await c.query(
-        "insert into app.user_profiles (user_id, role, clearance) values ($1, 'viewer', 'internal')",
-        [viewer],
-      );
+      await c.query("insert into app.user_profiles (user_id, role) values ($1, 'viewer')", [
+        viewer,
+      ]);
       const stranger = "33333333-3333-4333-8333-333333333333";
 
       expect((await call("GET", "/intake", undefined, await tokenFor(admin))).status).toBe(200);
@@ -124,10 +120,7 @@ describe("承認・却下・保留", () => {
     withApi(async ({ c, call }) => {
       const d = await seed(c);
       const admin = await insert(c, "auth.users", { id: "11111111-1111-4111-8111-111111111111" });
-      await c.query(
-        "insert into app.user_profiles (user_id, role, clearance) values ($1, 'admin', 'restricted')",
-        [admin],
-      );
+      await c.query("insert into app.user_profiles (user_id, role) values ($1, 'admin')", [admin]);
       const { id } = (await (await call("POST", "/intake", newIntake(d))).json()) as { id: string };
 
       const res = await call(

@@ -36,10 +36,10 @@ describe("メモ・記事", () => {
       await insert(c, "public.article_refs", {
         article_id: article,
         ref_type: "event",
-        ref_id: d.childOfInternalEvent,
+        ref_id: d.childOfPrivateEvent,
       });
       expect(
-        await expectError(c, "delete from public.events where id = $1", [d.childOfInternalEvent]),
+        await expectError(c, "delete from public.events where id = $1", [d.childOfPrivateEvent]),
       ).toBe("23503");
     }));
 
@@ -218,7 +218,7 @@ describe("データ品質の検査", () => {
       // 有料の投稿の素材は、言明の根拠になっているので「紐付けなし」にならない
       expect(keysOf(first, d.paidPost.asset)).not.toContain("asset_unlinked");
       // どこからも参照されていない人物
-      expect(keysOf(first, d.confidentialPerson)).toContain("entity_unused");
+      expect(keysOf(first, d.unusedPerson)).toContain("entity_unused");
       expect(keysOf(first, d.person)).not.toContain("entity_unused");
 
       await insert(c, "public.asset_files", {
@@ -251,18 +251,31 @@ describe("データ品質の検査", () => {
       expect(keysOf(await run(c), past)).toEqual(["overdue_announcement"]);
     }));
 
+  it("公開の言明が有料の原文を再現していれば、問題として知らせる", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      const copied = await insert(c, "public.statements", {
+        subject_id: d.person,
+        property: "thought",
+        value_text: "有料の情報源での発言。好きな食べ物はお菓子。",
+        speaker_type: "self",
+        evidence_asset_id: d.paidPost.asset,
+        classification: "public",
+      });
+      expect(keysOf(await run(c), copied)).toContain("paid_text_reproduced");
+    }));
+
   it("人が対象外（ignored）にした問題は、再び見つかっても開き直さない", () =>
     withRollback(async (c) => {
       const d = await seed(c);
       await run(c);
       await c.query(
         "update public.quality_issues set state = 'ignored', resolved_at = now() where target_id = $1 and check_key = 'entity_unused'",
-        [d.confidentialPerson],
+        [d.unusedPerson],
       );
       const rows = await run(c);
       expect(
-        rows.find((r) => r.target_id === d.confidentialPerson && r.check_key === "entity_unused")
-          ?.state,
+        rows.find((r) => r.target_id === d.unusedPerson && r.check_key === "entity_unused")?.state,
       ).toBe("ignored");
     }));
 

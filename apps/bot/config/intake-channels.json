@@ -1,31 +1,63 @@
 {
-  "$comment": "入口チャンネル（Discord のチャンネル名）ごとの下書きの初期値。classification は公開区分の初期値、availability は有料かどうか、fallback_channel は URL が無いときの情報源。承認のときに人が確かめる",
-  "in-blog": { "classification": "public" },
-  "in-message": { "classification": "internal", "availability": "paid" },
-  "in-x": { "classification": "public" },
-  "in-instagram": { "classification": "public" },
-  "in-tiktok": { "classification": "public" },
-  "in-youtube": { "classification": "public" },
-  "in-broadcast": { "classification": "internal", "fallback_channel": "other:discord" },
-  "in-radio": { "classification": "internal", "fallback_channel": "other:discord" },
+  "$comment": "入口チャンネル（Discord のチャンネル名）ごとの下書きの初期値。classification は公開区分の初期値（public / private）、availability は有料かどうか、fallback_channel は URL が無いときの情報源。有料の素材そのものは公開区分にかかわらず公開されない。承認のときに人が確かめる",
+  "in-blog": {
+    "classification": "public"
+  },
+  "in-message": {
+    "classification": "public",
+    "availability": "paid"
+  },
+  "in-x": {
+    "classification": "public"
+  },
+  "in-instagram": {
+    "classification": "public"
+  },
+  "in-tiktok": {
+    "classification": "public"
+  },
+  "in-youtube": {
+    "classification": "public"
+  },
+  "in-broadcast": {
+    "classification": "public",
+    "fallback_channel": "other:discord"
+  },
+  "in-radio": {
+    "classification": "public",
+    "fallback_channel": "other:discord"
+  },
   "in-print": {
-    "classification": "internal",
+    "classification": "public",
     "availability": "paid",
     "fallback_channel": "other:discord"
   },
-  "in-live": { "classification": "internal", "fallback_channel": "other:discord" },
-  "in-official": { "classification": "public" },
-  "in-news": { "classification": "public" },
+  "in-live": {
+    "classification": "public",
+    "fallback_channel": "other:discord"
+  },
+  "in-official": {
+    "classification": "public"
+  },
+  "in-news": {
+    "classification": "public"
+  },
   "in-game": {
-    "classification": "internal",
+    "classification": "public",
     "availability": "paid",
     "fallback_channel": "other:discord"
   },
   "in-fanclub": {
-    "classification": "internal",
+    "classification": "public",
     "availability": "paid",
     "fallback_channel": "other:discord"
   },
-  "in-place": { "classification": "restricted", "fallback_channel": "other:discord" },
-  "in-other": { "classification": "internal", "fallback_channel": "other:discord" }
+  "in-place": {
+    "classification": "public",
+    "fallback_channel": "other:discord"
+  },
+  "in-other": {
+    "classification": "private",
+    "fallback_channel": "other:discord"
+  }
 }
