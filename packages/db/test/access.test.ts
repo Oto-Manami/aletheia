@@ -4,48 +4,17 @@ import { seed } from "./fixtures.ts";
 import { actAs, actAsOwner, createUser, expectError, ids, withRollback } from "./helpers.ts";
 
 describe("閲覧サイト（ログインした利用者）", () => {
-  it("公開区分の上限が internal の利用者は、public と internal だけが見える", () =>
+  it("招待した利用者には、非公開と公開区分を指定しなかった行を含めてすべて見える", () =>
     withRollback(async (c) => {
       const d = await seed(c);
-      const viewer = await createUser(c, { clearance: "internal" });
+      const viewer = await createUser(c, {});
       await actAs(c, "authenticated", viewer);
       const seen = await ids(c, "select id from public.entities");
-      expect(seen).toEqual(
-        [
-          d.person,
-          d.otherMember,
-          d.internalPerson,
-          d.venue,
-          d.mergedPerson,
-          d.group,
-          d.publicSong,
-          d.internalSong,
-        ].sort(),
-      );
-      expect(seen).not.toContain(d.confidentialPerson);
-      expect(seen).not.toContain(d.school);
-      expect(seen).not.toContain(d.unclassified);
-    }));
-
-  it("上限が public の利用者には internal の行が見えない", () =>
-    withRollback(async (c) => {
-      const d = await seed(c);
-      const viewer = await createUser(c, { clearance: "public" });
-      await actAs(c, "authenticated", viewer);
-      expect(await ids(c, "select id from public.posts")).not.toContain(d.internalPost.post);
-      expect(await ids(c, "select id from public.events")).not.toContain(d.internalEvent);
-    }));
-
-  it("上限が confidential の利用者には confidential まで見え、restricted は見えない", () =>
-    withRollback(async (c) => {
-      const d = await seed(c);
-      const viewer = await createUser(c, { clearance: "confidential" });
-      await actAs(c, "authenticated", viewer);
-      const seen = await ids(c, "select id from public.entities");
-      expect(seen).toContain(d.confidentialPerson);
-      expect(seen).not.toContain(d.school);
-      expect(seen).not.toContain(d.unclassified);
-      expect(await ids(c, "select id from public.statements")).not.toContain(d.restrictedStatement);
+      for (const id of [d.person, d.privatePerson, d.unusedPerson, d.school, d.unclassified]) {
+        expect(seen).toContain(id);
+      }
+      expect(await ids(c, "select id from public.posts")).toContain(d.privatePost.post);
+      expect(await ids(c, "select id from public.statements")).toContain(d.privateStatement);
     }));
 
   it("利用者の登録がない人には何も見えない", () =>
@@ -63,32 +32,20 @@ describe("閲覧サイト（ログインした利用者）", () => {
       }
     }));
 
-  it("管理者にはすべて見える（restricted と、公開区分を指定しなかった行を含む）", () =>
+  it("管理者にもすべて見える", () =>
     withRollback(async (c) => {
       const d = await seed(c);
-      const admin = await createUser(c, { role: "admin", clearance: "restricted" });
+      const admin = await createUser(c, { role: "admin" });
       await actAs(c, "authenticated", admin);
       const seen = await ids(c, "select id from public.entities");
       expect(seen).toContain(d.school);
       expect(seen).toContain(d.unclassified);
     }));
 
-  it("管理者の上限を restricted 以外にはできない", () =>
-    withRollback(async (c) => {
-      const id = await createUser(c);
-      expect(
-        await expectError(
-          c,
-          "insert into app.user_profiles (user_id, role, clearance) values ($1, 'admin', 'internal')",
-          [id],
-        ),
-      ).toBe("23514");
-    }));
-
   it("閲覧サイトからは書き込めない（管理者でも）", () =>
     withRollback(async (c) => {
       const d = await seed(c);
-      const admin = await createUser(c, { role: "admin", clearance: "restricted" });
+      const admin = await createUser(c, { role: "admin" });
       await actAs(c, "authenticated", admin);
       expect(
         await expectError(
@@ -108,36 +65,35 @@ describe("閲覧サイト（ログインした利用者）", () => {
 
   it("他の利用者の登録内容は見えない", () =>
     withRollback(async (c) => {
-      const me = await createUser(c, { clearance: "internal" });
-      await createUser(c, { clearance: "confidential" });
+      const me = await createUser(c, {});
+      await createUser(c, {});
       await actAs(c, "authenticated", me);
       const { rows } = await c.query("select user_id from app.user_profiles");
       expect(rows).toEqual([{ user_id: me }]);
     }));
 
-  it("自分の公開区分の上限や役割を書き換えられない", () =>
+  it("自分の役割を書き換えられない・自分を登録できない", () =>
     withRollback(async (c) => {
-      const me = await createUser(c, { clearance: "public" });
+      const me = await createUser(c, {});
       await actAs(c, "authenticated", me);
       expect(
-        await expectError(
-          c,
-          "update app.user_profiles set clearance = 'restricted' where user_id = $1",
-          [me],
-        ),
+        await expectError(c, "update app.user_profiles set role = 'admin' where user_id = $1", [
+          me,
+        ]),
       ).toBe("42501");
+      await actAsOwner(c);
+      const stranger = await createUser(c);
+      await actAs(c, "authenticated", stranger);
       expect(
-        await expectError(
-          c,
-          "insert into app.user_profiles (user_id, role, clearance) values ($1, 'admin', 'restricted')",
-          [me],
-        ),
+        await expectError(c, "insert into app.user_profiles (user_id, role) values ($1, 'admin')", [
+          stranger,
+        ]),
       ).toBe("42501");
     }));
 
   it("変更履歴は見えない", () =>
     withRollback(async (c) => {
-      const admin = await createUser(c, { role: "admin", clearance: "restricted" });
+      const admin = await createUser(c, { role: "admin" });
       await actAs(c, "authenticated", admin);
       expect(await expectError(c, "select * from app.history")).toBe("42501");
     }));

@@ -10,7 +10,7 @@ export type AppRole = "admin" | "viewer";
 
 export type Availability = "free" | "mixed" | "paid";
 
-export type Classification = "confidential" | "internal" | "public" | "restricted";
+export type Classification = "private" | "public";
 
 export type DatePrecision = "day" | "minute" | "month" | "second" | "year";
 
@@ -76,7 +76,6 @@ export interface AppStaleJobs {
 }
 
 export interface AppUserProfiles {
-  clearance: Generated<Classification>;
   created_at: Generated<Timestamp>;
   display_name: string | null;
   role: Generated<AppRole>;
@@ -573,6 +572,9 @@ export interface PublicExportStatements {
   excerpt_start: number | null;
   id: string | null;
   property: string | null;
+  source_channel_id: string | null;
+  source_date: string | null;
+  source_date_precision: DatePrecision | null;
   speaker_entity_id: string | null;
   speaker_type: string | null;
   stated_on: string | null;

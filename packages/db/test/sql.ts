@@ -22,7 +22,7 @@ export function asQueryable(db: {
   };
 }
 
-export type Classification = "public" | "internal" | "confidential" | "restricted";
+export type Classification = "public" | "private";
 
 export async function insert(
   c: Queryable,

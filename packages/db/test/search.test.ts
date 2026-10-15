@@ -1,29 +1,34 @@
 // 全文検索の検査
 import { describe, expect, it } from "vitest";
 import { seed } from "./fixtures.ts";
-import { actAs, createUser, withRollback } from "./helpers.ts";
+import { actAs, actAsOwner, createUser, withRollback } from "./helpers.ts";
 
 type Hit = { asset_id: string; snippet: string };
 
 describe("全文検索", () => {
-  it("日本語の部分一致で見つかり、見える範囲に限られる", () =>
+  it("日本語の部分一致で見つかり、登録のない人には何も出ない", () =>
     withRollback(async (c) => {
       const d = await seed(c);
-      const viewer = await createUser(c, { clearance: "public" });
+      const viewer = await createUser(c, {});
       await actAs(c, "authenticated", viewer);
       const { rows } = await c.query<Hit>(
         "select asset_id, snippet from public.search_texts('お菓子')",
       );
-      // 内部向け（internal）の素材は出ない。有料の素材は閲覧サイトでは見える
+      // 閲覧サイトでは、非公開・有料の素材も見える
       expect(rows.map((r) => r.asset_id).sort()).toEqual(
-        [d.freePost.asset, d.paidPost.asset].sort(),
+        [d.freePost.asset, d.privatePost.asset, d.paidPost.asset].sort(),
       );
+      await actAsOwner(c);
+      const stranger = await createUser(c);
+      await actAs(c, "authenticated", stranger);
+      const { rows: none } = await c.query("select asset_id from public.search_texts('お菓子')");
+      expect(none).toEqual([]);
     }));
 
   it("全角・半角の違いを吸収する", () =>
     withRollback(async (c) => {
       const d = await seed(c);
-      const admin = await createUser(c, { role: "admin", clearance: "restricted" });
+      const admin = await createUser(c, { role: "admin" });
       await actAs(c, "authenticated", admin);
       const { rows } = await c.query<Hit>(
         "select asset_id, snippet from public.search_texts('abc')",
@@ -35,7 +40,7 @@ describe("全文検索", () => {
   it("置換記号は検索の対象にならない", () =>
     withRollback(async (c) => {
       await seed(c);
-      const admin = await createUser(c, { role: "admin", clearance: "restricted" });
+      const admin = await createUser(c, { role: "admin" });
       await actAs(c, "authenticated", admin);
       const { rows } = await c.query("select asset_id from public.search_texts('recipient')");
       expect(rows).toEqual([]);
@@ -55,7 +60,7 @@ describe("全文検索", () => {
   it("件数の上限を守る", () =>
     withRollback(async (c) => {
       await seed(c);
-      const admin = await createUser(c, { role: "admin", clearance: "restricted" });
+      const admin = await createUser(c, { role: "admin" });
       await actAs(c, "authenticated", admin);
       const { rows } = await c.query("select asset_id from public.search_texts('お菓子', 1)");
       expect(rows).toHaveLength(1);

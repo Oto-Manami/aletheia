@@ -11,7 +11,7 @@ describe("承認カード", () => {
       channelKey: "other:discord",
       externalId: "discord-1",
       draft: {
-        post: { classification: "internal", availability: "paid" },
+        post: { classification: "private", availability: "paid" },
         assets: [],
         links: [{ to_type: "entity", role: "appears", origin: "ai", confidence: 0.4 }],
       },
@@ -24,7 +24,7 @@ describe("承認カード", () => {
       "確信度の低い提案: entity・appears（ai 0.40）",
       "下書きの形に足りない点が 1 か所あります（修正してから承認）",
     ]);
-    expect(card.lines).toContain("公開区分: 内部（有料）");
+    expect(card.lines).toContain("公開区分: 非公開（有料）");
     expect(intakeIdFromFooter(card.footer)).toBe(ID);
   });
 
@@ -68,6 +68,6 @@ describe("設定", () => {
     );
     expect(channels["in-x"]).toEqual({ classification: "public" });
     expect(channels["in-message"]).toMatchObject({ availability: "paid" });
-    expect(channels["in-place"]).toMatchObject({ classification: "restricted" });
+    expect(channels["in-other"]).toMatchObject({ classification: "private" });
   });
 });

@@ -17,22 +17,22 @@ export async function seed(c: Queryable) {
     canonical_name: "試験 次郎",
     classification: "public",
   });
-  const internalPerson = await insert(c, "public.entities", {
+  const privatePerson = await insert(c, "public.entities", {
     type: "person",
     canonical_name: "内部 三郎",
-    classification: "internal",
+    classification: "private",
   });
   const school = await insert(c, "public.entities", {
     type: "place",
     canonical_name: "架空高校",
-    classification: "restricted",
+    classification: "private",
   });
   const venue = await insert(c, "public.entities", {
     type: "place",
     canonical_name: "架空ホール",
     classification: "public",
   });
-  // 公開区分を指定しなかった行（既定で restricted になる）
+  // 公開区分を指定しなかった行（既定で private になる）
   const unclassified = await insert(c, "public.entities", {
     type: "person",
     canonical_name: "未設定 四郎",
@@ -99,8 +99,8 @@ export async function seed(c: Queryable) {
     "1001",
     "今日は{{recipient}}さんと一緒に、ＡＢＣのお菓子を食べました。",
   );
-  const internalPost = await postWithText(freeChannel, "1002", "内部向けの記録です。お菓子の話。", {
-    classification: "internal",
+  const privatePost = await postWithText(freeChannel, "1002", "内部向けの記録です。お菓子の話。", {
+    classification: "private",
   });
   const paidPost = await postWithText(
     paidChannel,
@@ -129,12 +129,12 @@ export async function seed(c: Queryable) {
     venue_id: venue,
     classification: "public",
   });
-  const internalEvent = await insert(c, "public.events", {
+  const privateEvent = await insert(c, "public.events", {
     kind: "event",
     title: "内部の出来事",
     starts_on: "2026-07-01",
     date_precision: "day",
-    classification: "internal",
+    classification: "private",
   });
 
   const acceptedParticipant = await insert(c, "public.event_participants", {
@@ -181,12 +181,12 @@ export async function seed(c: Queryable) {
     speaker_entity_id: otherMember,
     classification: "public",
   });
-  const restrictedStatement = await insert(c, "public.statements", {
+  const privateStatement = await insert(c, "public.statements", {
     subject_id: person,
     property: "school",
     value_entity_id: school,
     speaker_type: "self",
-    classification: "restricted",
+    classification: "private",
   });
 
   const authorLink = await insert(c, "public.links", {
@@ -218,10 +218,10 @@ export async function seed(c: Queryable) {
   });
 
   // 公開区分ごとの人物・統合済みの人物
-  const confidentialPerson = await insert(c, "public.entities", {
+  const unusedPerson = await insert(c, "public.entities", {
     type: "person",
     canonical_name: "機密 六郎",
-    classification: "confidential",
+    classification: "private",
   });
   const mergedPerson = await insert(c, "public.entities", {
     type: "person",
@@ -244,8 +244,8 @@ export async function seed(c: Queryable) {
     valid_from_precision: "day",
     classification: "public",
   });
-  const relationToInternal = await insert(c, "public.entity_relations", {
-    subject_id: internalPerson,
+  const relationToPrivate = await insert(c, "public.entity_relations", {
+    subject_id: privatePerson,
     object_id: group,
     relation: "member_of",
     classification: "public",
@@ -267,11 +267,11 @@ export async function seed(c: Queryable) {
     canonical_name: "架空の歌",
     classification: "public",
   });
-  const internalSong = await insert(c, "public.entities", {
+  const privateSong = await insert(c, "public.entities", {
     type: "work",
     subtype: "song",
     canonical_name: "未発表の歌",
-    classification: "internal",
+    classification: "private",
   });
   const songItem = await insert(c, "public.event_items", {
     event_id: venueEvent,
@@ -280,25 +280,25 @@ export async function seed(c: Queryable) {
     work_id: publicSong,
     classification: "public",
   });
-  const titledInternalSongItem = await insert(c, "public.event_items", {
+  const titledPrivateSongItem = await insert(c, "public.event_items", {
     event_id: venueEvent,
     position: 2,
     item_type: "song",
-    work_id: internalSong,
+    work_id: privateSong,
     title: "新曲",
     classification: "public",
   });
-  const untitledInternalSongItem = await insert(c, "public.event_items", {
+  const untitledPrivateSongItem = await insert(c, "public.event_items", {
     event_id: venueEvent,
     position: 3,
     item_type: "song",
-    work_id: internalSong,
+    work_id: privateSong,
     classification: "public",
   });
 
   // 上位が非公開の出来事
-  const childOfInternalEvent = await insert(c, "public.events", {
-    parent_id: internalEvent,
+  const childOfPrivateEvent = await insert(c, "public.events", {
+    parent_id: privateEvent,
     kind: "event",
     title: "内部の出来事の一部",
     starts_on: "2026-07-01",
@@ -307,11 +307,11 @@ export async function seed(c: Queryable) {
   });
 
   // 発信者が非公開の情報源
-  const internalOwnerChannel = await insert(c, "public.channels", {
-    key: "sns:internal_owner",
+  const privateOwnerChannel = await insert(c, "public.channels", {
+    key: "sns:private_owner",
     name: "テスト SNS 2",
     kind: "sns",
-    owner_entity_id: internalPerson,
+    owner_entity_id: privatePerson,
     availability: "free",
     item_unit: "post",
     classification: "public",
@@ -328,39 +328,39 @@ export async function seed(c: Queryable) {
     name: "自撮り",
     classification: "public",
   });
-  const internalTerm = await insert(c, "public.terms", {
+  const privateTerm = await insert(c, "public.terms", {
     vocabulary_id: vocabulary,
     name: "内部の分類",
-    classification: "internal",
+    classification: "private",
   });
-  const childOfInternalTerm = await insert(c, "public.terms", {
+  const childOfPrivateTerm = await insert(c, "public.terms", {
     vocabulary_id: vocabulary,
-    parent_id: internalTerm,
+    parent_id: privateTerm,
     name: "内部の分類の下位",
     classification: "public",
   });
 
   return {
-    confidentialPerson,
+    unusedPerson,
     mergedPerson,
     group,
     memberOf,
-    relationToInternal,
+    relationToPrivate,
     rejectedRelation,
     publicSong,
-    internalSong,
+    privateSong,
     songItem,
-    titledInternalSongItem,
-    untitledInternalSongItem,
-    childOfInternalEvent,
-    internalOwnerChannel,
+    titledPrivateSongItem,
+    untitledPrivateSongItem,
+    childOfPrivateEvent,
+    privateOwnerChannel,
     vocabulary,
     publicTerm,
-    internalTerm,
-    childOfInternalTerm,
+    privateTerm,
+    childOfPrivateTerm,
     person,
     otherMember,
-    internalPerson,
+    privatePerson,
     school,
     venue,
     unclassified,
@@ -368,19 +368,19 @@ export async function seed(c: Queryable) {
     paidChannel,
     mixedChannel,
     freePost,
-    internalPost,
+    privatePost,
     paidPost,
     mixedFreePost,
     mixedDefaultPost,
     publicEvent,
     venueEvent,
-    internalEvent,
+    privateEvent,
     acceptedParticipant,
     rejectedParticipant,
     selfStatement,
     paidStatement,
     mentionStatement,
-    restrictedStatement,
+    privateStatement,
     authorLink,
     rejectedLink,
     paidLink,

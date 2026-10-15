@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll } from "vitest";
-import type { Classification } from "./sql.ts";
 
 const connectionString =
   process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
@@ -46,15 +45,14 @@ export async function actAsOwner(c: Client): Promise<void> {
 
 export async function createUser(
   c: Client,
-  profile?: { role?: "admin" | "viewer"; clearance?: Classification },
+  profile?: { role?: "admin" | "viewer" },
 ): Promise<string> {
   const id = randomUUID();
   await c.query("insert into auth.users (id) values ($1)", [id]);
   if (profile) {
-    await c.query("insert into app.user_profiles (user_id, role, clearance) values ($1, $2, $3)", [
+    await c.query("insert into app.user_profiles (user_id, role) values ($1, $2)", [
       id,
       profile.role ?? "viewer",
-      profile.clearance ?? "internal",
     ]);
   }
   return id;

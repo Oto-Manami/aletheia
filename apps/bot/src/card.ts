@@ -39,9 +39,7 @@ export interface Card {
 
 const classificationLabel: Record<string, string> = {
   public: "公開",
-  internal: "内部",
-  confidential: "機密",
-  restricted: "制限",
+  private: "非公開",
 };
 
 export function renderCard(
@@ -74,7 +72,7 @@ export function renderCard(
     warnings.push("素材（添付ファイル）がありません");
   }
 
-  const classification = d.post?.classification ?? "restricted";
+  const classification = d.post?.classification ?? "private";
   lines.push(
     `公開区分: ${classificationLabel[classification] ?? classification}${d.post?.availability === "paid" ? "（有料）" : ""}`,
   );

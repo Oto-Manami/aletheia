@@ -10,16 +10,10 @@
 import type { DraftInput } from "@aletheia/intake";
 import { z } from "zod";
 
-export type Classification = "public" | "internal" | "confidential" | "restricted";
-const order: Classification[] = ["public", "internal", "confidential", "restricted"];
-
-/** 公開区分を、狭い方に寄せる */
-function atLeast(current: Classification, minimum: Classification): Classification {
-  return order.indexOf(current) >= order.indexOf(minimum) ? current : minimum;
-}
+export type Classification = "public" | "private";
 
 export const channelDefaultsSchema = z.object({
-  classification: z.enum(["public", "internal", "confidential", "restricted"]),
+  classification: z.enum(["public", "private"]),
   availability: z.enum(["free", "paid", "mixed"]).optional(),
   /** URL が無い投稿の情報源。無ければ URL を必須にする */
   fallback_channel: z.string().optional(),
@@ -126,14 +120,13 @@ export function buildDraft(
   defaults: ChannelDefaults,
 ): DraftInput {
   const reactions = new Set(message.authorReactions);
-  let classification: Classification = defaults.classification;
-  let availability = defaults.availability;
-  if (reactions.has(REACTIONS.paid)) {
-    availability = "paid";
-    classification = atLeast(classification, "internal");
-  }
-  if (reactions.has(REACTIONS.thirdParty)) classification = atLeast(classification, "confidential");
-  if (reactions.has(REACTIONS.private)) classification = atLeast(classification, "confidential");
+  // 💰 は有料にするだけ（有料の素材そのものは、公開区分にかかわらず公開されない）
+  const availability = reactions.has(REACTIONS.paid) ? "paid" : defaults.availability;
+  // 👥（第三者の投稿）・🔒（公開しない）は非公開にする
+  const classification: Classification =
+    reactions.has(REACTIONS.thirdParty) || reactions.has(REACTIONS.private)
+      ? "private"
+      : defaults.classification;
 
   return {
     version: 1,

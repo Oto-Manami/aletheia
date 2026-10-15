@@ -2,7 +2,7 @@
 // 条件: 公開区分が public かつ 有料の情報源でない かつ 承認済み
 import { describe, expect, it } from "vitest";
 import { seed } from "./fixtures.ts";
-import { actAs, expectError, ids, withRollback } from "./helpers.ts";
+import { actAs, expectError, ids, insert, withRollback } from "./helpers.ts";
 
 describe("公開用ロール", () => {
   it("元の表は読めない", () =>
@@ -23,11 +23,11 @@ describe("公開用ロール", () => {
       // 統合済みの人物（転送元）も出さない
       expect(entities).toEqual([d.person, d.otherMember, d.venue, d.group, d.publicSong].sort());
       expect(await ids(c, "select id from public_export.events")).toEqual(
-        [d.publicEvent, d.venueEvent, d.childOfInternalEvent].sort(),
+        [d.publicEvent, d.venueEvent, d.childOfPrivateEvent].sort(),
       );
     }));
 
-  it("restricted の行は、どのビューにも ID すら出ない", () =>
+  it("非公開の行は、どのビューにも ID すら出ない", () =>
     withRollback(async (c) => {
       const d = await seed(c);
       await actAs(c, "aletheia_public_export");
@@ -43,7 +43,7 @@ describe("公開用ロール", () => {
       );
       expect(venue).toEqual([{ venue_id: d.venue }]);
       expect(await ids(c, "select id from public_export.statements")).not.toContain(
-        d.restrictedStatement,
+        d.privateStatement,
       );
     }));
 
@@ -62,17 +62,73 @@ describe("公開用ロール", () => {
       );
       // 有料の情報源そのものも出さない（有料・無料が混在する情報源は出す）
       expect(await ids(c, "select id from public_export.channels")).toEqual(
-        [d.freeChannel, d.mixedChannel, d.internalOwnerChannel].sort(),
+        // 情報源は、有料のものも出典の表示のために出す（中身は出さない）
+        [d.freeChannel, d.paidChannel, d.mixedChannel, d.privateOwnerChannel].sort(),
       );
     }));
 
-  it("有料の素材を根拠にした言明は出ない", () =>
+  it("有料の素材を根拠にした言明は出すが、根拠の素材は指さず、情報源と日付だけを示す", () =>
     withRollback(async (c) => {
       const d = await seed(c);
       await actAs(c, "aletheia_public_export");
       expect(await ids(c, "select id from public_export.statements")).toEqual(
-        [d.selfStatement, d.mentionStatement].sort(),
+        [d.selfStatement, d.paidStatement, d.mentionStatement].sort(),
       );
+      const { rows } = await c.query(
+        `select evidence_asset_id, excerpt_start, source_channel_id, source_date::text
+         from public_export.statements where id = $1`,
+        [d.paidStatement],
+      );
+      expect(rows).toEqual([
+        {
+          evidence_asset_id: null,
+          excerpt_start: null,
+          source_channel_id: d.paidChannel,
+          source_date: "2026-10-12",
+        },
+      ]);
+      // 無料の素材が根拠なら、素材を指してよい
+      const { rows: free } = await c.query<{ evidence_asset_id: string }>(
+        "select evidence_asset_id from public_export.statements where id = $1",
+        [d.selfStatement],
+      );
+      expect(free).toEqual([{ evidence_asset_id: d.freePost.asset }]);
+    }));
+
+  it("有料の原文を再現する値（連続 20 文字以上の一致）は出さない", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      const copied = await insert(c, "public.statements", {
+        subject_id: d.person,
+        property: "thought",
+        // 原文「有料の情報源での発言。好きな食べ物はお菓子。」とほぼ同じ（空白・全角半角の違いは無視される）
+        value_text: "有料の情報源での発言。 好きな食べ物はお菓子",
+        speaker_type: "self",
+        evidence_asset_id: d.paidPost.asset,
+        classification: "public",
+      });
+      const paraphrased = await insert(c, "public.statements", {
+        subject_id: d.person,
+        property: "thought",
+        value_text: "お菓子が好きだと話していた",
+        speaker_type: "self",
+        evidence_asset_id: d.paidPost.asset,
+        classification: "public",
+      });
+      // 無料の素材からの引用は止めない
+      const freeQuote = await insert(c, "public.statements", {
+        subject_id: d.person,
+        property: "thought",
+        value_text: "今日は試験 次郎さんと一緒に、ＡＢＣのお菓子を食べました。",
+        speaker_type: "self",
+        evidence_asset_id: d.freePost.asset,
+        classification: "public",
+      });
+      await actAs(c, "aletheia_public_export");
+      const exported = await ids(c, "select id from public_export.statements");
+      expect(exported).not.toContain(copied);
+      expect(exported).toContain(paraphrased);
+      expect(exported).toContain(freeQuote);
     }));
 
   it("却下した提案（rejected）は出ない", () =>
@@ -106,17 +162,17 @@ describe("公開用ロール", () => {
       expect(
         await one(
           "select parent_id from public_export.events where id = $1",
-          d.childOfInternalEvent,
+          d.childOfPrivateEvent,
         ),
       ).toEqual({ parent_id: null });
       expect(
         await one(
           "select owner_entity_id from public_export.channels where id = $1",
-          d.internalOwnerChannel,
+          d.privateOwnerChannel,
         ),
       ).toEqual({ owner_entity_id: null });
       expect(
-        await one("select parent_id from public_export.terms where id = $1", d.childOfInternalTerm),
+        await one("select parent_id from public_export.terms where id = $1", d.childOfPrivateTerm),
       ).toEqual({ parent_id: null });
     }));
 
@@ -136,7 +192,7 @@ describe("公開用ロール", () => {
       );
       expect(rows).toEqual([
         { id: d.songItem, work_id: d.publicSong, title: null },
-        { id: d.titledInternalSongItem, work_id: null, title: "新曲" },
+        { id: d.titledPrivateSongItem, work_id: null, title: "新曲" },
       ]);
     }));
 
@@ -146,7 +202,7 @@ describe("公開用ロール", () => {
       await actAs(c, "aletheia_public_export");
       expect(await ids(c, "select id from public_export.vocabularies")).toEqual([d.vocabulary]);
       expect(await ids(c, "select id from public_export.terms")).toEqual(
-        [d.publicTerm, d.childOfInternalTerm].sort(),
+        [d.publicTerm, d.childOfPrivateTerm].sort(),
       );
     }));
 
