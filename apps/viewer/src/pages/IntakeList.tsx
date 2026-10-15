@@ -33,7 +33,13 @@ export function IntakePage() {
   return (
     <div className={`split ${detail ? "has-detail" : ""}`}>
       <section className="split-list" aria-label="下書きの一覧">
-        <h1 className="page-title">承認</h1>
+        <div className="page-head">
+          <h1 className="page-title">承認</h1>
+          <p className="page-sub">
+            取り込みの下書き
+            {list.status === "ready" && ` — ${list.data.length} 件`}
+          </p>
+        </div>
         <div className="tabs" role="tablist" aria-label="状態">
           {STATES.map((s) => (
             <button
@@ -55,14 +61,14 @@ export function IntakePage() {
           </p>
         )}
         {list.status === "ready" && list.data.length === 0 && (
-          <p className="quiet">
+          <p className="empty">
             {state === "pending"
               ? "承認待ちの下書きはありません。Discord の入口に投稿すると、ここに並びます。"
               : "該当する下書きはありません。"}
           </p>
         )}
         {list.status === "ready" && list.data.length > 0 && (
-          <ol className="intake-list">
+          <ol className="panel intake-list">
             {list.data.map((item) => (
               <li key={item.id}>
                 <NavLink

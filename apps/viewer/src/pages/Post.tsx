@@ -19,7 +19,7 @@ function AssetBlock({ asset }: { asset: AssetView }) {
   const visual = asset.mediaType === "image" || asset.mediaType === "document";
 
   return (
-    <section className={`post-asset ${isPrivate ? "is-private" : ""}`}>
+    <section className={`panel panel-pad post-asset ${isPrivate ? "is-private" : ""}`}>
       {(page || asset.title || isPrivate || !visual) && (
         <p className="post-asset-head">
           {page && <span className="page-no">{page}</span>}
@@ -87,53 +87,74 @@ export function PostPage() {
   const assets = [...p.assets].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 
   return (
-    <article className="page post">
-      <header className="post-header">
-        <p className="post-channel">
-          {p.channelName}
-          <Tags classification={p.classification} availability={p.availability} />
-        </p>
+    <article className="page wide post">
+      <header className="page-head">
         <h1 className="page-title">{p.title ?? "（題名なし）"}</h1>
-        <p className="post-meta">
-          {published ?? "日付なし"}
-          {p.url && (
-            <>
-              <span className="sep" aria-hidden="true" />
-              <a href={p.url} target="_blank" rel="noreferrer noopener">
-                元の投稿
-              </a>
-            </>
-          )}
-          {p.archivedUrl && (
-            <>
-              <span className="sep" aria-hidden="true" />
-              <a href={p.archivedUrl} target="_blank" rel="noreferrer noopener">
-                保存された写し
-              </a>
-            </>
-          )}
+        <p className="badges">
+          <span className="badge">{p.channelName}</span>
+          <Tags classification={p.classification} availability={p.availability} />
+          <span className="page-sub">{published ?? "日付なし"}</span>
         </p>
       </header>
 
-      <div className="post-assets">
-        {assets.map((a) => (
-          <AssetBlock key={a.id} asset={a} />
-        ))}
-      </div>
+      <div className="post-grid">
+        <div className="post-assets">
+          {assets.map((a) => (
+            <AssetBlock key={a.id} asset={a} />
+          ))}
+        </div>
 
-      {p.links.length > 0 && (
-        <footer className="post-links">
-          <h2>紐付け</h2>
-          <dl>
-            {p.links.map((l, i) => (
-              <div key={i} className="post-link">
-                <dt>{ROLE_LABELS[l.role] ?? l.role}</dt>
-                <dd>{l.target.label}</dd>
+        <aside className="panel panel-pad post-info" aria-label="投稿の情報">
+          <h2 className="column-title">情報</h2>
+          <dl className="facts">
+            <div>
+              <dt>情報源</dt>
+              <dd>{p.channelName}</dd>
+            </div>
+            <div>
+              <dt>日付</dt>
+              <dd>{published ?? "なし"}</dd>
+            </div>
+            <div>
+              <dt>素材</dt>
+              <dd>{assets.length} 件</dd>
+            </div>
+            {p.url && (
+              <div>
+                <dt>元の投稿</dt>
+                <dd>
+                  <a href={p.url} target="_blank" rel="noreferrer noopener">
+                    開く
+                  </a>
+                </dd>
               </div>
-            ))}
+            )}
+            {p.archivedUrl && (
+              <div>
+                <dt>保存された写し</dt>
+                <dd>
+                  <a href={p.archivedUrl} target="_blank" rel="noreferrer noopener">
+                    開く
+                  </a>
+                </dd>
+              </div>
+            )}
           </dl>
-        </footer>
-      )}
+          {p.links.length > 0 && (
+            <>
+              <h2 className="column-title">紐付け</h2>
+              <dl className="facts">
+                {p.links.map((l, i) => (
+                  <div key={i}>
+                    <dt>{ROLE_LABELS[l.role] ?? l.role}</dt>
+                    <dd>{l.target.label}</dd>
+                  </div>
+                ))}
+              </dl>
+            </>
+          )}
+        </aside>
+      </div>
     </article>
   );
 }

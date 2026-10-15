@@ -1,6 +1,7 @@
 import { type DraftInput, draftSchema } from "@aletheia/intake/draft";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { ChevronLeft } from "lucide-react";
 import { DraftEditor } from "../components/DraftEditor.tsx";
 import { SourcePreview } from "../components/SourcePreview.tsx";
 import { Tags } from "../components/Tags.tsx";
@@ -130,8 +131,12 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
   return (
     <article className="intake">
       <header className="intake-header">
-        <p className="intake-state">
-          {STATE_LABELS[detail.state]}
+        <Link className="back-link" to={{ pathname: "/intake", search: params.toString() }}>
+          <ChevronLeft size={16} aria-hidden="true" />
+          一覧に戻る
+        </Link>
+        <p className="badges">
+          <span className={`badge state-${detail.state}`}>{STATE_LABELS[detail.state]}</span>
           <Tags classification={draft.post.classification} availability={draft.post.availability} />
         </p>
         <h2 className="intake-heading">{draft.post.title ?? detail.title ?? "（題名なし）"}</h2>
@@ -156,17 +161,14 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
             {detail.reviewNote}
           </p>
         )}
-        <Link className="back-link" to={{ pathname: "/intake", search: params.toString() }}>
-          一覧に戻る
-        </Link>
       </header>
 
       <div className="intake-body">
-        <section aria-label="元の投稿">
+        <section className="panel panel-pad" aria-label="元の投稿">
           <h3 className="column-title">元の投稿</h3>
           <SourcePreview draft={draft} previews={detail.previews} />
         </section>
-        <section aria-label="下書き">
+        <section className="panel panel-pad" aria-label="下書き">
           <h3 className="column-title">
             下書き{dirty && <span className="dirty">直した内容は承認のときに送ります</span>}
           </h3>

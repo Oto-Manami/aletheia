@@ -70,7 +70,7 @@ describe("探す・投稿", () => {
     const user = userEvent.setup();
     open("/search");
     await user.type(screen.getByRole("searchbox"), "深呼吸");
-    await user.click(screen.getByRole("button", { name: "探す" }));
+    await user.click(screen.getByRole("button", { name: "検索" }));
     await user.click(await screen.findByRole("link", { name: "はじめての公演" }));
     expect(await screen.findByRole("heading", { name: "はじめての公演" })).toBeTruthy();
     expect(screen.getByText("終演後、楽屋で")).toBeTruthy();

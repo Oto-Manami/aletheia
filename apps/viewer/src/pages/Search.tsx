@@ -18,7 +18,10 @@ export function SearchPage() {
 
   return (
     <section className="page">
-      <h1 className="page-title">探す</h1>
+      <div className="page-head">
+        <h1 className="page-title">検索</h1>
+        <p className="page-sub">本文・キャプション・誌面の文字・書き起こしから探します</p>
+      </div>
       <form
         className="search-form"
         role="search"
@@ -34,19 +37,17 @@ export function SearchPage() {
           id="search-q"
           type="search"
           className="search-input"
-          placeholder="言葉で探す（本文・キャプション・誌面の文字・書き起こし）"
+          placeholder="言葉の一部を入力"
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />
         <button type="submit" className="button primary">
-          探す
+          検索
         </button>
       </form>
 
       {!query && (
-        <p className="quiet">
-          覚えている言葉の一部で探せます。全角・半角の違いは気にしなくて大丈夫です。
-        </p>
+        <p className="empty">覚えている言葉の一部で探せます。全角・半角の違いは区別しません。</p>
       )}
       {query && hits.status === "loading" && <p className="quiet">探しています</p>}
       {query && hits.status === "error" && (
@@ -60,11 +61,11 @@ export function SearchPage() {
             「{query}」 {hits.data.length} 件
           </p>
           {hits.data.length === 0 && (
-            <p className="quiet">
+            <p className="empty">
               見つかりませんでした。言葉を短くするか、別の言い方で探してください。
             </p>
           )}
-          <ol className="hits">
+          <ol className="panel hits">
             {hits.data.map((h) => (
               <li key={`${h.assetId}:${h.textType}`} className="hit">
                 <p
