@@ -1,5 +1,6 @@
 import { createDb, type Database } from "@aletheia/db/client";
 import { asQueryable, type Queryable } from "@aletheia/db/testing/sql";
+import { MemoryFileStore } from "@aletheia/storage";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterAll } from "vitest";
 import { createApp } from "../src/app.ts";
@@ -31,16 +32,20 @@ export async function tokenFor(userId: string): Promise<string> {
 
 export interface Ctx {
   db: Database;
+  files: MemoryFileStore;
   c: Queryable;
   /** API を呼ぶ。token を省くと Bot の鍵で呼ぶ */
   call: (method: string, path: string, body?: unknown, token?: string | null) => Promise<Response>;
+  /** ファイルを送る（Bot の鍵で） */
+  upload: (path: string, bytes: Uint8Array, contentType: string) => Promise<Response>;
 }
 
 /** テストごとにトランザクションを張り、API もその中で動かし、最後に取り消す */
 export async function withApi(fn: (ctx: Ctx) => Promise<void>): Promise<void> {
   const trx = await root.startTransaction().execute();
   try {
-    const app = createApp(trx, { serviceToken: SERVICE_TOKEN, getKey: jwks });
+    const files = new MemoryFileStore();
+    const app = createApp(trx, { serviceToken: SERVICE_TOKEN, getKey: jwks }, files);
     const call: Ctx["call"] = (method, path, body, token = SERVICE_TOKEN) =>
       Promise.resolve(
         app.request(path, {
@@ -52,7 +57,15 @@ export async function withApi(fn: (ctx: Ctx) => Promise<void>): Promise<void> {
           ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
         }),
       );
-    await fn({ db: trx, c: asQueryable(trx), call });
+    const upload: Ctx["upload"] = (path, bytes, contentType) =>
+      Promise.resolve(
+        app.request(path, {
+          method: "POST",
+          headers: { "content-type": contentType, authorization: `Bearer ${SERVICE_TOKEN}` },
+          body: bytes,
+        }),
+      );
+    await fn({ db: trx, files, c: asQueryable(trx), call, upload });
   } finally {
     await trx.rollback().execute();
   }

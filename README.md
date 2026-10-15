@@ -23,6 +23,7 @@
 | `supabase/migrations/` | データベースの構造（正）。Supabase CLI で適用する                                                              |
 | `packages/db/`         | データベースへの接続、型の定義、データベースのテスト（公開区分・公開用の書き出し・変更履歴・検索・整合・運用） |
 | `packages/intake/`     | 取り込みの下書きの形と、承認・却下・保留の処理                                                                 |
+| `packages/storage/`    | ファイル実体の保存先（Google Drive・手元のフォルダ）と、置き場所・ファイル名の規則                             |
 | `apps/api/`            | 承認・取り込みの API（Bot・閲覧サイトから呼ぶ）                                                                |
 | `apps/bot/`            | Discord Bot（入口チャンネルから下書きを作り、承認カードを出す）                                                |
 

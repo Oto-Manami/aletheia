@@ -14,6 +14,17 @@ function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     createIntake: vi.fn(() => Promise.resolve({ id: INTAKE_ID, draft_valid: true, issues: [] })),
     getIntake: vi.fn(),
     decide: vi.fn(() => Promise.resolve({})),
+    stage: vi.fn((bytes: Uint8Array, meta: { ref: string; index: number; name: string }) =>
+      Promise.resolve({
+        provider: "memory",
+        storage_key: `key-${meta.ref}-${meta.index}`,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        size: bytes.byteLength,
+        name: meta.name,
+        staged_name: `${meta.ref}_0${meta.index}.jpg`,
+        content_type: "image/jpeg",
+      }),
+    ),
     ...overrides,
   };
 }
@@ -52,7 +63,7 @@ function message(overrides: Partial<IncomingMessage> = {}): IncomingMessage {
 }
 
 describe("入口チャンネルへの投稿", () => {
-  it("URL から情報源を判定し、ファイルの SHA-256 つきで下書きを作り、承認カードを返す", async () => {
+  it("URL から情報源を判定し、ファイルを承認待ちに保存して、SHA-256 つきで下書きを作り、承認カードを返す", async () => {
     const api = fakeApi();
     const outcome = await handleIntakeMessage(message(), deps(api));
     expect(outcome.kind).toBe("created");
@@ -64,8 +75,15 @@ describe("入口チャンネルへの投稿", () => {
       route_ref: "1001",
     });
     const draft = body.draft as { assets: { sha256: string }[] };
-    // ダウンロードした中身（"file"）の SHA-256
+    // API が保存したファイルの SHA-256 を下書きに入れ、保存先の記録を staged_files に渡す
     expect(draft.assets[0]?.sha256).toBe(createHash("sha256").update("file").digest("hex"));
+    expect(api.stage).toHaveBeenCalledWith(new TextEncoder().encode("file"), {
+      ref: "1001",
+      index: 1,
+      name: "a.jpg",
+      contentType: "image/jpeg",
+    });
+    expect(body.staged_files).toEqual([expect.objectContaining({ storage_key: "key-1001-1" })]);
     if (outcome.kind === "created") {
       expect(intakeIdFromFooter(outcome.card.footer)).toBe(INTAKE_ID);
       expect(outcome.card.url).toBe(`https://viewer.example/intake/${INTAKE_ID}`);
