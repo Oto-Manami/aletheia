@@ -22,6 +22,16 @@ export function placeholderImage(
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
+/** 保存した Web ページの代わりの HTML（架空の記事） */
+export function demoPageHtml(title: string, body: string): string {
+  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<style>body{font-family:sans-serif;margin:0;color:#222}header{background:#c0392b;color:#fff;padding:10px 16px;font-weight:bold}
+main{padding:16px;max-width:640px}h1{font-size:20px}p{line-height:1.8}.ad{margin-top:24px;padding:12px;background:#eee;color:#888;font-size:12px}</style>
+</head><body><header>ミホンニュース（架空のサイト）</header><main><h1>${esc(title)}</h1><p>${esc(body)}</p>
+<div class="ad">広告</div></main></body></html>`;
+}
+
 export const PEOPLE = {
   hanako: "a1000000-0000-4000-8000-000000000001",
   sakura: "a1000000-0000-4000-8000-000000000002",
@@ -539,6 +549,13 @@ export function demoIntakes(): DemoIntake[] {
             media_type: "webpage",
             texts: body("14 日発売の『月刊ミホン』12 月号から、試験花子の先行カットが公開された。"),
           },
+          {
+            ref: "screenshot",
+            media_type: "image",
+            description: "ページ全体のスクリーンショット",
+            attributes: { capture: "page_screenshot" },
+            texts: [],
+          },
           { ref: "cut", media_type: "image", texts: [] },
         ],
         links: [
@@ -903,6 +920,7 @@ export function demoPosts(): PostView[] {
       publishedDatePrecision: null,
       url: "https://example.com/blog/47001",
       archivedUrl: null,
+      capturedAt: null,
       availability: "free",
       classification: "public",
       assets: [
@@ -923,6 +941,9 @@ export function demoPosts(): PostView[] {
           ],
           previewUrl: null,
           openUrl: null,
+          stored: true,
+          byteSize: null,
+          inlineHtml: null,
         },
         {
           id: "c1000000-0000-4000-8000-000000000002",
@@ -935,6 +956,9 @@ export function demoPosts(): PostView[] {
           texts: [],
           previewUrl: placeholderImage("写真 1", 200),
           openUrl: null,
+          stored: true,
+          byteSize: null,
+          inlineHtml: null,
         },
         {
           id: "c1000000-0000-4000-8000-000000000003",
@@ -947,6 +971,9 @@ export function demoPosts(): PostView[] {
           texts: [],
           previewUrl: placeholderImage("写真 2", 32),
           openUrl: null,
+          stored: true,
+          byteSize: null,
+          inlineHtml: null,
         },
       ],
       links: [
@@ -964,6 +991,7 @@ export function demoPosts(): PostView[] {
       publishedDatePrecision: "day",
       url: null,
       archivedUrl: null,
+      capturedAt: null,
       availability: "paid",
       classification: "public",
       assets: [
@@ -978,6 +1006,9 @@ export function demoPosts(): PostView[] {
           texts: [],
           previewUrl: placeholderImage("表紙", 160),
           openUrl: null,
+          stored: true,
+          byteSize: null,
+          inlineHtml: null,
         },
         {
           id: "c1000000-0000-4000-8000-000000000012",
@@ -995,6 +1026,9 @@ export function demoPosts(): PostView[] {
           ],
           previewUrl: placeholderImage("p.22–23", 260, "spread"),
           openUrl: null,
+          stored: true,
+          byteSize: null,
+          inlineHtml: null,
         },
         {
           id: "c1000000-0000-4000-8000-000000000013",
@@ -1007,9 +1041,82 @@ export function demoPosts(): PostView[] {
           texts: [],
           previewUrl: placeholderImage("p.24", 280),
           openUrl: null,
+          stored: true,
+          byteSize: null,
+          inlineHtml: null,
         },
       ],
       links: [{ role: "depicts", target: REFS[0]! }],
+    },
+    {
+      id: "b1000000-0000-4000-8000-000000000003",
+      title: "『月刊ミホン』11 月号、表紙は試験花子",
+      channelName: "Web 記事（架空）",
+      publishedAt: "2026-09-10T12:00:00+09:00",
+      publishedDate: null,
+      publishedDatePrecision: null,
+      url: "https://example.com/news/76010",
+      archivedUrl: "https://web.archive.org/web/2026/https://example.com/news/76010",
+      capturedAt: "2026-09-10T12:20:00+09:00",
+      availability: "free",
+      classification: "public",
+      assets: [
+        {
+          id: "c1000000-0000-4000-8000-000000000021",
+          position: 1,
+          mediaType: "webpage",
+          title: null,
+          description: null,
+          classification: "public",
+          attributes: {},
+          texts: [
+            {
+              textType: "body",
+              content:
+                "14 日発売の『月刊ミホン』11 月号の表紙に、試験花子が登場する。\n誌面では、練習のあとの過ごし方について語っている。",
+            },
+          ],
+          previewUrl: null,
+          openUrl: null,
+          stored: true,
+          byteSize: 1_843_200,
+          inlineHtml: demoPageHtml(
+            "『月刊ミホン』11 月号、表紙は試験花子",
+            "14 日発売の『月刊ミホン』11 月号の表紙に、試験花子が登場する。誌面では、練習のあとの過ごし方について語っている。",
+          ),
+        },
+        {
+          id: "c1000000-0000-4000-8000-000000000022",
+          position: 2,
+          mediaType: "image",
+          title: null,
+          description: "ページ全体のスクリーンショット",
+          classification: "public",
+          attributes: { capture: "page_screenshot" },
+          texts: [],
+          previewUrl: placeholderImage("ページの画像", 210),
+          openUrl: null,
+          stored: true,
+          byteSize: 412_000,
+          inlineHtml: null,
+        },
+        {
+          id: "c1000000-0000-4000-8000-000000000023",
+          position: 3,
+          mediaType: "image",
+          title: null,
+          description: "記事中の写真（表紙）",
+          classification: "public",
+          attributes: {},
+          texts: [],
+          previewUrl: placeholderImage("記事の写真", 120),
+          openUrl: null,
+          stored: true,
+          byteSize: null,
+          inlineHtml: null,
+        },
+      ],
+      links: [{ role: "mentions", target: REFS[0]! }],
     },
   ];
 }

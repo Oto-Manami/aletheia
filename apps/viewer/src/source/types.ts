@@ -40,6 +40,8 @@ export interface IntakeDetail extends IntakeSummary {
   reviewNote: string | null;
   /** 素材（下書きの ref）ごとの、取り込んだファイルの表示用の URL */
   previews: Record<string, string>;
+  /** 素材（下書きの ref）ごとの、保存した Web ページの HTML（デモ版のみ） */
+  pageHtml: Record<string, string>;
 }
 
 /** 下書きが指している人物・出来事などの表示名 */
@@ -73,6 +75,11 @@ export interface AssetView {
   previewUrl: string | null;
   /** 原本を開く URL（保存先で開く） */
   openUrl: string | null;
+  /** 原本のファイルを保存済みか */
+  stored: boolean;
+  byteSize: number | null;
+  /** 保存した Web ページの HTML をこの画面で見せるときの中身（デモ版のみ。本番は保存先で開く） */
+  inlineHtml: string | null;
 }
 
 export interface PostView {
@@ -84,6 +91,8 @@ export interface PostView {
   publishedDatePrecision: string | null;
   url: string | null;
   archivedUrl: string | null;
+  /** 取り込んだ（ページを保存した）日時 */
+  capturedAt: string | null;
   availability: string | null;
   classification: Classification;
   assets: AssetView[];

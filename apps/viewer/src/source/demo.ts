@@ -1,7 +1,14 @@
 // デモ版の窓口: 架空のデータを手元に持ち、承認などはその場で反映する（どこにも送らない）
 
 import { type DraftInput, draftSchema } from "@aletheia/intake/draft";
-import { type DemoIntake, demoIntakes, demoPosts, placeholderImage, REFS } from "./demo-data.ts";
+import {
+  type DemoIntake,
+  demoIntakes,
+  demoPageHtml,
+  demoPosts,
+  placeholderImage,
+  REFS,
+} from "./demo-data.ts";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import {
   type ArchiveSource,
@@ -52,6 +59,7 @@ export class DemoSource implements ArchiveSource {
   private intakes: DemoIntake[];
   private posts: PostView[];
   private previews = new Map<string, Record<string, string>>();
+  private pageHtml = new Map<string, Record<string, string>>();
 
   constructor(private readonly latencyMs = 120) {
     this.intakes = demoIntakes();
@@ -59,15 +67,23 @@ export class DemoSource implements ArchiveSource {
     const hues = [200, 32, 160, 280, 340, 90];
     for (const item of this.intakes) {
       const map: Record<string, string> = {};
+      const html: Record<string, string> = {};
       (item.draft.assets ?? []).forEach((a, i) => {
+        if (a.media_type === "webpage") {
+          const text = (a.texts ?? []).map((t) => t.content).join("\n");
+          html[a.ref] = demoPageHtml(item.draft.post.title ?? "（題名なし）", text);
+          return;
+        }
         if (a.media_type !== "image") return;
         const attrs = a.attributes ?? {};
         const label =
-          typeof attrs.page_label === "string"
-            ? attrs.page_label
-            : attrs.page_from
-              ? `p.${String(attrs.page_from)}${attrs.page_to ? `–${String(attrs.page_to)}` : ""}`
-              : `写真 ${i}`;
+          attrs["capture"] === "page_screenshot"
+            ? "ページの画像"
+            : typeof attrs.page_label === "string"
+              ? attrs.page_label
+              : attrs.page_from
+                ? `p.${String(attrs.page_from)}${attrs.page_to ? `–${String(attrs.page_to)}` : ""}`
+                : `写真 ${i}`;
         map[a.ref] = placeholderImage(
           label,
           hues[i % hues.length]!,
@@ -75,6 +91,7 @@ export class DemoSource implements ArchiveSource {
         );
       });
       this.previews.set(item.id, map);
+      this.pageHtml.set(item.id, html);
     }
   }
 
@@ -134,6 +151,7 @@ export class DemoSource implements ArchiveSource {
       issues,
       reviewNote: item.reviewNote,
       previews: this.previews.get(id) ?? {},
+      pageHtml: this.pageHtml.get(id) ?? {},
     };
   }
 

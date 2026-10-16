@@ -188,7 +188,7 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
       <div className="intake-body">
         <section className="panel panel-pad" aria-label="元の投稿">
           <h3 className="column-title">元の投稿</h3>
-          <SourcePreview draft={draft} previews={detail.previews} />
+          <SourcePreview draft={draft} previews={detail.previews} pageHtml={detail.pageHtml} />
         </section>
         <section className="panel panel-pad" aria-label="下書き">
           <h3 className="column-title">

@@ -69,7 +69,12 @@ interface AssetRow {
   classification: Classification;
   attributes: Record<string, unknown>;
   asset_texts: { text_type: string; content: string }[];
-  asset_files: { variant: string; provider: string; storage_key: string }[];
+  asset_files: {
+    variant: string;
+    provider: string;
+    storage_key: string;
+    byte_size: number | null;
+  }[];
 }
 
 interface PostRow {
@@ -80,6 +85,7 @@ interface PostRow {
   published_date_precision: string | null;
   url: string | null;
   archived_url: string | null;
+  captured_at: string | null;
   availability: string | null;
   classification: Classification;
   channels: { name: string; availability: string } | null;
@@ -193,6 +199,7 @@ export class LiveSource implements ArchiveSource {
       reviewNote: item.review_note,
       // 承認待ちのファイルの表示は、API がファイルを返せるようになってから
       previews: {},
+      pageHtml: {},
     };
   }
 
@@ -311,7 +318,7 @@ export class LiveSource implements ArchiveSource {
       await this.supabase
         .from("posts")
         .select(
-          "id, title, published_at, published_date, published_date_precision, url, archived_url, availability, classification, channels(name, availability)",
+          "id, title, published_at, published_date, published_date_precision, url, archived_url, captured_at, availability, classification, channels(name, availability)",
         )
         .eq("id", id),
     );
@@ -320,7 +327,7 @@ export class LiveSource implements ArchiveSource {
       await this.supabase
         .from("assets")
         .select(
-          "id, post_id, position, media_type, title, description, classification, attributes, asset_texts(text_type, content), asset_files(variant, provider, storage_key)",
+          "id, post_id, position, media_type, title, description, classification, attributes, asset_texts(text_type, content), asset_files(variant, provider, storage_key, byte_size)",
         )
         .eq("post_id", id)
         .order("position"),
@@ -350,6 +357,9 @@ export class LiveSource implements ArchiveSource {
       // 画像そのものの表示は、API がファイルを返せるようになってから
       previewUrl: null,
       openUrl: openUrlOf(a.asset_files.find((f) => f.variant === "original")),
+      stored: a.asset_files.some((f) => f.variant === "original"),
+      byteSize: a.asset_files.find((f) => f.variant === "original")?.byte_size ?? null,
+      inlineHtml: null,
     }));
     return {
       id: post.id,
@@ -360,6 +370,7 @@ export class LiveSource implements ArchiveSource {
       publishedDatePrecision: post.published_date_precision,
       url: post.url,
       archivedUrl: post.archived_url,
+      capturedAt: post.captured_at,
       availability: post.availability ?? post.channels?.availability ?? null,
       classification: post.classification,
       assets: assetViews,
