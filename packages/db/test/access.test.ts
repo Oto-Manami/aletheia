@@ -161,6 +161,29 @@ describe("Discord のアカウントでの照合", () => {
     }));
 });
 
+describe("自分の登録の窓口（my_profile）", () => {
+  it("ログインした人自身の役割だけが返り、登録の無い人には何も返らない", () =>
+    withRollback(async (c) => {
+      const discordId = fakeDiscordId();
+      const admin = await createUser(c, { role: "admin" }, discordId);
+      await createUser(c, {});
+      await actAs(c, "authenticated", admin);
+      const { rows } = await c.query("select role, discord_user_id from public.my_profile()");
+      expect(rows).toEqual([{ role: "admin", discord_user_id: discordId }]);
+
+      await actAsOwner(c);
+      const stranger = await createUser(c);
+      await actAs(c, "authenticated", stranger);
+      expect((await c.query("select * from public.my_profile()")).rows).toEqual([]);
+    }));
+
+  it("未ログインでは使えない", () =>
+    withRollback(async (c) => {
+      await actAs(c, "anon");
+      expect(await expectError(c, "select * from public.my_profile()")).toBe("42501");
+    }));
+});
+
 describe("未ログイン", () => {
   it("どの表も読めない", () =>
     withRollback(async (c) => {

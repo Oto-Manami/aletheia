@@ -21,6 +21,7 @@ import {
   rejectIntake,
 } from "@aletheia/intake";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { sql } from "kysely";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -121,8 +122,31 @@ function idParam(value: string): string {
   return value;
 }
 
-export function createApp(db: Database, auth: AuthOptions, files?: FileStore) {
+export interface AppOptions {
+  /** ブラウザから呼んでよい閲覧サイトの URL（オリジン）。無ければブラウザからは呼べない */
+  viewerOrigins?: string[];
+}
+
+export function createApp(
+  db: Database,
+  auth: AuthOptions,
+  files?: FileStore,
+  options: AppOptions = {},
+) {
   const app = new Hono<AuthEnv>();
+
+  const origins = options.viewerOrigins ?? [];
+  if (origins.length > 0) {
+    app.use(
+      "*",
+      cors({
+        origin: (origin) => (origins.includes(origin) ? origin : null),
+        allowMethods: ["GET", "POST"],
+        allowHeaders: ["authorization", "content-type"],
+        maxAge: 600,
+      }),
+    );
+  }
 
   app.get("/health", (c) => c.json({ ok: true }));
 

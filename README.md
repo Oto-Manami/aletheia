@@ -26,6 +26,7 @@
 | `packages/storage/`    | ファイル実体の保存先（Google Drive・手元のフォルダ）と、置き場所・ファイル名の規則                             |
 | `apps/api/`            | 承認・取り込みの API（Bot・閲覧サイトから呼ぶ）                                                                |
 | `apps/bot/`            | Discord Bot（入口チャンネルから下書きを作り、承認カードを出す）                                                |
+| `apps/viewer/`         | 閲覧サイト（見る・探す・下書きの確認と承認）。Discord でログインする                                           |
 
 ## データベースのロール
 
@@ -51,7 +52,7 @@
 pnpm install          # コミット前のチェック（lefthook）も有効になる
 cp .env.example .env
 supabase start        # 手元にデータベースを立ち上げ、マイグレーションを適用する
-pnpm test             # データベース・承認の処理・API・Bot のテスト
+pnpm test             # データベース・承認の処理・API・Bot・閲覧サイトのテスト
 pnpm check            # lint・format・typecheck
 ```
 
