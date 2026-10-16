@@ -86,8 +86,10 @@ export function IntakePage() {
                   <span className="intake-flags">
                     <Tags classification={item.classification} availability={item.availability} />
                     <span className="quiet">素材 {item.assetCount}</span>
-                    {item.warningCount > 0 && (
-                      <span className="warn-count">要確認 {item.warningCount}</span>
+                    {item.reviewReasons.length > 0 ? (
+                      <span className="warn-count">確認: {item.reviewReasons.join("、")}</span>
+                    ) : (
+                      item.state === "pending" && <span className="ok-count">確認なし</span>
                     )}
                   </span>
                 </NavLink>

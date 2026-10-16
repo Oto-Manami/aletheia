@@ -3,11 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { ChevronLeft } from "lucide-react";
 import { DraftEditor } from "../components/DraftEditor.tsx";
+import { approvalSummary, ReviewChecklist } from "../components/ReviewChecklist.tsx";
 import { SourcePreview } from "../components/SourcePreview.tsx";
 import { Tags } from "../components/Tags.tsx";
 import { useApp } from "../context.tsx";
 import { formatInstant, routeLabel } from "../format.ts";
-import { draftWarnings } from "../source/summarize.ts";
+import { draftWarnings, reviewItems } from "../source/summarize.ts";
 import {
   type Decision,
   type IntakeDetail,
@@ -97,6 +98,10 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
 
   const issues = useMemo(() => issuesOf(draft), [draft]);
   const warnings = useMemo(() => draftWarnings(draft), [draft]);
+  const remaining = useMemo(
+    () => reviewItems(draft, detail.draft).filter((i) => !i.resolved).length,
+    [draft, detail.draft],
+  );
   const dirty = JSON.stringify(draft) !== JSON.stringify(detail.draft);
   const decidable = detail.state === "pending" || detail.state === "on_hold";
 
@@ -163,6 +168,23 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
         )}
       </header>
 
+      {done && (
+        <p className="done" role="status">
+          {decidable ? `前の下書きを${done}` : done}
+        </p>
+      )}
+
+      <ReviewChecklist
+        draft={draft}
+        initial={detail.draft}
+        onChange={setDraft}
+        labels={labels}
+        previews={detail.previews}
+        source={source}
+        readOnly={!decidable || busy !== null}
+        onLabel={(ref) => setLabels((prev) => new Map(prev).set(ref.id, ref.label))}
+      />
+
       <div className="intake-body">
         <section className="panel panel-pad" aria-label="元の投稿">
           <h3 className="column-title">元の投稿</h3>
@@ -170,7 +192,10 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
         </section>
         <section className="panel panel-pad" aria-label="下書き">
           <h3 className="column-title">
-            下書き{dirty && <span className="dirty">直した内容は承認のときに送ります</span>}
+            すべての項目
+            <span className="dirty">
+              {dirty ? "直した内容は承認のときに送ります" : "必要なときだけ直してください"}
+            </span>
           </h3>
           <DraftEditor
             draft={draft}
@@ -187,6 +212,7 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
 
       {decidable && (
         <footer className="actions">
+          <p className="actions-summary">{approvalSummary(draft)}</p>
           <div className="actions-note">
             <label htmlFor="decision-note" className="visually-hidden">
               判断のメモ
@@ -218,11 +244,23 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
             <button
               type="button"
               className="button primary"
-              disabled={busy !== null || issues.length > 0}
-              title={issues.length > 0 ? "直すところがあるため承認できません" : undefined}
+              disabled={busy !== null || issues.length > 0 || remaining > 0}
+              title={
+                issues.length > 0
+                  ? "直すところがあるため承認できません"
+                  : remaining > 0
+                    ? "確認することが残っています"
+                    : undefined
+              }
               onClick={() => void decide("approve")}
             >
-              {busy === "approve" ? "承認しています" : dirty ? "直して承認" : "承認"}
+              {busy === "approve"
+                ? "承認しています"
+                : remaining > 0
+                  ? `あと ${remaining} 件の確認`
+                  : dirty
+                    ? "直して承認"
+                    : "承認"}
             </button>
           </div>
           {failure && (
@@ -240,11 +278,6 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
             </div>
           )}
         </footer>
-      )}
-      {done && (
-        <p className="done" role="status">
-          {decidable ? `前の下書きを${done}` : done}
-        </p>
       )}
     </article>
   );

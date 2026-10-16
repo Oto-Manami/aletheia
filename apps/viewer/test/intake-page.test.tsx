@@ -25,28 +25,55 @@ function open(path: string, viewer: Viewer = admin) {
 }
 
 describe("承認の画面", () => {
-  it("採用しない提案を外して承認すると、外した提案が採用しないとして記録され、次の下書きへ進む", async () => {
+  it("確信度の低い提案に答えると承認でき、答えが記録されて次の下書きへ進む", async () => {
     const user = userEvent.setup();
     const { source, router } = open("/intake");
-    const [first, second] = await source.listIntake("pending");
+    const pending = await source.listIntake("pending");
+    const blog = pending.find((i) => i.title === "セットログはじめました")!;
+    await user.click(await screen.findByRole("link", { name: /セットログはじめました/ }));
 
-    await user.click(await screen.findByRole("link", { name: new RegExp(first!.title!) }));
-    const proposals = await screen.findAllByRole("checkbox", { name: "採用する" });
-    await user.click(proposals.at(-1)!);
+    const checklist = await screen.findByRole("region", { name: "確認すること" });
+    expect(within(checklist).getByText("残り 2 件")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "あと 2 件の確認" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+
+    // 1 件目（写真の人物）は違う、2 件目（言明）は合っている
+    await user.click(within(checklist).getAllByRole("button", { name: "違う" })[0]!);
+    await user.click(within(checklist).getByRole("button", { name: "合っている" }));
+    expect(within(checklist).getByText("すべて確認済み")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "直して承認" }));
 
     expect(await screen.findByText("前の下書きを承認しました")).toBeTruthy();
-    await waitFor(() => expect(router.state.location.pathname).toBe(`/intake/${second!.id}`));
-    const approved = await source.getIntake(first!.id);
+    await waitFor(() => expect(router.state.location.pathname).not.toBe(`/intake/${blog.id}`));
+    const approved = await source.getIntake(blog.id);
     expect(approved.state).toBe("approved");
     expect(approved.draft.links?.at(-1)?.accepted).toBe(false);
+    expect(approved.draft.statements?.[0]?.evidence?.["reviewed"]).toBe(true);
+  });
+
+  it("日付と人物が無い下書きは、その場で入れると承認できる", async () => {
+    const user = userEvent.setup();
+    open("/intake");
+    await user.click(await screen.findByRole("link", { name: /2 日目のレポート/ }));
+    const checklist = await screen.findByRole("region", { name: "確認すること" });
+
+    await user.type(within(checklist).getByLabelText("日付"), "2026-10-11");
+    await user.type(within(checklist).getByLabelText("人物の名前"), "試験 花子");
+    await user.click(within(checklist).getByRole("button", { name: "探す" }));
+    await user.click(await within(checklist).findByRole("button", { name: "試験 花子 を足す" }));
+
+    expect(within(checklist).getByText("すべて確認済み")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "直して承認" })).toHaveProperty("disabled", false);
   });
 
   it("直すところがある下書きは承認できない", async () => {
     const user = userEvent.setup();
-    const { source } = open("/intake");
-    const magazine = (await source.listIntake("pending")).find((i) => i.title?.includes("12 月号"));
-    await user.click(await screen.findByRole("link", { name: new RegExp(magazine!.title!) }));
+    open("/intake");
+    await user.click(await screen.findByRole("link", { name: /12 月号/ }));
+    const checklist = await screen.findByRole("region", { name: "確認すること" });
+    await user.click(within(checklist).getByRole("button", { name: "合っている" }));
 
     // 2 枚目の素材のページを、開始より前にする
     const to = (await screen.findAllByLabelText("ページ（まで）"))[1]!;

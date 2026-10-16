@@ -464,12 +464,14 @@ function Proposal({
   );
 }
 
-function AddLink({
+export function AddLink({
   source,
   onAdd,
+  label = "紐付けを足す（人物・出来事を名前で探す）",
 }: {
   source: ArchiveSource;
   onAdd: (ref: RefLabel, role: string) => void;
+  label?: string;
 }) {
   const [query, setQuery] = useState("");
   const [role, setRole] = useState<string>("mentions");
@@ -483,7 +485,7 @@ function AddLink({
     <div className="add-link">
       <div className="field-row">
         <div className="field grow">
-          <label htmlFor={queryId}>紐付けを足す（人物・出来事を名前で探す）</label>
+          <label htmlFor={queryId}>{label}</label>
           <input
             id={queryId}
             value={query}

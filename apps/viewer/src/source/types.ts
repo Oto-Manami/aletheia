@@ -24,6 +24,8 @@ export interface IntakeSummary {
   assetCount: number;
   /** 確信度の低い提案・足りない項目の数（カードの ⚠ と同じ） */
   warningCount: number;
+  /** 確かめることの短い名前（日付・人物・提案 2 件） */
+  reviewReasons: string[];
 }
 
 export interface IntakeIssue {

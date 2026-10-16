@@ -4,7 +4,7 @@
 
 import type { DraftInput } from "@aletheia/intake/draft";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { draftTitle, draftWarnings } from "./summarize.ts";
+import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import {
   type ArchiveSource,
   type AssetView,
@@ -109,6 +109,7 @@ function summarize(row: IntakeRow): IntakeSummary {
     availability: row.draft.post?.availability ?? null,
     assetCount: (row.draft.assets ?? []).length,
     warningCount: draftWarnings(row.draft).length,
+    reviewReasons: reviewReasons(row.draft),
   };
 }
 

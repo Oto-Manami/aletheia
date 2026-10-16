@@ -770,9 +770,171 @@ select:disabled {
   font-weight: 500;
 }
 
+.ok-count {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: var(--success-bg);
+  color: var(--success-ink);
+  font-weight: 500;
+}
+
 .intake {
   display: grid;
   gap: 20px;
+}
+
+/* 確認すること */
+
+.checklist {
+  border-color: var(--border-strong);
+  overflow: hidden;
+}
+
+.checklist-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.checklist-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.checklist-lead {
+  padding: 16px 20px;
+  color: var(--text);
+}
+
+.checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.check {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.check + .check {
+  border-top: 1px solid var(--border);
+}
+
+.check.is-resolved {
+  background: var(--hover);
+}
+
+.check.is-resolved .check-desc {
+  display: none;
+}
+
+.check-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 999px;
+}
+
+.check-icon.is-open {
+  color: var(--warn-ink);
+}
+
+.check-icon.is-done {
+  background: var(--success-bg);
+  color: var(--success-ink);
+}
+
+.check-icon.is-declined {
+  background: var(--subtle);
+  color: var(--muted);
+}
+
+.check-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.check-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.check.is-resolved .check-title {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.check-desc {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.check-proposal {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.check-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  flex: none;
+}
+
+.check-question {
+  color: var(--text);
+}
+
+.check-question strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.check-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.check-buttons .button {
+  height: 32px;
+  padding: 0 12px;
+}
+
+.check-answer {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.check-inline {
+  max-width: 220px;
+}
+
+.checklist-guide {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .intake-header {
@@ -1154,6 +1316,12 @@ select:disabled {
   flex-wrap: wrap;
   gap: 10px 12px;
   align-items: center;
+}
+
+.actions-summary {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .actions-note {

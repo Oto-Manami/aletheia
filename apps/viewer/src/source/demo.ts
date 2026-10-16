@@ -2,7 +2,7 @@
 
 import { type DraftInput, draftSchema } from "@aletheia/intake/draft";
 import { type DemoIntake, demoIntakes, demoPosts, placeholderImage, REFS } from "./demo-data.ts";
-import { draftTitle, draftWarnings } from "./summarize.ts";
+import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import {
   type ArchiveSource,
   type Decision,
@@ -96,6 +96,7 @@ export class DemoSource implements ArchiveSource {
       availability: item.draft.post.availability ?? null,
       assetCount: (item.draft.assets ?? []).length,
       warningCount: draftWarnings(item.draft).length,
+      reviewReasons: reviewReasons(item.draft),
     };
   }
 

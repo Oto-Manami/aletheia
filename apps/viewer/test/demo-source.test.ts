@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DemoSource, demoSnippet } from "../src/source/demo.ts";
-import { draftWarnings } from "../src/source/summarize.ts";
+import { draftWarnings, reviewReasons } from "../src/source/summarize.ts";
 import { SourceError } from "../src/source/types.ts";
 
 describe("デモ版の窓口", () => {
@@ -84,5 +84,29 @@ describe("下書きの要確認", () => {
       "links.0",
       "links",
     ]);
+  });
+
+  it("人が確かめた提案は、確認することから外れる", () => {
+    const link = {
+      from: "post" as const,
+      to_type: "entity" as const,
+      to_id: "a1000000-0000-4000-8000-000000000001",
+      role: "mentions",
+      origin: "ai" as const,
+      confidence: 0.5,
+    };
+    const draft = {
+      version: 1 as const,
+      post: {
+        classification: "public" as const,
+        published_date: "2026-10-01",
+        published_date_precision: "day" as const,
+      },
+    };
+    expect(reviewReasons({ ...draft, links: [link] })).toEqual(["提案 1 件"]);
+    expect(reviewReasons({ ...draft, links: [{ ...link, evidence: { reviewed: true } }] })).toEqual(
+      [],
+    );
+    expect(reviewReasons({ ...draft, links: [{ ...link, accepted: false }] })).toEqual(["人物"]);
   });
 });
