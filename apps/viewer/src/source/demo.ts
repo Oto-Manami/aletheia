@@ -6,6 +6,7 @@ import {
   demoIntakes,
   demoPageHtml,
   demoPosts,
+  demoSnsPostHtml,
   placeholderImage,
   REFS,
 } from "./demo-data.ts";
@@ -70,20 +71,23 @@ export class DemoSource implements ArchiveSource {
       const html: Record<string, string> = {};
       (item.draft.assets ?? []).forEach((a, i) => {
         if (a.media_type === "webpage") {
-          const text = (a.texts ?? []).map((t) => t.content).join("\n");
-          html[a.ref] = demoPageHtml(item.draft.post.title ?? "（題名なし）", text);
+          const text = (item.draft.assets ?? [])
+            .flatMap((x) => x.texts ?? [])
+            .map((t) => t.content)
+            .join("\n");
+          html[a.ref] = item.channelKey.startsWith("x:")
+            ? demoSnsPostHtml(item.channelName, text, item.draft.post.published_at ?? "")
+            : demoPageHtml(item.draft.post.title ?? "（題名なし）", text);
           return;
         }
         if (a.media_type !== "image") return;
         const attrs = a.attributes ?? {};
         const label =
-          attrs["capture"] === "page_screenshot"
-            ? "ページの画像"
-            : typeof attrs.page_label === "string"
-              ? attrs.page_label
-              : attrs.page_from
-                ? `p.${String(attrs.page_from)}${attrs.page_to ? `–${String(attrs.page_to)}` : ""}`
-                : `写真 ${i}`;
+          typeof attrs.page_label === "string"
+            ? attrs.page_label
+            : attrs.page_from
+              ? `p.${String(attrs.page_from)}${attrs.page_to ? `–${String(attrs.page_to)}` : ""}`
+              : `写真 ${i}`;
         map[a.ref] = placeholderImage(
           label,
           hues[i % hues.length]!,

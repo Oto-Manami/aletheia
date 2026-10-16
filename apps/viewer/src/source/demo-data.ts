@@ -32,6 +32,20 @@ main{padding:16px;max-width:640px}h1{font-size:20px}p{line-height:1.8}.ad{margin
 <div class="ad">広告</div></main></body></html>`;
 }
 
+/** 保存した SNS の投稿の代わりの HTML（架空の投稿） */
+export function demoSnsPostHtml(account: string, text: string, when: string): string {
+  const esc = (v: string) => v.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${esc(account)}</title>
+<style>body{font-family:sans-serif;margin:0;background:#f5f8fa;color:#0f1419;display:flex;justify-content:center;padding:24px}
+.card{background:#fff;border:1px solid #e1e8ed;border-radius:16px;padding:16px;max-width:520px;width:100%}
+.who{display:flex;gap:10px;align-items:center}.icon{width:40px;height:40px;border-radius:50%;background:#cfd9de}
+.name{font-weight:bold}.id{color:#536471;font-size:14px}p{font-size:17px;line-height:1.6;white-space:pre-wrap}
+.photo{height:220px;border-radius:12px;background:#dfe7ec}.when{color:#536471;font-size:14px;margin-top:10px}</style>
+</head><body><div class="card"><div class="who"><div class="icon"></div><div><div class="name">${esc(account)}</div>
+<div class="id">@example_account（架空）</div></div></div><p>${esc(text)}</p><div class="photo"></div>
+<div class="when">${esc(when)}</div></div></body></html>`;
+}
+
 export const PEOPLE = {
   hanako: "a1000000-0000-4000-8000-000000000001",
   sakura: "a1000000-0000-4000-8000-000000000002",
@@ -98,6 +112,7 @@ export function demoIntakes(): DemoIntake[] {
           classification: "public",
         },
         assets: [
+          { ref: "original", media_type: "webpage", byte_size: 1_240_000, texts: [] },
           {
             ref: "body",
             media_type: "text",
@@ -372,6 +387,52 @@ export function demoIntakes(): DemoIntake[] {
         statements: [],
       },
     },
+    // 公式 SNS の投稿（投稿そのものを HTML で保存）
+    {
+      id: "d1000000-0000-4000-8000-000000000018",
+      channelKey: "x:official",
+      channelName: "グループ公式 X（架空）",
+      externalId: "1840000000000000777",
+      route: "fetch",
+      capturedAt: "2026-10-15T19:05:00+09:00",
+      state: "pending",
+      reviewNote: null,
+      draft: {
+        version: 1,
+        post: {
+          published_at: "2026-10-15T19:00:00+09:00",
+          url: "https://example.com/x/status/1840000000000000777",
+          classification: "public",
+        },
+        assets: [
+          {
+            ref: "original",
+            media_type: "webpage",
+            byte_size: 186_000,
+            texts: body("【出演情報】10 月 18 日放送「ミホン音楽祭」に試験花子が出演します！"),
+          },
+          { ref: "photo_1", media_type: "image", texts: [] },
+        ],
+        links: [
+          {
+            from: "post",
+            to_type: "entity",
+            to_id: PEOPLE.hanako,
+            role: "mentions",
+            origin: "rule",
+            confidence: 1,
+          },
+          {
+            from: "post",
+            to_type: "event",
+            to_id: EVENTS.tv,
+            role: "covers",
+            origin: "rule",
+            confidence: 0.9,
+          },
+        ],
+      },
+    },
     // そのまま承認できる（機械が迷ったところが無い）
     {
       id: "d1000000-0000-4000-8000-000000000006",
@@ -549,13 +610,6 @@ export function demoIntakes(): DemoIntake[] {
             media_type: "webpage",
             texts: body("14 日発売の『月刊ミホン』12 月号から、試験花子の先行カットが公開された。"),
           },
-          {
-            ref: "screenshot",
-            media_type: "image",
-            description: "ページ全体のスクリーンショット",
-            attributes: { capture: "page_screenshot" },
-            texts: [],
-          },
           { ref: "cut", media_type: "image", texts: [] },
         ],
         links: [
@@ -642,8 +696,8 @@ export function demoIntakes(): DemoIntake[] {
         },
         assets: [
           {
-            ref: "text",
-            media_type: "text",
+            ref: "original",
+            media_type: "webpage",
             texts: body("会場に着きました！看板に名前があってうれしい"),
           },
           { ref: "photo", media_type: "image", texts: [] },
@@ -1086,23 +1140,8 @@ export function demoPosts(): PostView[] {
           ),
         },
         {
-          id: "c1000000-0000-4000-8000-000000000022",
-          position: 2,
-          mediaType: "image",
-          title: null,
-          description: "ページ全体のスクリーンショット",
-          classification: "public",
-          attributes: { capture: "page_screenshot" },
-          texts: [],
-          previewUrl: placeholderImage("ページの画像", 210),
-          openUrl: null,
-          stored: true,
-          byteSize: 412_000,
-          inlineHtml: null,
-        },
-        {
           id: "c1000000-0000-4000-8000-000000000023",
-          position: 3,
+          position: 2,
           mediaType: "image",
           title: null,
           description: "記事中の写真（表紙）",

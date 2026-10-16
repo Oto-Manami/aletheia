@@ -1,7 +1,7 @@
 // 取り込んだ投稿を、元の順番のまま見せる（承認の判断の材料）
 
 import type { DraftInput } from "@aletheia/intake/draft";
-import { pageCapture } from "../capture.ts";
+import { originalCapture } from "../capture.ts";
 import { clipLabel, MEDIA_LABELS, pageLabel } from "../format.ts";
 import { PageCapture } from "./PageCapture.tsx";
 
@@ -63,19 +63,17 @@ export function SourcePreview({
   pageHtml: Record<string, string>;
 }) {
   const assets = draft.assets ?? [];
-  const capture = pageCapture({
+  const capture = originalCapture({
     url: draft.post.url,
     archivedUrl: draft.post.archived_url,
     assets: assets.map((a) => ({
       key: a.ref,
       mediaType: a.media_type,
-      attributes: a.attributes,
       textLength: (a.texts ?? []).reduce((n, t) => n + t.content.length, 0),
       // 承認待ちでは、取り込んだファイルがあれば保存できている（承認すると本来の場所へ移る）
       stored: Boolean(previews[a.ref] || pageHtml[a.ref] || a.sha256 || (a.files ?? []).length > 0),
       byteSize: a.byte_size ?? null,
       openUrl: null,
-      previewUrl: previews[a.ref] ?? null,
       inlineHtml: pageHtml[a.ref] ?? null,
     })),
   });

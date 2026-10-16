@@ -1686,6 +1686,11 @@ select:disabled {
   color: var(--success-ink);
 }
 
+.capture-icon.is-none {
+  background: var(--subtle);
+  color: var(--faint);
+}
+
 .capture-icon.is-missing {
   background: var(--warn-bg);
   color: var(--warn-ink);

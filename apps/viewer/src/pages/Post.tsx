@@ -1,5 +1,5 @@
 import { useParams } from "react-router";
-import { isScreenshot, pageCapture } from "../capture.ts";
+import { originalCapture } from "../capture.ts";
 import { PageCapture } from "../components/PageCapture.tsx";
 import { Tags } from "../components/Tags.tsx";
 import { useApp } from "../context.tsx";
@@ -23,11 +23,10 @@ function AssetBlock({ asset }: { asset: AssetView }) {
 
   return (
     <section className={`panel panel-pad post-asset ${isPrivate ? "is-private" : ""}`}>
-      {(page || asset.title || isPrivate || !visual || isScreenshot(asset)) && (
+      {(page || asset.title || isPrivate || !visual) && (
         <p className="post-asset-head">
           {page && <span className="page-no">{page}</span>}
           {!visual && <span>{MEDIA_LABELS[asset.mediaType]}</span>}
-          {isScreenshot(asset) && <span>ページのスクリーンショット</span>}
           {clip && <span>{clip}</span>}
           {asset.title && <span className="post-asset-title">{asset.title}</span>}
           {isPrivate && <span className="tag tag-private">非公開</span>}
@@ -89,18 +88,16 @@ export function PostPage() {
   const p = post.data;
   const published = formatPublished(p);
   const assets = [...p.assets].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-  const capture = pageCapture({
+  const capture = originalCapture({
     url: p.url,
     archivedUrl: p.archivedUrl,
     assets: assets.map((a) => ({
       key: a.id,
       mediaType: a.mediaType,
-      attributes: a.attributes,
       textLength: a.texts.reduce((n, t) => n + t.content.length, 0),
       stored: a.stored,
       byteSize: a.byteSize,
       openUrl: a.openUrl,
-      previewUrl: a.previewUrl,
       inlineHtml: a.inlineHtml,
     })),
   });

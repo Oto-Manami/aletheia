@@ -82,7 +82,7 @@ export const MEDIA_LABELS: Record<string, string> = {
   video: "動画",
   audio: "音声",
   text: "文章",
-  webpage: "Web ページ",
+  webpage: "原文（HTML）",
   document: "文書",
 };
 
