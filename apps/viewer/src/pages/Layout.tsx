@@ -1,7 +1,8 @@
-import { Inbox, LogOut, Menu, Search, X } from "lucide-react";
+import { Inbox, LogOut, Menu, Moon, Search, Sun, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { NavLink, Outlet, useOutletContext } from "react-router";
 import { useApp } from "../context.tsx";
+import { applyTheme, loadTheme, type Theme } from "../theme.ts";
 import { useLoad } from "../use-load.ts";
 
 export interface LayoutOutlet {
@@ -32,6 +33,12 @@ export function Layout() {
   const { source, viewer, signOut } = useApp();
   const [version, setVersion] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<Theme>(loadTheme);
+  const switchTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    applyTheme(next);
+    setTheme(next);
+  };
   const changed = useCallback(() => setVersion((v) => v + 1), []);
   const [pending] = useLoad(
     () => (viewer.isAdmin ? source.listIntake("pending") : Promise.resolve([])),
@@ -81,6 +88,14 @@ export function Layout() {
         </nav>
         <div className="sidebar-foot">
           <span className="user-name">{viewer.name}</span>
+          <button type="button" className="nav-item" onClick={switchTheme}>
+            {theme === "dark" ? (
+              <Sun size={16} aria-hidden="true" />
+            ) : (
+              <Moon size={16} aria-hidden="true" />
+            )}
+            {theme === "dark" ? "明るい表示にする" : "暗い表示にする"}
+          </button>
           {signOut && (
             <button type="button" className="nav-item" onClick={() => void signOut()}>
               <LogOut size={16} aria-hidden="true" />
