@@ -71,7 +71,7 @@ describe("承認の画面", () => {
   it("直すところがある下書きは承認できない", async () => {
     const user = userEvent.setup();
     open("/intake");
-    await user.click(await screen.findByRole("link", { name: /12 月号/ }));
+    await user.click(await screen.findByRole("link", { name: /^『月刊ミホン』2026 年 12 月号/ }));
     const checklist = await screen.findByRole("region", { name: "確認すること" });
     await user.click(within(checklist).getByRole("button", { name: "合っている" }));
 
@@ -82,6 +82,18 @@ describe("承認の画面", () => {
 
     expect(await screen.findByText(/承認する前に、次のところを直してください/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "直して承認" })).toHaveProperty("disabled", true);
+  });
+
+  it("第三者の投稿は、公開してよいかを決めるまで承認できない", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/intake");
+    const fan = (await source.listIntake("pending")).find((i) => i.channelKey === "x:third_party")!;
+    await user.click(
+      await screen.findByRole("link", { name: new RegExp(fan.title!.slice(0, 10)) }),
+    );
+    const checklist = await screen.findByRole("region", { name: "確認すること" });
+    await user.click(within(checklist).getByRole("button", { name: "非公開のまま" }));
+    expect(within(checklist).getByText("すべて確認済み")).toBeTruthy();
   });
 
   it("運営者でない利用者には、承認の画面を出さない", async () => {

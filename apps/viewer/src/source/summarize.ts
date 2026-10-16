@@ -4,9 +4,10 @@
 //   - 日付が無い
 //   - 人物への紐付けが無い（誰についての投稿か分からない）
 //   - 機械が付けた、確信度の低い紐付け・言明（人が「合っている」か「違う」かを決める）
+//   - ファンなど第三者の投稿（公開してよいかを決める。決めたことは context.third_party_checked に残す）
 // 機械の提案を人が確かめたことは、提案の evidence.reviewed に残す（承認のときに一緒に記録される）
 
-import type { DraftInput } from "@aletheia/intake/draft";
+import { type DraftInput, draftSchema } from "@aletheia/intake/draft";
 
 /** これより低い確信度の機械の提案は、確認を促す */
 export const LOW_CONFIDENCE = 0.8;
@@ -21,6 +22,7 @@ type Proposal = {
 export type ReviewItem =
   | { key: "date"; kind: "missing_date"; resolved: boolean }
   | { key: "person"; kind: "no_person"; resolved: boolean }
+  | { key: "third_party"; kind: "third_party"; resolved: boolean }
   | {
       key: string;
       kind: "low_link" | "low_statement";
@@ -57,6 +59,13 @@ export function reviewItems(draft: DraftInput, initial: DraftInput = draft): Rev
   const items: ReviewItem[] = [];
   if (!hasDate(initial))
     items.push({ key: "date", kind: "missing_date", resolved: hasDate(draft) });
+  if (initial.context?.["third_party"] === true) {
+    items.push({
+      key: "third_party",
+      kind: "third_party",
+      resolved: draft.context?.["third_party_checked"] === true,
+    });
+  }
   const proposals = [
     ...(draft.links ?? []).map((p, index) => ({ p, index, kind: "low_link" as const })),
     ...(draft.statements ?? []).map((p, index) => ({ p, index, kind: "low_statement" as const })),
@@ -97,6 +106,8 @@ export function draftWarnings(draft: DraftInput): DraftWarning[] {
           return { path: ["post", "published_date"], message: "日付がありません" };
         case "no_person":
           return { path: ["links"], message: "人物への紐付けがありません" };
+        case "third_party":
+          return { path: ["post", "classification"], message: "第三者の投稿です" };
         default:
           return {
             path: [i.kind === "low_link" ? "links" : "statements", i.index],
@@ -110,8 +121,10 @@ export function draftWarnings(draft: DraftInput): DraftWarning[] {
 export function reviewReasons(draft: DraftInput): string[] {
   const open = reviewItems(draft).filter((i) => !i.resolved);
   const reasons: string[] = [];
+  if (!draftSchema.safeParse(draft).success) reasons.push("形の誤り");
   if (open.some((i) => i.kind === "missing_date")) reasons.push("日付");
   if (open.some((i) => i.kind === "no_person")) reasons.push("人物");
+  if (open.some((i) => i.kind === "third_party")) reasons.push("公開区分");
   const proposals = open.filter((i) => i.kind === "low_link" || i.kind === "low_statement").length;
   if (proposals > 0) reasons.push(`提案 ${proposals} 件`);
   return reasons;

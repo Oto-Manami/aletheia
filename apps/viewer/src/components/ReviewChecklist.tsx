@@ -261,6 +261,74 @@ function DateItem({
   );
 }
 
+function ThirdPartyItem({
+  draft,
+  item,
+  readOnly,
+  onChange,
+}: {
+  draft: Draft;
+  item: ReviewItem;
+  readOnly: boolean;
+  onChange: (d: Draft) => void;
+}) {
+  const answer = (classification: "public" | "private") =>
+    onChange(
+      edit(draft, (d) => {
+        d.post.classification = classification;
+        d.context = { ...d.context, third_party_checked: true };
+      }),
+    );
+  return (
+    <>
+      <p className="check-title">ファンなど第三者の投稿を、公開してよいか決める</p>
+      <p className="check-desc">
+        第三者の投稿は、既定で非公開にしています。写っている人や投稿した人のことを考えて、公開してよいかを決めてください。
+      </p>
+      {item.resolved ? (
+        <p className="check-answer">
+          {draft.post.classification === "public" ? "公開する" : "非公開のまま"}
+          {!readOnly && (
+            <button
+              type="button"
+              className="link-button"
+              onClick={() =>
+                onChange(
+                  edit(draft, (d) => {
+                    d.post.classification = "private";
+                    d.context = { ...d.context, third_party_checked: false };
+                  }),
+                )
+              }
+            >
+              やり直す
+            </button>
+          )}
+        </p>
+      ) : (
+        <div className="check-buttons">
+          <button
+            type="button"
+            className="button"
+            disabled={readOnly}
+            onClick={() => answer("private")}
+          >
+            非公開のまま
+          </button>
+          <button
+            type="button"
+            className="button"
+            disabled={readOnly}
+            onClick={() => answer("public")}
+          >
+            公開する
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
 export interface ReviewChecklistProps {
   draft: Draft;
   initial: Draft;
@@ -302,6 +370,14 @@ export function ReviewChecklist(props: ReviewChecklistProps) {
               <div className="check-body">
                 {item.kind === "missing_date" && (
                   <DateItem draft={draft} readOnly={readOnly} onChange={onChange} />
+                )}
+                {item.kind === "third_party" && (
+                  <ThirdPartyItem
+                    draft={draft}
+                    item={item}
+                    readOnly={readOnly}
+                    onChange={onChange}
+                  />
                 )}
                 {item.kind === "no_person" && (
                   <>

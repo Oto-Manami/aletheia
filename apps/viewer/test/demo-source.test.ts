@@ -30,9 +30,17 @@ describe("デモ版の窓口", () => {
     expect((await source.getIntake(first!.id)).state).toBe("pending");
   });
 
+  it("形の正しくない下書きは、承認待ちの例に含まれている", async () => {
+    const source = new DemoSource(0);
+    const broken = (await source.listIntake("pending")).find(
+      (i) => i.title === "読み取りに失敗した投稿",
+    );
+    expect((await source.getIntake(broken!.id)).draftValid).toBe(false);
+  });
+
   it("承認すると承認待ちから外れ、2 回目は断る", async () => {
     const source = new DemoSource(0);
-    const [first] = await source.listIntake("pending");
+    const first = (await source.listIntake("pending")).find((i) => i.title === "冬の衣装合わせ");
     await source.decide(first!.id, "approve");
     expect((await source.listIntake("pending")).map((i) => i.id)).not.toContain(first!.id);
     expect((await source.listIntake("approved")).map((i) => i.id)).toContain(first!.id);
