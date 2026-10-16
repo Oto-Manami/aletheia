@@ -1,7 +1,7 @@
 // 変更履歴の検査
 import { describe, expect, it } from "vitest";
 import { seed } from "./fixtures.ts";
-import { actAsOwner, createUser, expectError, withRollback } from "./helpers.ts";
+import { actAsOwner, createUser, expectError, fakeDiscordId, withRollback } from "./helpers.ts";
 
 describe("変更履歴", () => {
   it("更新すると、更新前の行が残る", () =>
@@ -72,12 +72,16 @@ describe("変更履歴", () => {
 
   it("利用者の役割の変更も残る", () =>
     withRollback(async (c) => {
-      const viewer = await createUser(c, {});
-      await c.query("update app.user_profiles set role = 'admin' where user_id = $1", [viewer]);
+      const discordId = fakeDiscordId();
+      await createUser(c, {}, discordId);
+      const { rows: updated } = await c.query<{ id: string }>(
+        "update app.user_profiles set role = 'admin' where discord_user_id = $1 returning id",
+        [discordId],
+      );
       const { rows } = await c.query<{ role: string }>(
         `select old_row ->> 'role' as role from app.history
          where table_name = 'user_profiles' and row_id = $1`,
-        [viewer],
+        [updated[0]?.id],
       );
       expect(rows).toEqual([{ role: "viewer" }]);
     }));

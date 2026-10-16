@@ -77,10 +77,14 @@ export interface AppStaleJobs {
 
 export interface AppUserProfiles {
   created_at: Generated<Timestamp>;
+  /**
+   * Discord のユーザー ID。ログインした人の照合は auth.identities の記録で行う
+   */
+  discord_user_id: string;
   display_name: string | null;
+  id: Generated<string>;
   role: Generated<AppRole>;
   updated_at: Generated<Timestamp>;
-  user_id: string;
 }
 
 export interface ArticleRefs {

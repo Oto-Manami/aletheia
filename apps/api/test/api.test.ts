@@ -3,7 +3,7 @@ import { seed } from "@aletheia/db/testing/fixtures";
 import { insert } from "@aletheia/db/testing/sql";
 import { describe, expect, it } from "vitest";
 import { matchUrl } from "../src/app.ts";
-import { tokenFor, withApi } from "./helpers.ts";
+import { discordUser, tokenFor, withApi } from "./helpers.ts";
 
 type Seed = Awaited<ReturnType<typeof seed>>;
 
@@ -53,17 +53,25 @@ describe("認証", () => {
 
   it("ログインした管理者は使え、閲覧のみの利用者・登録の無い人は使えない", () =>
     withApi(async ({ c, call }) => {
-      const admin = await insert(c, "auth.users", { id: "11111111-1111-4111-8111-111111111111" });
-      await c.query("insert into app.user_profiles (user_id, role) values ($1, 'admin')", [admin]);
-      const viewer = await insert(c, "auth.users", { id: "22222222-2222-4222-8222-222222222222" });
-      await c.query("insert into app.user_profiles (user_id, role) values ($1, 'viewer')", [
-        viewer,
-      ]);
+      const admin = await discordUser(c, "11111111-1111-4111-8111-111111111111", "admin");
+      const viewer = await discordUser(c, "22222222-2222-4222-8222-222222222222", "viewer");
       const stranger = "33333333-3333-4333-8333-333333333333";
 
       expect((await call("GET", "/intake", undefined, await tokenFor(admin))).status).toBe(200);
       expect((await call("GET", "/intake", undefined, await tokenFor(viewer))).status).toBe(403);
       expect((await call("GET", "/intake", undefined, await tokenFor(stranger))).status).toBe(403);
+    }));
+
+  it("Discord 以外でログインした人は、同じ ID の管理者がいても使えない", () =>
+    withApi(async ({ c, call }) => {
+      await discordUser(c, "11111111-1111-4111-8111-111111111111", "admin", "100000000000000001");
+      const other = "44444444-4444-4444-8444-444444444444";
+      await c.query("insert into auth.users (id) values ($1)", [other]);
+      await c.query(
+        "insert into auth.identities (user_id, provider, provider_id, identity_data) values ($1, 'email', $2, '{}')",
+        [other, "100000000000000001"],
+      );
+      expect((await call("GET", "/intake", undefined, await tokenFor(other))).status).toBe(403);
     }));
 });
 
@@ -119,8 +127,7 @@ describe("承認・却下・保留", () => {
   it("承認すると事実の層に入り、ログインした管理者が承認者として残る", () =>
     withApi(async ({ c, call }) => {
       const d = await seed(c);
-      const admin = await insert(c, "auth.users", { id: "11111111-1111-4111-8111-111111111111" });
-      await c.query("insert into app.user_profiles (user_id, role) values ($1, 'admin')", [admin]);
+      const admin = await discordUser(c, "11111111-1111-4111-8111-111111111111", "admin");
       const { id } = (await (await call("POST", "/intake", newIntake(d))).json()) as { id: string };
 
       const res = await call(

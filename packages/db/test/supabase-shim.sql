@@ -26,6 +26,16 @@ create table auth.users (
   email text
 );
 
+-- ログインに使った外部のアカウント（Discord など）。provider_id は外部のサービスでの ID
+create table auth.identities (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  provider text not null,
+  provider_id text not null,
+  identity_data jsonb not null,
+  unique (provider_id, provider)
+);
+
 create function auth.uid() returns uuid
 language sql stable
 as $$
