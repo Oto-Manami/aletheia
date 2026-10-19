@@ -90,7 +90,6 @@ export function PostPage() {
   const assets = [...p.assets].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
   const capture = originalCapture({
     url: p.url,
-    archivedUrl: p.archivedUrl,
     assets: assets.map((a) => ({
       key: a.id,
       mediaType: a.mediaType,
@@ -148,16 +147,6 @@ export function PostPage() {
                 <dt>元の投稿</dt>
                 <dd>
                   <a href={p.url} target="_blank" rel="noreferrer noopener">
-                    開く
-                  </a>
-                </dd>
-              </div>
-            )}
-            {p.archivedUrl && (
-              <div>
-                <dt>保存された写し</dt>
-                <dd>
-                  <a href={p.archivedUrl} target="_blank" rel="noreferrer noopener">
                     開く
                   </a>
                 </dd>

@@ -24,14 +24,6 @@ function RowAction({ row, onShowHtml }: { row: CaptureRow; onShowHtml: (html: st
       );
     }
   }
-  if (row.key === "archive" && row.href) {
-    return (
-      <a href={row.href} target="_blank" rel="noreferrer noopener" className="ext-link">
-        開く
-        <ExternalLink size={12} aria-hidden="true" />
-      </a>
-    );
-  }
   return null;
 }
 

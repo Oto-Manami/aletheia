@@ -41,13 +41,12 @@ function open(path: string) {
 
 describe("原文の保存の状況", () => {
   it("URL の無い素材には出さない", () => {
-    expect(originalCapture({ url: null, archivedUrl: null, assets: [asset({})] })).toBeNull();
+    expect(originalCapture({ url: null, assets: [asset({})] })).toBeNull();
   });
 
-  it("原文と本文が揃っているかを見分け、写真・動画は数え、外部の保存先は無くても足りないと数えない", () => {
+  it("ページそのもの・画像・テキストの 3 つが揃っているかを見分ける", () => {
     const rows = originalCapture({
       url: "https://example.com/a",
-      archivedUrl: null,
       assets: [
         asset({ key: "page", mediaType: "webpage", textLength: 120, byteSize: 2048 }),
         asset({ key: "p1" }),
@@ -58,13 +57,21 @@ describe("原文の保存の状況", () => {
     expect(byKey["original"]).toMatchObject({ ok: true, detail: "保存済み 2 KB" });
     expect(byKey["text"]).toMatchObject({ ok: true, detail: "120 文字" });
     expect(byKey["media"]?.detail).toBe("写真 1 枚、動画 1 本");
-    expect(byKey["archive"]).toMatchObject({ ok: false, required: false });
+    expect(rows.map((r) => r.key)).toEqual(["original", "media", "text"]);
+  });
+
+  it("元の投稿に画像が無いことは、足りないと数えない", () => {
+    const rows = originalCapture({
+      url: "https://example.com/b",
+      assets: [asset({ key: "page", mediaType: "webpage", textLength: 5 })],
+    })!;
+    expect(rows.filter((r) => r.required && !r.ok)).toEqual([]);
+    expect(rows.find((r) => r.key === "media")?.detail).toBe("なし");
   });
 
   it("URL があるのに原文を保存していなければ、足りないと分かる", () => {
     const rows = originalCapture({
       url: "https://example.com/x/status/1",
-      archivedUrl: null,
       assets: [asset({ key: "t", mediaType: "text", textLength: 10 })],
     })!;
     expect(rows.filter((r) => r.required && !r.ok).map((r) => r.key)).toEqual(["original"]);

@@ -65,7 +65,6 @@ export function SourcePreview({
   const assets = draft.assets ?? [];
   const capture = originalCapture({
     url: draft.post.url,
-    archivedUrl: draft.post.archived_url,
     assets: assets.map((a) => ({
       key: a.ref,
       mediaType: a.media_type,

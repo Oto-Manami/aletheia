@@ -1,10 +1,10 @@
 // 原文の保存の状況（設計書 ユースケース「原文の保存」）
 //
-// URL のある素材（ブログ・SNS の投稿・記事など）は、削除・非公開化に備えて原文そのものを保存する。
-//   原文           素材 media_type = webpage（1 ファイルの HTML。SNS の投稿は投稿そのもの）
-//   本文           原文の素材のテキスト（無ければ、ほかの素材のテキスト）
-//   写真・動画      image / video の素材
-//   外部の保存先    posts.archived_url（あれば記録する。無くても足りないとは数えない）
+// URL のある素材（ブログ・SNS の投稿・記事など）は、原文が消えても情報が消えないよう 3 つを保存する。
+// 3 つは互いの控えになる。
+//   ページそのもの  素材 media_type = webpage（1 ファイルの HTML。SNS の投稿は投稿そのもの）
+//   画像            image / video の素材（元の投稿に画像が無ければ「なし」で、足りないとは数えない）
+//   テキスト        本文（原文の素材のテキスト。無ければ、ほかの素材のテキスト）
 
 export interface CaptureAsset {
   key: string;
@@ -18,7 +18,7 @@ export interface CaptureAsset {
 }
 
 export interface CaptureRow {
-  key: "original" | "text" | "media" | "archive";
+  key: "original" | "media" | "text";
   label: string;
   /** 何のために保存するか */
   purpose: string;
@@ -27,7 +27,6 @@ export interface CaptureRow {
   required: boolean;
   detail: string;
   asset?: CaptureAsset;
-  href?: string;
 }
 
 function formatBytes(n: number | null): string {
@@ -40,7 +39,6 @@ function formatBytes(n: number | null): string {
 /** URL の無い素材（会場の配布物など）には出さない（null） */
 export function originalCapture(input: {
   url: string | null | undefined;
-  archivedUrl: string | null | undefined;
   assets: CaptureAsset[];
 }): CaptureRow[] | null {
   const original = input.assets.find((a) => a.mediaType === "webpage");
@@ -58,8 +56,8 @@ export function originalCapture(input: {
   return [
     {
       key: "original",
-      label: "原文（HTML）",
-      purpose: "原文が消えても、元の見た目のまま見られる",
+      label: "ページそのもの",
+      purpose: "元の見た目のまま見られる",
       ok: Boolean(original?.stored),
       required: true,
       detail: original?.stored
@@ -68,29 +66,20 @@ export function originalCapture(input: {
       ...(original ? { asset: original } : {}),
     },
     {
-      key: "text",
-      label: "本文",
-      purpose: "言葉で検索できる",
-      ok: textLength > 0,
-      required: true,
-      detail: textLength > 0 ? `${textLength} 文字` : "読み取れていません",
-    },
-    {
       key: "media",
-      label: "写真・動画",
-      purpose: "画像から逆引きできる",
-      ok: true,
+      label: "画像",
+      purpose: "ページが開けなくなっても画像が残る",
+      ok: images + videos > 0,
       required: false,
       detail: media || "なし",
     },
     {
-      key: "archive",
-      label: "外部の保存先",
-      purpose: "第三者による保存の記録（あれば）",
-      ok: Boolean(input.archivedUrl),
-      required: false,
-      detail: input.archivedUrl ? "あり" : "なし",
-      ...(input.archivedUrl ? { href: input.archivedUrl } : {}),
+      key: "text",
+      label: "テキスト",
+      purpose: "ページが開けなくなっても文章が残る。検索に使う",
+      ok: textLength > 0,
+      required: true,
+      detail: textLength > 0 ? `${textLength} 文字` : "読み取れていません",
     },
   ];
 }
