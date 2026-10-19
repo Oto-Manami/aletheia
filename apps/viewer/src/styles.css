@@ -46,7 +46,7 @@
   color-scheme: light;
 }
 
-:root[data-theme="dark"] {
+:root[data-color="dark"] {
   --bg: #020617;
   --surface: #0f172a;
   --subtle: #1e293b;

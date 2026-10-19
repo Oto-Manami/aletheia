@@ -14,7 +14,8 @@ export function loadTheme(): Theme {
 }
 
 export function applyTheme(theme: Theme): void {
-  document.documentElement.dataset["theme"] = theme;
+  // data-theme は、ページを埋め込む側（プレビューなど）が書き換えることがあるため、別の名前を使う
+  document.documentElement.dataset["color"] = theme;
   try {
     localStorage.setItem(KEY, theme);
   } catch {
