@@ -23,6 +23,7 @@ const app = createApp(
     getKey: createRemoteJWKSet(new URL(config.SUPABASE_JWKS_URL)),
   },
   files,
+  { viewerOrigins: config.VIEWER_ORIGINS },
 );
 
 serve({ fetch: app.fetch, port: config.PORT }, (info) => {

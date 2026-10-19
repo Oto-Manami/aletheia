@@ -8,6 +8,17 @@ const schema = z.object({
   /** 閲覧サイトのログインを確かめる公開鍵の場所（Supabase の JWKS） */
   SUPABASE_JWKS_URL: z.url(),
   PORT: z.coerce.number().int().positive().default(8787),
+  /** ブラウザから API を呼んでよい閲覧サイトの URL。カンマ区切り（例: https://viewer.example.com） */
+  VIEWER_ORIGINS: z
+    .string()
+    .default("")
+    .transform((v) =>
+      v
+        .split(",")
+        .map((o) => o.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(z.url())),
   /** ファイルの保存先。drive（本番）か local（開発用。手元のフォルダ） */
   FILE_STORE: z.enum(["drive", "local"]).default("local"),
   LOCAL_STORE_DIR: z.string().default(".files"),
