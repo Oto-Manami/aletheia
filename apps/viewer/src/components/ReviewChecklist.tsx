@@ -172,7 +172,7 @@ function ProposalItem({
     <>
       <p className="check-title">
         {item.kind === "low_link" ? "この紐付けは合っていますか" : "この言明は合っていますか"}
-        <span className="origin">AI {Math.round(item.confidence * 100)}%</span>
+        <span className="origin">ルール {Math.round(item.confidence * 100)}%</span>
       </p>
       <div className="check-proposal">
         {thumb && <img className="check-thumb" src={thumb} alt="" />}

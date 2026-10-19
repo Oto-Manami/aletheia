@@ -38,6 +38,7 @@ function OriginBadge({
 }) {
   const origin = p.origin ?? "human";
   if (origin === "human") return <span className="origin">人</span>;
+  // AI は基本的に使わない（設計書 決定記録 0011）。ai は例外と、受け取ったデータのため
   const label = { ai: "AI", rule: "ルール", import: "移行" }[origin] ?? origin;
   const confidence = p.confidence ?? 1;
   return (

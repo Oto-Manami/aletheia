@@ -73,7 +73,7 @@ describe("下書きの要確認", () => {
           to_type: "event",
           to_id: "e1000000-0000-4000-8000-000000000001",
           role: "covers",
-          origin: "ai",
+          origin: "rule",
           confidence: 0.5,
         },
         {
@@ -81,7 +81,7 @@ describe("下書きの要確認", () => {
           to_type: "event",
           to_id: "e1000000-0000-4000-8000-000000000002",
           role: "covers",
-          origin: "ai",
+          origin: "rule",
           confidence: 0.5,
           accepted: false,
         },
@@ -100,7 +100,7 @@ describe("下書きの要確認", () => {
       to_type: "entity" as const,
       to_id: "a1000000-0000-4000-8000-000000000001",
       role: "mentions",
-      origin: "ai" as const,
+      origin: "rule" as const,
       confidence: 0.5,
     };
     const draft = {
