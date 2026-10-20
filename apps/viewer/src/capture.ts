@@ -36,13 +36,18 @@ function formatBytes(n: number | null): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** URL の無い素材（会場の配布物など）には出さない（null） */
+/** URL の無い素材（会場の配布物など）と、映像・音声だけの投稿には出さない（null） */
 export function originalCapture(input: {
   url: string | null | undefined;
   assets: CaptureAsset[];
 }): CaptureRow[] | null {
   const original = input.assets.find((a) => a.mediaType === "webpage");
   if (!input.url && !original) return null;
+  // 配信・動画だけの投稿（ライブ配信・番組の映像など）は、映像そのものが素材で、保存するページが無い
+  const avOnly =
+    input.assets.length > 0 &&
+    input.assets.every((a) => a.mediaType === "video" || a.mediaType === "audio");
+  if (!original && avOnly) return null;
   const textLength =
     original && original.textLength > 0
       ? original.textLength

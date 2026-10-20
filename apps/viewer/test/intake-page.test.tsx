@@ -117,3 +117,17 @@ describe("探す・投稿", () => {
     expect(screen.getAllByText("非公開").length).toBeGreaterThan(0);
   });
 });
+
+describe("動画", () => {
+  it("動画は再生せず、サムネイルと視聴リンクで見せる（有料は保存先、無料は元の動画）", async () => {
+    open("/posts/b1000000-0000-4000-8000-000000000004");
+    const paid = await screen.findByRole("link", { name: "保存先で視聴する" });
+    expect(paid.getAttribute("href")).toBe("https://example.com/drive/live-day2.mp4");
+    expect(document.querySelector("video")).toBeNull();
+    cleanup();
+
+    open("/posts/b1000000-0000-4000-8000-000000000005");
+    const free = await screen.findByRole("link", { name: "元の動画で視聴する" });
+    expect(free.getAttribute("href")).toBe("https://example.com/watch/mihon-digest");
+  });
+});

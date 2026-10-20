@@ -40,8 +40,14 @@ function open(path: string) {
 }
 
 describe("原文の保存の状況", () => {
-  it("URL の無い素材には出さない", () => {
+  it("URL の無い素材と、映像だけの投稿（ライブ配信など）には出さない", () => {
     expect(originalCapture({ url: null, assets: [asset({})] })).toBeNull();
+    expect(
+      originalCapture({
+        url: "https://example.com/live/1",
+        assets: [asset({ mediaType: "video" })],
+      }),
+    ).toBeNull();
   });
 
   it("ページそのもの・画像・テキストの 3 つが揃っているかを見分ける", () => {

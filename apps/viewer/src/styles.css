@@ -1760,3 +1760,30 @@ select:disabled {
   border: 0;
   background: #fff;
 }
+
+/* 動画は再生せず、サムネイルと視聴リンクで見せる */
+
+.video-card {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.video-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--subtle);
+}
+
+.video-thumb-empty {
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+}
+
+a.button {
+  text-decoration: none;
+}
