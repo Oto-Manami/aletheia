@@ -1,3 +1,4 @@
+import { Play } from "lucide-react";
 import { useParams } from "react-router";
 import { originalCapture } from "../capture.ts";
 import { PageCapture } from "../components/PageCapture.tsx";
@@ -15,7 +16,48 @@ import {
 import type { AssetView } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 
-function AssetBlock({ asset }: { asset: AssetView }) {
+/**
+ * 動画の視聴リンク（設計書 データモデル 10 章）。動画は閲覧サイトの中で再生せず、サムネイルとリンクで見せる。
+ * 無料で公開されている元の動画があればそれ、無ければ保存先のファイル
+ */
+export function watchLink(
+  asset: Pick<AssetView, "openUrl">,
+  post: { url: string | null; availability: string | null },
+): { href: string; label: string } | null {
+  if (post.url && post.availability !== "paid")
+    return { href: post.url, label: "元の動画で視聴する" };
+  if (asset.openUrl) return { href: asset.openUrl, label: "保存先で視聴する" };
+  return null;
+}
+
+function VideoBlock({ asset, watch }: { asset: AssetView; watch: ReturnType<typeof watchLink> }) {
+  return (
+    <div className="video-card">
+      {asset.previewUrl ? (
+        <img
+          className="video-thumb"
+          src={asset.previewUrl}
+          alt={asset.description ?? ""}
+          loading="lazy"
+        />
+      ) : (
+        <div className="video-thumb video-thumb-empty" aria-hidden="true">
+          <Play size={28} />
+        </div>
+      )}
+      {watch ? (
+        <a className="button" href={watch.href} target="_blank" rel="noreferrer noopener">
+          <Play size={14} aria-hidden="true" />
+          {watch.label}
+        </a>
+      ) : (
+        <p className="quiet">視聴リンクがありません</p>
+      )}
+    </div>
+  );
+}
+
+function AssetBlock({ asset, watch }: { asset: AssetView; watch: ReturnType<typeof watchLink> }) {
   const page = pageLabel(asset.attributes);
   const clip = clipLabel(asset.attributes);
   const isPrivate = asset.classification === "private";
@@ -55,6 +97,7 @@ function AssetBlock({ asset }: { asset: AssetView }) {
             )}
           </p>
         ))}
+      {asset.mediaType === "video" && <VideoBlock asset={asset} watch={watch} />}
       {asset.description && <p className="post-caption">{asset.description}</p>}
       {asset.texts.map((t, i) =>
         t.textType === "body" ? (
@@ -123,7 +166,7 @@ export function PostPage() {
             </div>
           )}
           {assets.map((a) => (
-            <AssetBlock key={a.id} asset={a} />
+            <AssetBlock key={a.id} asset={a} watch={watchLink(a, p)} />
           ))}
         </div>
 
