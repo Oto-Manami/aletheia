@@ -11,4 +11,4 @@ export {
   STAGING,
   stagingLocation,
 } from "./naming.ts";
-export type { FileStore, FolderPath, StoredFile } from "./types.ts";
+export type { FileStore, FolderEntry, FolderPath, FolderStore, StoredFile } from "./types.ts";

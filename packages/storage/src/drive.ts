@@ -3,7 +3,7 @@
 // 専用アカウントの OAuth（更新用トークン）で接続する（決定記録 0001。サービスアカウントは
 // 個人のドライブに保存容量を持たないため使わない）。Google のライブラリは使わず、Drive の REST API を直接呼ぶ。
 
-import type { FileStore, FolderPath, StoredFile } from "./types.ts";
+import type { FileStore, FolderEntry, FolderPath, FolderStore, StoredFile } from "./types.ts";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const API = "https://www.googleapis.com/drive/v3";
@@ -35,7 +35,7 @@ function quote(value: string): string {
   return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 }
 
-export class DriveFileStore implements FileStore {
+export class DriveFileStore implements FileStore, FolderStore {
   readonly provider = "gdrive";
   private readonly fetch: typeof fetch;
   private readonly now: () => number;
@@ -163,5 +163,37 @@ export class DriveFileStore implements FileStore {
     });
     if (!res.ok) throw new DriveError(res.status, `Drive のファイルを読めません（${res.status}）`);
     return new Uint8Array(await res.arrayBuffer());
+  }
+
+  async listFolders(folder: FolderPath): Promise<FolderEntry[]> {
+    const parent = await this.folderId(folder);
+    const q = `${quote(parent)} in parents and mimeType = '${FOLDER}' and trashed = false`;
+    const entries: FolderEntry[] = [];
+    let pageToken: string | undefined;
+    do {
+      const params = new URLSearchParams({
+        q,
+        fields: "nextPageToken,files(id,name)",
+        pageSize: "1000",
+      });
+      if (pageToken) params.set("pageToken", pageToken);
+      const page = await this.call<{
+        files: { id: string; name: string }[];
+        nextPageToken?: string;
+      }>(`${API}/files?${params.toString()}`);
+      entries.push(...page.files.map((f) => ({ name: f.name, key: f.id })));
+      pageToken = page.nextPageToken;
+    } while (pageToken);
+    return entries;
+  }
+
+  async trashFolder(key: string): Promise<void> {
+    await this.call(`${API}/files/${encodeURIComponent(key)}?fields=id`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ trashed: true }),
+    });
+    // ごみ箱に移したフォルダを、次に置くときに使わないようにする
+    this.folders.clear();
   }
 }
