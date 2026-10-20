@@ -33,6 +33,19 @@ describe("メモリ", () => {
     expect((await store.move(key, ["c"], "d.jpg")).key).toBe(key);
     expect(store.pathOf(key)).toBe("c/d.jpg");
   });
+
+  it("フォルダを一覧し、中身ごとごみ箱に移せる", async () => {
+    const store = new MemoryFileStore();
+    await store.put(["b", "2026-10-01"], "x.gz", bytes, "application/gzip");
+    await store.put(["b", "2026-10-02"], "x.gz", bytes, "application/gzip");
+    await store.put(["b"], "loose.txt", bytes, "text/plain");
+    expect(await store.listFolders(["b"])).toEqual([
+      { name: "2026-10-01", key: "b/2026-10-01" },
+      { name: "2026-10-02", key: "b/2026-10-02" },
+    ]);
+    await store.trashFolder("b/2026-10-01");
+    expect((await store.listFolders(["b"])).map((f) => f.name)).toEqual(["2026-10-02"]);
+  });
 });
 
 interface Call {
@@ -46,6 +59,7 @@ function fakeDrive() {
   const calls: Call[] = [];
   const folders = new Map<string, string>(); // "parent/name" → id
   const parents = new Map<string, string[]>(); // file id → parents
+  const trashed = new Set<string>();
   let seq = 0;
   let tokens = 0;
   const fetchImpl: typeof fetch = async (input, init = {}) => {
@@ -74,8 +88,15 @@ function fakeDrive() {
       const q = url.searchParams.get("q") ?? "";
       const name = /name = '([^']*)'/.exec(q)?.[1];
       const parent = /'([^']*)' in parents/.exec(q)?.[1];
+      if (name === undefined) {
+        // 直下のフォルダの一覧（ごみ箱に移したものは除く）
+        const files = [...folders]
+          .filter(([path, id]) => path.startsWith(`${parent}/`) && !trashed.has(id))
+          .map(([path, id]) => ({ id, name: path.slice(`${parent}/`.length) }));
+        return json({ files });
+      }
       const id = folders.get(`${parent}/${name}`);
-      return json({ files: id ? [{ id }] : [] });
+      return json({ files: id && !trashed.has(id) ? [{ id }] : [] });
     }
     if (method === "POST" && url.pathname === "/drive/v3/files") {
       const meta = JSON.parse(body) as { name: string; parents: string[] };
@@ -93,6 +114,11 @@ function fakeDrive() {
       const id = decodeURIComponent(url.pathname.split("/").pop() ?? "");
       return json({ parents: parents.get(id) ?? [] });
     }
+    if (method === "PATCH" && body.includes('"trashed":true')) {
+      const id = decodeURIComponent(url.pathname.split("/").pop()!);
+      trashed.add(id);
+      return json({ id });
+    }
     if (method === "PATCH") {
       const id = decodeURIComponent(url.pathname.split("/").pop()!);
       parents.set(id, [url.searchParams.get("addParents")!]);
@@ -100,7 +126,7 @@ function fakeDrive() {
     }
     return json({ error: "unexpected" }, 500);
   };
-  return { calls, parents, fetch: fetchImpl, tokenCount: () => tokens };
+  return { calls, parents, trashed, fetch: fetchImpl, tokenCount: () => tokens };
 }
 
 function drive(fake: ReturnType<typeof fakeDrive>, now = () => 0) {
@@ -151,6 +177,27 @@ describe("Google Drive", () => {
     now = 3600 * 1000;
     await store.put([], "c.jpg", bytes, "image/jpeg");
     expect(fake.tokenCount()).toBe(2);
+  });
+
+  it("直下のフォルダを一覧し、ごみ箱に移したフォルダは作り直して使う", async () => {
+    const fake = fakeDrive();
+    const store = drive(fake);
+    await store.put(["_backup", "db", "2026-10-01"], "a.gz", bytes, "application/gzip");
+    await store.put(["_backup", "db", "2026-10-02"], "a.gz", bytes, "application/gzip");
+    const list = await store.listFolders(["_backup", "db"]);
+    expect(list.map((f) => f.name).sort()).toEqual(["2026-10-01", "2026-10-02"]);
+
+    const old = list.find((f) => f.name === "2026-10-01")!;
+    await store.trashFolder(old.key);
+    expect(fake.trashed.has(old.key)).toBe(true);
+    expect((await store.listFolders(["_backup", "db"])).map((f) => f.name)).toEqual(["2026-10-02"]);
+    const again = await store.put(
+      ["_backup", "db", "2026-10-01"],
+      "b.gz",
+      bytes,
+      "application/gzip",
+    );
+    expect(fake.parents.get(again.key)).not.toEqual([old.key]);
   });
 
   it("検索式に入る名前の ' と \\ を逃がす", async () => {

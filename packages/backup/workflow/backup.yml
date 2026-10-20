@@ -1,0 +1,109 @@
+# データベースのバックアップ（設計書 決定記録 0016）
+#
+# 非公開のリポジトリ Oto-Manami/aletheia-backup の .github/workflows/backup.yml に置く。
+# aletheia（公開）には置かない（実行の記録と鍵を公開しないため）。
+#
+# 毎日: 書き出して Drive の _backup/db/<日付>/ に置く
+# 毎週（日曜）: 同じものを、このリポジトリの db/ にコミットする（過去の分は Git の履歴に残る）
+#
+# Secrets（値はパスワード管理アプリに保管し、ここには書かない）
+#   BACKUP_DATABASE_URL   バックアップ用のロール（aletheia_backup）の接続先。Supabase の Session pooler のもの
+#   GOOGLE_CLIENT_ID・GOOGLE_CLIENT_SECRET・GOOGLE_REFRESH_TOKEN・DRIVE_ROOT_FOLDER_ID
+#                         ファイル実体と同じ、専用アカウントの Drive の設定
+
+name: backup
+
+on:
+  schedule:
+    # 毎日 3:30（JST）
+    - cron: "30 18 * * *"
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: このリポジトリにもコミットする
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # データベースと同じか、より新しい版の pg_dump を使う
+      PG_MAJOR: "17"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: archive
+      - uses: actions/checkout@v4
+        with:
+          repository: Oto-Manami/aletheia
+          path: aletheia
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: aletheia/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: aletheia/pnpm-lock.yaml
+      - name: 処理を用意する
+        working-directory: aletheia
+        run: pnpm install --frozen-lockfile --filter "@aletheia/backup..."
+      - name: pg_dump を用意する
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq "postgresql-client-${PG_MAJOR}"
+
+      - name: 書き出す（表ごとの JSON Lines・SQL のダンプ・件数の照合・SHA-256 の一覧）
+        id: create
+        working-directory: aletheia
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: pnpm --silent --filter @aletheia/backup backup create --out "$RUNNER_TEMP/db" --pg-dump "/usr/lib/postgresql/${PG_MAJOR}/bin/pg_dump"
+
+      - name: Drive に置く
+        working-directory: aletheia
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          DRIVE_ROOT_FOLDER_ID: ${{ secrets.DRIVE_ROOT_FOLDER_ID }}
+        run: pnpm --silent --filter @aletheia/backup backup upload --from "$RUNNER_TEMP/db"
+
+      # Drive に置けなかった日も、書き出せていればコミットする（ジョブは失敗のまま通知される）
+      - name: コミットするか決める（日曜、または手動で指定したとき）
+        id: weekly
+        if: ${{ !cancelled() && steps.create.outcome == 'success' }}
+        env:
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' && inputs.commit }}
+        run: |
+          if [ "$MANUAL" = "true" ] || [ "$(TZ=Asia/Tokyo date +%u)" = "7" ]; then
+            echo "commit=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: このリポジトリにコミットする
+        if: ${{ !cancelled() && steps.weekly.outputs.commit == 'true' }}
+        working-directory: archive
+        run: |
+          rm -rf db
+          cp -r "$RUNNER_TEMP/db" db
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A db
+          if git diff --cached --quiet; then
+            echo "前回から変わっていません"
+          else
+            git commit -q -m "バックアップ $(jq -r .date db/summary.json)"
+            git push -q
+          fi

@@ -26,3 +26,17 @@ export interface FileStore {
   /** ファイルの中身を読む（完全性の照合に使う） */
   get(key: string): Promise<Uint8Array>;
 }
+
+export interface FolderEntry {
+  name: string;
+  /** 保存先でのフォルダの ID */
+  key: string;
+}
+
+/** フォルダの単位で扱う保存先（バックアップの置き場所。決定記録 0016） */
+export interface FolderStore {
+  /** フォルダの直下のフォルダの一覧。フォルダが無ければ作る */
+  listFolders(folder: FolderPath): Promise<FolderEntry[]>;
+  /** フォルダを中身ごとごみ箱に移す（すぐには消えない） */
+  trashFolder(key: string): Promise<void>;
+}
