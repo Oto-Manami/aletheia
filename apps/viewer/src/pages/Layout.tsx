@@ -1,4 +1,4 @@
-import { Inbox, LogOut, Menu, Moon, Search, Sun, X } from "lucide-react";
+import { Inbox, LogOut, Menu, Moon, Search, Sun, Users, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { NavLink, Outlet, useOutletContext } from "react-router";
 import { useApp } from "../context.tsx";
@@ -85,6 +85,12 @@ export function Layout() {
             <Search size={16} aria-hidden="true" />
             検索
           </NavLink>
+          {viewer.isAdmin && (
+            <NavLink to="/members" className="nav-item" onClick={close}>
+              <Users size={16} aria-hidden="true" />
+              利用者
+            </NavLink>
+          )}
         </nav>
         <div className="sidebar-foot">
           <span className="user-name">{viewer.name}</span>

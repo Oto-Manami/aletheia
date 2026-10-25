@@ -18,8 +18,11 @@ import {
   type IntakeIssue,
   type IntakeState,
   type IntakeSummary,
+  type InviteView,
+  type MemberView,
   type PostView,
   type RefLabel,
+  type Role,
   type SearchHit,
   SourceError,
 } from "./types.ts";
@@ -61,6 +64,21 @@ export class DemoSource implements ArchiveSource {
   private posts: PostView[];
   private previews = new Map<string, Record<string, string>>();
   private pageHtml = new Map<string, Record<string, string>>();
+  private invites: (InviteView & { token: string })[] = [];
+  private members: MemberView[] = [
+    {
+      discordUserId: "100000000000000001",
+      role: "admin",
+      displayName: "デモの運営者",
+      createdAt: "2026-10-25T10:00:00+09:00",
+    },
+    {
+      discordUserId: "100000000000000002",
+      role: "viewer",
+      displayName: "試験 花子",
+      createdAt: "2026-10-26T21:15:00+09:00",
+    },
+  ];
 
   constructor(private readonly latencyMs = 120) {
     this.intakes = demoIntakes();
@@ -234,5 +252,71 @@ export class DemoSource implements ArchiveSource {
     const post = this.posts.find((p) => p.id === id);
     if (!post) throw new SourceError("投稿が見つかりません", 404);
     return structuredClone(post);
+  }
+
+  async createInvite(note?: string) {
+    await this.delay();
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) =>
+      b.toString(16).padStart(2, "0"),
+    ).join("");
+    const now = new Date();
+    const invite = {
+      id: crypto.randomUUID(),
+      token,
+      note: note?.trim() ? note.trim() : null,
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + 7 * 86_400_000).toISOString(),
+      usedAt: null,
+      usedBy: null,
+      usedByName: null,
+      state: "open" as const,
+    };
+    this.invites.unshift(invite);
+    return { id: invite.id, token, expiresAt: invite.expiresAt };
+  }
+
+  async listInvites(): Promise<InviteView[]> {
+    await this.delay();
+    // リンクの中の値は一覧に出さない
+    return this.invites.map((i) => ({
+      id: i.id,
+      note: i.note,
+      createdAt: i.createdAt,
+      expiresAt: i.expiresAt,
+      usedAt: i.usedAt,
+      usedBy: i.usedBy,
+      usedByName: i.usedByName,
+      state: i.state,
+    }));
+  }
+
+  async revokeInvite(id: string): Promise<void> {
+    await this.delay();
+    const invite = this.invites.find((i) => i.id === id && i.state === "open");
+    if (!invite) throw new SourceError("取り消せる招待がありません");
+    invite.state = "revoked";
+  }
+
+  async acceptInvite(token: string): Promise<Role> {
+    await this.delay();
+    const invite = this.invites.find((i) => i.token === token);
+    if (!invite || invite.state !== "open") throw new SourceError("招待リンクが使えません");
+    invite.state = "used";
+    invite.usedAt = new Date().toISOString();
+    return "viewer";
+  }
+
+  async listMembers(): Promise<MemberView[]> {
+    await this.delay();
+    return [...this.members];
+  }
+
+  async removeMember(discordUserId: string): Promise<void> {
+    await this.delay();
+    const before = this.members.length;
+    this.members = this.members.filter(
+      (m) => !(m.discordUserId === discordUserId && m.role === "viewer"),
+    );
+    if (this.members.length === before) throw new SourceError("外せる閲覧者がいません");
   }
 }

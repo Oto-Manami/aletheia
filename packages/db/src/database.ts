@@ -60,6 +60,29 @@ export interface AppHistory {
   table_schema: string;
 }
 
+export interface AppInvites {
+  created_at: Generated<Timestamp>;
+  /**
+   * 作った管理者の Discord のユーザー ID
+   */
+  created_by: string;
+  expires_at: Timestamp;
+  id: Generated<string>;
+  note: string | null;
+  revoked_at: Timestamp | null;
+  role: Generated<AppRole>;
+  /**
+   * リンクの中の値の SHA-256（16 進）
+   */
+  token_hash: string;
+  updated_at: Generated<Timestamp>;
+  used_at: Timestamp | null;
+  /**
+   * 使って登録した人の Discord のユーザー ID
+   */
+  used_by: string | null;
+}
+
 export interface AppQualityFindings {
   check_key: string | null;
   detail: Json | null;
@@ -680,6 +703,7 @@ export interface Vocabularies {
 
 export interface DB {
   "app.history": AppHistory;
+  "app.invites": AppInvites;
   "app.quality_findings": AppQualityFindings;
   "app.stale_jobs": AppStaleJobs;
   "app.user_profiles": AppUserProfiles;

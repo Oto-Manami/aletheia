@@ -14,16 +14,30 @@ import {
   type IntakeIssue,
   type IntakeState,
   type IntakeSummary,
+  type InviteState,
+  type InviteView,
+  type MemberView,
   type PostView,
   type RefLabel,
+  type Role,
   type SearchHit,
   SourceError,
   type Viewer,
 } from "./types.ts";
+import { INVITE_ERRORS } from "../invite.ts";
 
 interface Result {
   data: unknown;
   error: { message: string } | null;
+}
+
+/** 招待・利用者の関数の失敗を、画面に出せる文にする */
+function rpcRows<T>(res: Result): T[] {
+  if (res.error) {
+    const known = INVITE_ERRORS[res.error.message];
+    throw new SourceError(known ?? `操作できませんでした: ${res.error.message}`);
+  }
+  return (res.data ?? []) as T[];
 }
 
 function rowsOf<T>(res: Result): T[] {
@@ -376,5 +390,65 @@ export class LiveSource implements ArchiveSource {
       assets: assetViews,
       links: links.map((l, i) => ({ role: l.role, target: labels[i]! })),
     };
+  }
+
+  async createInvite(note?: string) {
+    const [row] = rpcRows<{ id: string; token: string; expires_at: string }>(
+      await this.supabase.rpc("create_invite", { note: note ?? null }),
+    );
+    if (!row) throw new SourceError("招待を作れませんでした");
+    return { id: row.id, token: row.token, expiresAt: row.expires_at };
+  }
+
+  async listInvites(): Promise<InviteView[]> {
+    const rows = rpcRows<{
+      id: string;
+      note: string | null;
+      created_at: string;
+      expires_at: string;
+      used_at: string | null;
+      used_by: string | null;
+      used_by_name: string | null;
+      state: InviteState;
+    }>(await this.supabase.rpc("list_invites"));
+    return rows.map((r) => ({
+      id: r.id,
+      note: r.note,
+      createdAt: r.created_at,
+      expiresAt: r.expires_at,
+      usedAt: r.used_at,
+      usedBy: r.used_by,
+      usedByName: r.used_by_name,
+      state: r.state,
+    }));
+  }
+
+  async revokeInvite(id: string): Promise<void> {
+    rpcRows(await this.supabase.rpc("revoke_invite", { invite_id: id }));
+  }
+
+  async acceptInvite(token: string): Promise<Role> {
+    const res = await this.supabase.rpc("accept_invite", { token });
+    rpcRows(res);
+    return res.data as Role;
+  }
+
+  async listMembers(): Promise<MemberView[]> {
+    const rows = rpcRows<{
+      discord_user_id: string;
+      role: Role;
+      display_name: string | null;
+      created_at: string;
+    }>(await this.supabase.rpc("list_members"));
+    return rows.map((r) => ({
+      discordUserId: r.discord_user_id,
+      role: r.role,
+      displayName: r.display_name,
+      createdAt: r.created_at,
+    }));
+  }
+
+  async removeMember(discordUserId: string): Promise<void> {
+    rpcRows(await this.supabase.rpc("remove_member", { member_discord_user_id: discordUserId }));
   }
 }

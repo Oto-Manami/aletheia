@@ -109,6 +109,36 @@ export interface Viewer {
   discordUserId: string | null;
 }
 
+export type Role = "admin" | "viewer";
+/** 招待の状態: 未使用・使用済み・取り消し・期限切れ */
+export type InviteState = "open" | "used" | "revoked" | "expired";
+
+/** 招待の一覧の 1 行（リンクの中の値は含まない） */
+export interface InviteView {
+  id: string;
+  note: string | null;
+  createdAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+  usedBy: string | null;
+  usedByName: string | null;
+  state: InviteState;
+}
+
+/** 作った直後の招待。リンクの中の値は、このときだけ分かる */
+export interface CreatedInvite {
+  id: string;
+  token: string;
+  expiresAt: string;
+}
+
+export interface MemberView {
+  discordUserId: string;
+  role: Role;
+  displayName: string | null;
+  createdAt: string;
+}
+
 export interface ArchiveSource {
   /** デモ版かどうか（画面に表示する） */
   readonly demo: boolean;
@@ -126,6 +156,15 @@ export interface ArchiveSource {
   findRefs(query: string): Promise<RefLabel[]>;
   search(query: string): Promise<SearchHit[]>;
   getPost(id: string): Promise<PostView>;
+  /** 招待リンクを作る（管理者だけ。決定記録 0019） */
+  createInvite(note?: string): Promise<CreatedInvite>;
+  listInvites(): Promise<InviteView[]>;
+  revokeInvite(id: string): Promise<void>;
+  /** 招待リンクを使って、ログインした人を登録する。登録された役割を返す */
+  acceptInvite(token: string): Promise<Role>;
+  listMembers(): Promise<MemberView[]>;
+  /** 閲覧者を外す（管理者は外せない） */
+  removeMember(discordUserId: string): Promise<void>;
 }
 
 /** API・データベースから返った失敗を、画面にそのまま出せる文にしたもの */

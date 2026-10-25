@@ -198,6 +198,13 @@ describe("関数", () => {
       "app.is_member",
       "app.record_history",
       "app.statement_reproduces_paid_text",
+      // 招待リンク（決定記録 0019）。最初に呼んだ人の役割を確かめる
+      "public.accept_invite",
+      "public.create_invite",
+      "public.list_invites",
+      "public.list_members",
+      "public.remove_member",
+      "public.revoke_invite",
     ]);
   });
 });
