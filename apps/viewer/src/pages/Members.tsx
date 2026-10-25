@@ -1,4 +1,4 @@
-// 利用者と招待（管理者だけ。設計書 決定記録 0019）
+// 設定の「利用者管理」: 利用者と招待（管理者だけ。設計書 決定記録 0019）
 //
 // 招待リンクは 1 回だけ・7 日まで使え、付く役割は閲覧者だけ。リンクは作った直後にだけ表示する。
 
@@ -175,12 +175,7 @@ export function MembersPage() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   if (!viewer.isAdmin) {
-    return (
-      <section className="page narrow">
-        <h1 className="page-title">利用者</h1>
-        <p>利用者の画面は管理者だけが使えます。</p>
-      </section>
-    );
+    return <p>利用者管理は管理者だけが使えます。</p>;
   }
 
   const create = () => {
@@ -198,11 +193,10 @@ export function MembersPage() {
   };
 
   return (
-    <section className="page narrow">
-      <div className="page-head">
-        <h1 className="page-title">利用者</h1>
-        <p className="page-sub">閲覧サイトは招待制です。招待した人は非公開のデータも読めます。</p>
-      </div>
+    <>
+      <p className="settings-lead">
+        閲覧サイトは招待制です。招待した人は非公開のデータも読めます。
+      </p>
 
       <div className="panel panel-pad member-section">
         <h2 className="column-title">招待リンクを作る</h2>
@@ -286,6 +280,6 @@ export function MembersPage() {
         )}
         <p className="field-hint">閲覧者は外せます。管理者を外すのは運営者が行います。</p>
       </div>
-    </section>
+    </>
   );
 }
