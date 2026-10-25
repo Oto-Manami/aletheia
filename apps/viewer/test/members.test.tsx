@@ -1,4 +1,4 @@
-// 利用者と招待の画面（デモ版の窓口で確かめる。設計書 決定記録 0019）
+// 設定（表示・利用者管理）の画面（デモ版の窓口で確かめる。設計書 決定記録 0019）
 
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -22,9 +22,9 @@ const admin: Viewer = {
   discordUserId: "100000000000000001",
 };
 
-function open(viewer: Viewer = admin) {
+function open(viewer: Viewer = admin, path = "/settings/members") {
   const source = new DemoSource(0);
-  const router = createMemoryRouter(routes, { initialEntries: ["/members"] });
+  const router = createMemoryRouter(routes, { initialEntries: [path] });
   render(
     <Ctx.Provider value={{ source, viewer }}>
       <RouterProvider router={router} />
@@ -83,11 +83,40 @@ describe("利用者", () => {
     );
   });
 
-  it("管理者でない利用者には、利用者の画面もメニューも出さない", async () => {
+  it("管理者でない利用者には、利用者管理を出さない", async () => {
     open({ ...admin, isAdmin: false });
-    expect(await screen.findByText("利用者の画面は管理者だけが使えます。")).toBeTruthy();
-    const nav = screen.getByRole("navigation", { name: "画面" });
+    expect(await screen.findByText("利用者管理は管理者だけが使えます。")).toBeTruthy();
+    const tabs = screen.getByRole("navigation", { name: "設定の項目" });
+    expect(within(tabs).queryByRole("link", { name: "利用者管理" })).toBeNull();
+  });
+});
+
+describe("設定", () => {
+  it("サイドバーには設定だけを置き、利用者管理とダークモードは設定の中にある", async () => {
+    open(admin, "/settings");
+    const nav = await screen.findByRole("navigation", { name: "画面" });
     expect(within(nav).queryByRole("link", { name: /利用者/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /暗い表示/ })).toBeNull();
+    expect(screen.getByRole("link", { name: "設定" })).toBeTruthy();
+    const tabs = screen.getByRole("navigation", { name: "設定の項目" });
+    expect(within(tabs).getByRole("link", { name: "利用者管理" })).toBeTruthy();
+  });
+
+  it("ダークモードを切り替えられる", async () => {
+    const user = userEvent.setup();
+    open(admin, "/settings");
+    const toggle = await screen.findByRole("switch", { name: "ダークモード" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    await user.click(toggle);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(document.documentElement.dataset["color"]).toBe("dark");
+    await user.click(toggle);
+    expect(document.documentElement.dataset["color"]).toBe("light");
+  });
+
+  it("前の URL（/members）は利用者管理に移る", async () => {
+    open(admin, "/members");
+    expect(await screen.findByRole("list", { name: "利用者の一覧" })).toBeTruthy();
   });
 });
 
