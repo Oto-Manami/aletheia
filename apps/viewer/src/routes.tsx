@@ -3,6 +3,7 @@ import { useApp } from "./context.tsx";
 import { IntakeDetailPage } from "./pages/IntakeDetail.tsx";
 import { IntakePage } from "./pages/IntakeList.tsx";
 import { Layout } from "./pages/Layout.tsx";
+import { MembersPage } from "./pages/Members.tsx";
 import { PostPage } from "./pages/Post.tsx";
 import { SearchPage } from "./pages/Search.tsx";
 
@@ -33,6 +34,9 @@ export const routes: RouteObject[] = [
       },
       { path: "search", element: <SearchPage /> },
       { path: "posts/:id", element: <PostPage /> },
+      { path: "members", element: <MembersPage /> },
+      // 招待リンクで開いた後（登録済みなら最初の画面へ）
+      { path: "invite", element: <Navigate to="/" replace /> },
       { path: "*", element: <NotFound /> },
     ],
   },

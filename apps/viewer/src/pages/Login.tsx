@@ -11,7 +11,16 @@ export function Splash() {
   );
 }
 
-export function Login({ onSignIn, error }: { onSignIn: () => Promise<void>; error?: string }) {
+export function Login({
+  onSignIn,
+  error,
+  invited = false,
+}: {
+  onSignIn: () => Promise<void>;
+  error?: string;
+  /** 招待リンクで開いたか */
+  invited?: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   return (
@@ -21,7 +30,11 @@ export function Login({ onSignIn, error }: { onSignIn: () => Promise<void>; erro
           a
         </span>
         <h1 className="gate-title">aletheia にログイン</h1>
-        <p className="gate-lead">招待された人だけが使えるアーカイブです。</p>
+        <p className="gate-lead">
+          {invited
+            ? "招待を受けています。Discord でログインすると、利用者として登録されます。"
+            : "招待された人だけが使えるアーカイブです。"}
+        </p>
         <button
           type="button"
           className="button primary block"
@@ -66,6 +79,33 @@ export function NotRegistered({
           ID を伝えてください。
         </p>
         {discordUserId && <p className="gate-id">{discordUserId}</p>}
+        <button type="button" className="button" onClick={() => void onSignOut()}>
+          ログアウト
+        </button>
+      </div>
+    </main>
+  );
+}
+
+/** 招待リンクを使って登録しているところ。失敗したら理由を出す */
+export function AcceptingInvite({
+  error,
+  onSignOut,
+}: {
+  error: string | null;
+  onSignOut: () => Promise<void>;
+}) {
+  if (!error) return <Splash />;
+  return (
+    <main className="gate">
+      <div className="gate-card">
+        <span className="brand-mark large" aria-hidden="true">
+          a
+        </span>
+        <h1 className="gate-title">招待リンクを使えませんでした</h1>
+        <p className="gate-error" role="alert">
+          {error}
+        </p>
         <button type="button" className="button" onClick={() => void onSignOut()}>
           ログアウト
         </button>

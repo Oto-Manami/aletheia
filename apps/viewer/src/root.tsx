@@ -4,7 +4,8 @@ import { createClient, type Session } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserRouter, createHashRouter, RouterProvider } from "react-router";
 import { Ctx } from "./context.tsx";
-import { Login, NotRegistered, Splash } from "./pages/Login.tsx";
+import { clearInvite, pendingInvite } from "./invite.ts";
+import { AcceptingInvite, Login, NotRegistered, Splash } from "./pages/Login.tsx";
 import { routes } from "./routes.tsx";
 import { DemoSource } from "./source/demo.ts";
 import { LiveSource } from "./source/live.ts";
@@ -49,10 +50,38 @@ export function LiveRoot() {
   }, [supabase]);
 
   const userId = session?.user.id;
-  const [viewer] = useLoad(
+  const [viewer, reloadViewer] = useLoad(
     () => (userId ? source.viewer() : Promise.resolve(null)),
     [source, userId],
   );
+  // 招待リンクで開いた場合の値（決定記録 0019）。起動時に main.tsx が預けている
+  const [invite] = useState(pendingInvite);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const needsInvite =
+    invite !== null && viewer.status === "ready" && viewer.data !== null && !viewer.data.isMember;
+
+  // すでに登録のある人が招待リンクを開いた場合は、預けた値を捨てるだけ
+  useEffect(() => {
+    if (invite !== null && viewer.status === "ready" && viewer.data?.isMember) clearInvite();
+  }, [invite, viewer]);
+
+  useEffect(() => {
+    if (!needsInvite) return;
+    let alive = true;
+    source.acceptInvite(invite).then(
+      () => {
+        clearInvite();
+        if (alive) reloadViewer();
+      },
+      (e: unknown) => {
+        clearInvite();
+        if (alive) setInviteError(e instanceof Error ? e.message : String(e));
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [needsInvite, invite, source, reloadViewer]);
 
   const signIn = async () => {
     await supabase.auth.signInWithOAuth({
@@ -65,12 +94,13 @@ export function LiveRoot() {
   };
 
   if (session === undefined) return <Splash />;
-  if (!session) return <Login onSignIn={signIn} />;
+  if (!session) return <Login onSignIn={signIn} invited={invite !== null} />;
   if (viewer.status === "loading") return <Splash />;
   if (viewer.status === "error") {
     return <Login onSignIn={signIn} error={viewer.error.message} />;
   }
   if (!viewer.data) return <Splash />;
+  if (needsInvite) return <AcceptingInvite error={inviteError} onSignOut={signOut} />;
   if (!viewer.data.isMember) {
     return <NotRegistered discordUserId={viewer.data.discordUserId} onSignOut={signOut} />;
   }
