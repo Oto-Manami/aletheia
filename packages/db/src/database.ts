@@ -348,6 +348,9 @@ export interface EventParticipants {
   reviewed_at: Timestamp | null;
   reviewed_by: string | null;
   role: string;
+  /**
+   * 出演の状態: scheduled 予定・appeared 出演した・not_appearing 出ていない（休演を含む）・cancelled 中止
+   */
   status: string;
   updated_at: Generated<Timestamp>;
 }
