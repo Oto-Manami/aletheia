@@ -59,14 +59,17 @@ export function clipLabel(attributes: Record<string, unknown> | undefined): stri
   return typeof to === "number" ? `${mmss(from)}–${mmss(to)}` : `${mmss(from)}〜`;
 }
 
+/** 素材との紐付けの役割（設計書 語彙 6 章） */
 export const ROLE_LABELS: Record<string, string> = {
-  author: "書いた人",
-  mentions: "言及",
-  depicts: "写っている",
-  speaks: "話している",
-  appears: "出演",
-  covers: "取り上げた出来事",
-  part_of: "掲載・収録",
+  author: "発信者",
+  appears: "写っている・出演",
+  voice: "声が入っている",
+  mentioned: "言及",
+  subject: "主題",
+  about: "その出来事について",
+  part_of: "中身の一部",
+  wears: "身に着けている",
+  tagged: "分類",
 };
 
 export const TEXT_TYPE_LABELS: Record<string, string> = {
