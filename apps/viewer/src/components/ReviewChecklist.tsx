@@ -42,13 +42,13 @@ function linkSentence(from: string, role: string, target: string): React.ReactNo
   const f = <strong>{from}</strong>;
   const t = <strong>{target}</strong>;
   switch (role) {
-    case "depicts":
+    case "appears":
       return (
         <>
-          {f} に {t} が写っている
+          {f} に {t} が写っている・出演している
         </>
       );
-    case "mentions":
+    case "mentioned":
       return (
         <>
           {f} で {t} に触れている
@@ -60,28 +60,22 @@ function linkSentence(from: string, role: string, target: string): React.ReactNo
           {f} を書いたのは {t}
         </>
       );
-    case "speaks":
+    case "voice":
       return (
         <>
-          {f} で {t} が話している
+          {f} に {t} の声が入っている
         </>
       );
-    case "appears":
+    case "about":
       return (
         <>
-          {f} に {t} が出演している
-        </>
-      );
-    case "covers":
-      return (
-        <>
-          {f} は {t} を取り上げている
+          {f} は {t} についての素材
         </>
       );
     case "part_of":
       return (
         <>
-          {f} は {t} に含まれる
+          {f} は {t} の中身の一部
         </>
       );
     default:

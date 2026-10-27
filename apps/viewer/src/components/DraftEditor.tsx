@@ -18,7 +18,7 @@ const PRECISIONS = [
   { value: "year", label: "年まで" },
 ] as const;
 
-const ADDABLE_ROLES = ["mentions", "depicts", "appears", "covers", "part_of"] as const;
+const ADDABLE_ROLES = ["appears", "mentioned", "voice", "subject", "about", "part_of"] as const;
 
 function pathKey(path: (string | number)[]): string {
   return path.join(".");
@@ -475,7 +475,7 @@ export function AddLink({
   label?: string;
 }) {
   const [query, setQuery] = useState("");
-  const [role, setRole] = useState<string>("mentions");
+  const [role, setRole] = useState<string>("appears");
   const [found, setFound] = useState<RefLabel[] | null>(null);
   const queryId = useId();
   const roleId = useId();
