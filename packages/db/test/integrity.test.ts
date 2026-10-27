@@ -280,3 +280,28 @@ describe("複数ページのコンテンツ", () => {
       ).toBe("23503");
     }));
 });
+
+describe("出演の状態", () => {
+  it("出なかったことは not_appearing で記録し、休演（absent）は使わない", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      const episode = await insert(c, "public.events", {
+        kind: "episode",
+        starts_on: "2026-11-02",
+        date_precision: "day",
+      });
+      await insert(c, "public.event_participants", {
+        event_id: episode,
+        entity_id: d.person,
+        role: "regular",
+        status: "not_appearing",
+      });
+      expect(
+        await expectError(
+          c,
+          "insert into public.event_participants (event_id, entity_id, role, status) values ($1, $2, 'regular', 'absent')",
+          [episode, d.otherMember],
+        ),
+      ).toBe("23514");
+    }));
+});
