@@ -8,8 +8,8 @@
 import { readdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import pg from "pg";
-import { DUMP_FILE, runPgDump } from "./dump.ts";
-import { exportDatabase, type TableResult } from "./export.ts";
+import { appendFilteredRows, DUMP_FILE, runPgDump } from "./dump.ts";
+import { exportDatabase, ROW_FILTERS, type TableResult } from "./export.ts";
 import { MANIFEST_FILE, writeManifest } from "./manifest.ts";
 import { todayJst } from "./retention.ts";
 
@@ -60,6 +60,11 @@ export async function createBackup(options: CreateOptions): Promise<Summary> {
   if (options.pgDump !== false) {
     const path = join(options.outDir, DUMP_FILE);
     await runPgDump(options.connectionString, path, options.pgDump ?? "pg_dump");
+    for (const table of Object.keys(ROW_FILTERS)) {
+      const exportedTable = exported.tables.find((t) => t.table === table);
+      if (!exportedTable) continue;
+      await appendFilteredRows(path, table, join(options.outDir, exportedTable.file));
+    }
     dump = { file: DUMP_FILE, bytes: (await stat(path)).size };
     log(`SQL のダンプ: ${dump.bytes} バイト`);
   }
