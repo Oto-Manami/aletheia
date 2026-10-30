@@ -54,4 +54,9 @@ export class MemoryFileStore implements FileStore, FolderStore {
     }
     return Promise.resolve();
   }
+
+  remove(key: string): Promise<void> {
+    this.files.delete(key);
+    return Promise.resolve();
+  }
 }

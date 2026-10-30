@@ -196,4 +196,15 @@ export class DriveFileStore implements FileStore, FolderStore {
     // ごみ箱に移したフォルダを、次に置くときに使わないようにする
     this.folders.clear();
   }
+
+  async remove(key: string): Promise<void> {
+    const res = await this.fetch(`${API}/files/${encodeURIComponent(key)}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${await this.accessToken()}` },
+    });
+    // 既に無いものは消えたものとして扱う
+    if (!res.ok && res.status !== 404) {
+      throw new DriveError(res.status, `Drive のファイルを削除できません（${res.status}）`);
+    }
+  }
 }

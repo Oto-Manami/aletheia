@@ -9,15 +9,21 @@
 // | POST     | /intake/:id/approve       | 承認して事実の層に反映する         |
 // | POST     | /intake/:id/reject        | 却下する                           |
 // | POST     | /intake/:id/hold          | 保留する                           |
+// | POST     | /intake/:id/keep          | 振り分け: 残す（承認待ちへ）       |
+// | POST     | /intake/:id/no-mention    | 振り分け: 言及なし（記録して消す） |
+// | POST     | /intake/no-mention        | 振り分け: まとめて言及なし         |
 // | POST     | /resolve                  | URL から情報源と外部 ID を判定する |
 // | POST     | /files/staging            | ファイルを承認待ちの場所に保存する |
 
 import type { Database } from "@aletheia/db/client";
 import {
   approveIntake,
+  discardTriage,
   draftSchema,
   holdIntake,
   IntakeError,
+  isCheckedNoMention,
+  keepTriage,
   rejectIntake,
 } from "@aletheia/intake";
 import { Hono } from "hono";
@@ -27,7 +33,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { FileStore } from "@aletheia/storage";
 import { type Actor, type AuthEnv, type AuthOptions, requireAdmin } from "./auth.ts";
-import { finalizeApprovedFiles, moveRejectedFiles, stageFile } from "./files.ts";
+import { finalizeApprovedFiles, moveRejectedFiles, removeStagedFiles, stageFile } from "./files.ts";
 
 const uuid = z.uuid();
 
@@ -40,6 +46,8 @@ const createIntakeBody = z.object({
   /** 下書き。形の検査は承認のときに行う（人が補ってから承認する下書きもあるため） */
   draft: z.record(z.string(), z.unknown()),
   staged_files: z.array(z.unknown()).default([]),
+  /** 全件を取り込む経路は triage（振り分け待ち）から始める（設計書 決定記録 0021） */
+  state: z.enum(["triage", "pending"]).default("pending"),
 });
 
 const decisionBody = z.object({
@@ -49,6 +57,8 @@ const decisionBody = z.object({
 });
 
 const approveBody = decisionBody.extend({ draft: z.unknown().optional() });
+
+const bulkNoMentionBody = decisionBody.extend({ ids: z.array(uuid).min(1).max(200) });
 
 const resolveBody = z.object({ url: z.url() });
 
@@ -91,7 +101,7 @@ const stagingQuery = z.object({
 });
 
 const listQuery = z.object({
-  state: z.enum(["pending", "approved", "rejected", "on_hold"]).default("pending"),
+  state: z.enum(["triage", "pending", "approved", "rejected", "on_hold"]).default("pending"),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
@@ -237,6 +247,13 @@ export function createApp(
     if (!channel) {
       throw new HTTPException(422, { message: `情報源が登録されていません: ${body.channel_key}` });
     }
+    // 振り分けで「言及なし」と確認済みの記事は、取り込み直さない
+    if (await isCheckedNoMention(db, channel.id, body.external_id)) {
+      return c.json(
+        { error: "この記事は振り分けで「言及なし」と確認済みです", code: "checked_no_mention" },
+        409,
+      );
+    }
     const created = await db
       .insertInto("intake_items")
       .values({
@@ -247,6 +264,7 @@ export function createApp(
         captured_at: body.captured_at,
         draft: JSON.stringify(body.draft),
         staged_files: JSON.stringify(body.staged_files),
+        state: body.state,
       })
       .onConflict((oc) => oc.columns(["channel_id", "external_id", "route"]).doNothing())
       .returning("id")
@@ -292,6 +310,52 @@ export function createApp(
       return c.json({ ok: true, files: filesReport });
     });
   }
+
+  // 振り分け（設計書 決定記録 0021）
+  app.post("/intake/:id/keep", async (c) => {
+    const id = idParam(c.req.param("id"));
+    const body = await parseBody(c.req.raw, approveBody);
+    const reviewerId = reviewerOf(c.get("actor"), body);
+    await keepTriage(db, id, {
+      ...(reviewerId ? { reviewerId } : {}),
+      ...(body.draft !== undefined ? { draft: body.draft } : {}),
+      ...(body.note ? { note: body.note } : {}),
+    });
+    return c.json({ ok: true });
+  });
+
+  /** 言及なし: 記録して下書きを消してから、仮置きのファイルを消す（失敗してもやり直せるよう報告する） */
+  async function noMention(id: string, options: { reviewerId?: string; note?: string }) {
+    const { stagedFiles } = await discardTriage(db, id, options);
+    return files ? removeStagedFiles(files, stagedFiles) : null;
+  }
+
+  app.post("/intake/no-mention", async (c) => {
+    const body = await parseBody(c.req.raw, bulkNoMentionBody);
+    const reviewerId = reviewerOf(c.get("actor"), body);
+    const done: string[] = [];
+    const failed: { id: string; error: string }[] = [];
+    for (const id of body.ids) {
+      try {
+        await noMention(id, { ...(reviewerId ? { reviewerId } : {}) });
+        done.push(id);
+      } catch (e) {
+        failed.push({ id, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    return c.json({ done, failed });
+  });
+
+  app.post("/intake/:id/no-mention", async (c) => {
+    const id = idParam(c.req.param("id"));
+    const body = await parseBody(c.req.raw, decisionBody);
+    const reviewerId = reviewerOf(c.get("actor"), body);
+    const filesReport = await noMention(id, {
+      ...(reviewerId ? { reviewerId } : {}),
+      ...(body.note ? { note: body.note } : {}),
+    });
+    return c.json({ ok: true, files: filesReport });
+  });
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) {

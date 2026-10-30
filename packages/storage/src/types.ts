@@ -25,6 +25,8 @@ export interface FileStore {
   move(key: string, folder: FolderPath, name: string): Promise<StoredFile>;
   /** ファイルの中身を読む（完全性の照合に使う） */
   get(key: string): Promise<Uint8Array>;
+  /** ファイルを削除する。振り分けで「言及なし」にした仮置きのファイルだけに使う（設計書 決定記録 0021） */
+  remove(key: string): Promise<void>;
 }
 
 export interface FolderEntry {
