@@ -1226,3 +1226,98 @@ export function demoPosts(): PostView[] {
     },
   ];
 }
+
+// ---------------------------------------------------------------------------
+// 振り分け待ち（メンバーのブログ。設計書 決定記録 0021）。人物・記事はすべて架空
+// ---------------------------------------------------------------------------
+
+/** デモの対象の人物（言及の検出に使う別名） */
+export const DEMO_SUBJECT = {
+  id: PEOPLE.hanako,
+  name: "試験 花子",
+  aliases: ["花子", "はなちゃん", "はなこさん"],
+};
+
+export interface DemoTriage {
+  id: string;
+  channelName: string;
+  capturedAt: string;
+  draft: DraftInput;
+  /** 画像の ref → 色相（デモの画像を作る） */
+  photos: Record<string, number>;
+}
+
+function memberBlog(
+  n: number,
+  member: string,
+  date: string,
+  title: string,
+  text: string,
+  photos: number[],
+): DemoTriage {
+  const refs = photos.map((_, i) => `photo-${i + 1}`);
+  return {
+    id: `f1000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+    channelName: `${member}のブログ（架空）`,
+    capturedAt: `${date}T23:40:00+09:00`,
+    draft: {
+      version: 1,
+      post: {
+        title,
+        published_at: `${date}T21:00:00+09:00`,
+        url: `https://example.com/blog/${n}`,
+        classification: "public",
+      },
+      assets: [
+        { ref: "body", media_type: "text", texts: [{ text_type: "body", content: text }] },
+        ...refs.map((ref) => ({ ref, media_type: "image" as const })),
+      ],
+    },
+    photos: Object.fromEntries(refs.map((r, i) => [r, photos[i]!])),
+  };
+}
+
+export function demoTriage(): DemoTriage[] {
+  return [
+    memberBlog(
+      1,
+      "見本 さくら",
+      "2026-10-20",
+      "リハーサルの日",
+      "今日はリハーサルでした。休憩中に、はなちゃんがお菓子を分けてくれて嬉しかったです。帰りは試験 花子ちゃんと駅まで一緒に歩きました。明日も頑張ります！",
+      [200, 32, 160],
+    ),
+    memberBlog(
+      2,
+      "仮名 ゆい",
+      "2026-10-21",
+      "秋のお散歩",
+      "近所の公園を散歩しました。落ち葉がきれいで、写真をたくさん撮りました。最近はパン屋さん巡りにはまっています。おすすめがあったら教えてください。",
+      [90, 30],
+    ),
+    memberBlog(
+      3,
+      "見本 さくら",
+      "2026-10-22",
+      "撮影でした",
+      "雑誌の撮影でした。衣装がとてもかわいかったです。詳しくは発売日をお楽しみに！",
+      [280, 340, 20, 200],
+    ),
+    memberBlog(
+      4,
+      "仮名 ゆい",
+      "2026-10-23",
+      "ラジオありがとうございました",
+      "ラジオを聴いてくださった皆さん、ありがとうございました。花子が送ってくれたメッセージに笑ってしまいました。",
+      [],
+    ),
+    memberBlog(
+      5,
+      "試験 2 期生",
+      "2026-10-24",
+      "ご報告",
+      "明日の配信のお知らせです。お時間ある方はぜひ見てください。",
+      [120],
+    ),
+  ];
+}

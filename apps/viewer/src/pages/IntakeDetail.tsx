@@ -20,6 +20,7 @@ import { useLoad } from "../use-load.ts";
 import { useLayout } from "./Layout.tsx";
 
 const STATE_LABELS = {
+  triage: "振り分け待ち",
   pending: "承認待ち",
   on_hold: "保留",
   approved: "承認済み",

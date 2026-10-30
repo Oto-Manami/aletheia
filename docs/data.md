@@ -6,24 +6,24 @@
 
 ## 素材そのもの（`assets`）
 
-| まとまり       | 項目               | キー                                     | 内容                                                                                                              |
-| -------------- | ------------------ | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| 何の素材か     | 種類               | `media_type`                             | `image` 画像・`video` 動画・`audio` 音声・`text` 文章・`webpage` Web ページ（1 ファイルの HTML）・`document` 文書 |
-|                | 題名               | `title`                                  |                                                                                                                   |
-|                | 説明               | `description`                            |                                                                                                                   |
-|                | 投稿の中の順番     | `position`                               | 投稿の中で何番目か。元の並びのまま見せるために使う                                                                |
-|                | 種類ごとの属性     | `attributes`                             | 誌面のページ（`page_from`・`page_to`・`page_label`）、映像の切り出し（`clip_from`・`clip_to`、秒）                |
-| いつのものか   | 日付と精度         | `content_date`・`content_date_precision` | 投稿日と違うとき（撮影日など）。精度は年・月・日                                                                  |
-|                | 日時               | `content_at`                             | 時刻まで分かるとき。JST                                                                                           |
-| ファイルの性質 | SHA-256            | `sha256`                                 | 完全に同じファイルを見つける。同じファイルは 1 つだけ保存する                                                     |
-|                | 見た目のハッシュ   | `phash`                                  | 画像・動画の似たものを見つける（転載・逆引き）                                                                    |
-|                | 形式・大きさ       | `mime_type`・`byte_size`                 |                                                                                                                   |
-|                | 縦横・長さ         | `width`・`height`・`duration_ms`         |                                                                                                                   |
-|                | 元のファイル名     | `original_filename`                      |                                                                                                                   |
-| 保存の扱い     | ファイルの保存     | `file_policy`                            | `stored` 保存している・`reference_only` 同じ内容のまとまりの代表に任せ、記録と元の URL だけを持つ                 |
-|                | 同じ内容のまとまり | `content_group_id`                       | 複数の SNS への同時投稿、生配信とアーカイブ、再掲載など                                                           |
-|                | 整理の状態         | `status`                                 | `organized`・`archived`                                                                                           |
-| 公開区分       | 公開・非公開       | `classification`                         | `public`・`private`。既定は `private`                                                                             |
+| まとまり       | 項目               | キー                                     | 内容                                                                                                                                                             |
+| -------------- | ------------------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 何の素材か     | 種類               | `media_type`                             | `image` 画像・`video` 動画・`audio` 音声・`text` 文章・`webpage` Web ページ（1 ファイルの HTML）・`document` 文書                                                |
+|                | 題名               | `title`                                  |                                                                                                                                                                  |
+|                | 説明               | `description`                            |                                                                                                                                                                  |
+|                | 投稿の中の順番     | `position`                               | 投稿の中で何番目か。元の並びのまま見せるために使う                                                                                                               |
+|                | 種類ごとの属性     | `attributes`                             | 誌面のページ（`page_from`・`page_to`・`page_label`）、映像の切り出し（`clip_from`・`clip_to`、秒）、元の画像の URL（`source_url`。振り分けの画面で画像を見せる） |
+| いつのものか   | 日付と精度         | `content_date`・`content_date_precision` | 投稿日と違うとき（撮影日など）。精度は年・月・日                                                                                                                 |
+|                | 日時               | `content_at`                             | 時刻まで分かるとき。JST                                                                                                                                          |
+| ファイルの性質 | SHA-256            | `sha256`                                 | 完全に同じファイルを見つける。同じファイルは 1 つだけ保存する                                                                                                    |
+|                | 見た目のハッシュ   | `phash`                                  | 画像・動画の似たものを見つける（転載・逆引き）                                                                                                                   |
+|                | 形式・大きさ       | `mime_type`・`byte_size`                 |                                                                                                                                                                  |
+|                | 縦横・長さ         | `width`・`height`・`duration_ms`         |                                                                                                                                                                  |
+|                | 元のファイル名     | `original_filename`                      |                                                                                                                                                                  |
+| 保存の扱い     | ファイルの保存     | `file_policy`                            | `stored` 保存している・`reference_only` 同じ内容のまとまりの代表に任せ、記録と元の URL だけを持つ                                                                |
+|                | 同じ内容のまとまり | `content_group_id`                       | 複数の SNS への同時投稿、生配信とアーカイブ、再掲載など                                                                                                          |
+|                | 整理の状態         | `status`                                 | `organized`・`archived`                                                                                                                                          |
+| 公開区分       | 公開・非公開       | `classification`                         | `public`・`private`。既定は `private`                                                                                                                            |
 
 ## 投稿から受け継ぐ情報（`posts`・`channels`）
 

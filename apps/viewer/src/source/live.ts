@@ -5,6 +5,7 @@
 import type { DraftInput } from "@aletheia/intake/draft";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
+import { triageItemOf } from "./triage.ts";
 import {
   type ArchiveSource,
   type AssetView,
@@ -22,6 +23,7 @@ import {
   type Role,
   type SearchHit,
   SourceError,
+  type TriageItem,
   type Viewer,
 } from "./types.ts";
 import { INVITE_ERRORS } from "../invite.ts";
@@ -450,5 +452,32 @@ export class LiveSource implements ArchiveSource {
 
   async removeMember(discordUserId: string): Promise<void> {
     rpcRows(await this.supabase.rpc("remove_member", { member_discord_user_id: discordUserId }));
+  }
+
+  async listTriage(): Promise<TriageItem[]> {
+    const { items } = await this.api<{ items: IntakeRow[] }>(
+      "GET",
+      `/intake?${new URLSearchParams({ state: "triage", limit: "200" }).toString()}`,
+    );
+    return items.map((i) =>
+      triageItemOf({
+        id: i.id,
+        channelName: i.channel_name,
+        capturedAt: i.captured_at,
+        draft: i.draft,
+      }),
+    );
+  }
+
+  async keepTriage(id: string, draft: DraftInput): Promise<void> {
+    await this.api("POST", `/intake/${encodeURIComponent(id)}/keep`, { draft });
+  }
+
+  discardTriage(ids: string[]) {
+    return this.api<{ done: string[]; failed: { id: string; error: string }[] }>(
+      "POST",
+      "/intake/no-mention",
+      { ids },
+    );
   }
 }

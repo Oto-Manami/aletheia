@@ -1,4 +1,4 @@
-import { Inbox, LogOut, Menu, Search, Settings, X } from "lucide-react";
+import { Filter, Inbox, LogOut, Menu, Search, Settings, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { NavLink, Outlet, useOutletContext } from "react-router";
 import { useApp } from "../context.tsx";
@@ -38,6 +38,11 @@ export function Layout() {
     [source, viewer.isAdmin, version],
   );
   const pendingCount = pending.status === "ready" ? pending.data.length : null;
+  const [triage] = useLoad(
+    () => (viewer.isAdmin ? source.listTriage() : Promise.resolve([])),
+    [source, viewer.isAdmin, version],
+  );
+  const triageCount = triage.status === "ready" ? triage.data.length : null;
   const close = () => setMenuOpen(false);
 
   return (
@@ -70,6 +75,17 @@ export function Layout() {
               {pendingCount !== null && pendingCount > 0 && (
                 <span className="count" aria-label={`承認待ち ${pendingCount} 件`}>
                   {pendingCount}
+                </span>
+              )}
+            </NavLink>
+          )}
+          {viewer.isAdmin && (
+            <NavLink to="/triage" className="nav-item" onClick={close}>
+              <Filter size={16} aria-hidden="true" />
+              振り分け
+              {triageCount !== null && triageCount > 0 && (
+                <span className="count" aria-label={`振り分け待ち ${triageCount} 件`}>
+                  {triageCount}
                 </span>
               )}
             </NavLink>

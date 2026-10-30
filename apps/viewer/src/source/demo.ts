@@ -2,15 +2,20 @@
 
 import { type DraftInput, draftSchema } from "@aletheia/intake/draft";
 import {
+  DEMO_SUBJECT,
   type DemoIntake,
+  type DemoTriage,
   demoIntakes,
   demoPageHtml,
   demoPosts,
   demoSnsPostHtml,
+  demoTriage,
   placeholderImage,
   REFS,
 } from "./demo-data.ts";
+import { proposeSubjectLinks } from "@aletheia/intake/mentions";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
+import { triageItemOf } from "./triage.ts";
 import {
   type ArchiveSource,
   type Decision,
@@ -25,6 +30,7 @@ import {
   type Role,
   type SearchHit,
   SourceError,
+  type TriageItem,
 } from "./types.ts";
 
 function escapeHtml(s: string): string {
@@ -65,6 +71,11 @@ export class DemoSource implements ArchiveSource {
   private previews = new Map<string, Record<string, string>>();
   private pageHtml = new Map<string, Record<string, string>>();
   private invites: (InviteView & { token: string })[] = [];
+  private triage: DemoTriage[] = demoTriage().map((t) => ({
+    ...t,
+    // 取り込みのときと同じ規則で、言及と画像の確認の候補を付ける
+    draft: proposeSubjectLinks(t.draft, DEMO_SUBJECT),
+  }));
   private members: MemberView[] = [
     {
       discordUserId: "100000000000000001",
@@ -318,5 +329,48 @@ export class DemoSource implements ArchiveSource {
       (m) => !(m.discordUserId === discordUserId && m.role === "viewer"),
     );
     if (this.members.length === before) throw new SourceError("外せる閲覧者がいません");
+  }
+
+  async listTriage(): Promise<TriageItem[]> {
+    await this.delay();
+    return this.triage.map((t) =>
+      triageItemOf({
+        id: t.id,
+        channelName: t.channelName,
+        capturedAt: t.capturedAt,
+        draft: t.draft,
+        previews: Object.fromEntries(
+          Object.entries(t.photos).map(([ref, hue]) => [ref, placeholderImage(ref, hue)]),
+        ),
+      }),
+    );
+  }
+
+  async keepTriage(id: string, draft: DraftInput): Promise<void> {
+    await this.delay();
+    const item = this.triage.find((t) => t.id === id);
+    if (!item) throw new SourceError("振り分け待ちの記事が見つかりません", 404);
+    this.triage = this.triage.filter((t) => t.id !== id);
+    this.intakes.push({
+      id,
+      channelKey: "blog:member",
+      channelName: item.channelName,
+      externalId: id.slice(-4),
+      route: "fetch",
+      capturedAt: item.capturedAt,
+      state: "pending",
+      reviewNote: null,
+      draft,
+    });
+  }
+
+  async discardTriage(ids: string[]) {
+    await this.delay();
+    const done = ids.filter((id) => this.triage.some((t) => t.id === id));
+    this.triage = this.triage.filter((t) => !ids.includes(t.id));
+    return {
+      done,
+      failed: ids.filter((id) => !done.includes(id)).map((id) => ({ id, error: "見つかりません" })),
+    };
   }
 }
