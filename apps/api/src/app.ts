@@ -6,6 +6,7 @@
 // | GET      | /intake                   | 下書きの一覧（既定は承認待ち）     |
 // | GET      | /intake/:id               | 下書き 1 件                        |
 // | POST     | /intake                   | 下書きを作る                       |
+// | POST     | /intake/known             | 取り込み済み・確認済みの投稿を返す |
 // | POST     | /intake/:id/approve       | 承認して事実の層に反映する         |
 // | POST     | /intake/:id/reject        | 却下する                           |
 // | POST     | /intake/:id/hold          | 保留する                           |
@@ -17,14 +18,17 @@
 
 import type { Database } from "@aletheia/db/client";
 import {
+  applyCollectionRules,
   approveIntake,
   discardTriage,
+  type DraftInput,
   draftSchema,
   holdIntake,
   IntakeError,
   isCheckedNoMention,
   keepTriage,
   rejectIntake,
+  type Subject,
 } from "@aletheia/intake";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -46,8 +50,16 @@ const createIntakeBody = z.object({
   /** 下書き。形の検査は承認のときに行う（人が補ってから承認する下書きもあるため） */
   draft: z.record(z.string(), z.unknown()),
   staged_files: z.array(z.unknown()).default([]),
-  /** 全件を取り込む経路は triage（振り分け待ち）から始める（設計書 決定記録 0021） */
+  /**
+   * 全件を取り込む経路は triage（振り分け待ち）から始める（設計書 決定記録 0021）。
+   * triage で送られた下書きには、発信者と言及の候補を規則で足す。発信者が蓄積対象の人物なら承認待ちから始める
+   */
   state: z.enum(["triage", "pending"]).default("pending"),
+});
+
+const knownBody = z.object({
+  channel_key: z.string().min(1),
+  external_ids: z.array(z.string().min(1)).min(1).max(500),
 });
 
 const decisionBody = z.object({
@@ -237,11 +249,60 @@ export function createApp(
     return c.json({ item, draft_valid: check.success, issues: check.error?.issues ?? [] });
   });
 
+  /** 蓄積対象の人物（entities.attributes.archive_subject）。別名はデータから読む */
+  async function archiveSubjects(): Promise<Subject[]> {
+    const rows = await db
+      .selectFrom("entities")
+      .select(["id", "canonical_name", "aliases"])
+      .where(sql<boolean>`attributes -> 'archive_subject' = 'true'::jsonb`)
+      .where("merged_into", "is", null)
+      .orderBy("canonical_name")
+      .execute();
+    return rows.map((r) => ({ id: r.id, name: r.canonical_name, aliases: r.aliases }));
+  }
+
+  // 取り込み済み（下書きがある・投稿になった）か、振り分けで確認済みの外部 ID を返す。
+  // 収集の処理が、ファイルを保存する前に飛ばすために使う
+  app.post("/intake/known", async (c) => {
+    const body = await parseBody(c.req.raw, knownBody);
+    const channel = await db
+      .selectFrom("channels")
+      .select("id")
+      .where("key", "=", body.channel_key)
+      .executeTakeFirst();
+    if (!channel) {
+      throw new HTTPException(422, { message: `情報源が登録されていません: ${body.channel_key}` });
+    }
+    const ids = [...new Set(body.external_ids)];
+    const rows = await db
+      .selectFrom("intake_items")
+      .select("external_id")
+      .where("channel_id", "=", channel.id)
+      .where("external_id", "in", ids)
+      .union(
+        db
+          .selectFrom("posts")
+          .select("external_id")
+          .where("channel_id", "=", channel.id)
+          .where("external_id", "in", ids),
+      )
+      .union(
+        db
+          .selectFrom("coverage_checks")
+          .select(sql<string>`external_id`.as("external_id"))
+          .where("channel_id", "=", channel.id)
+          .where("external_id", "in", ids),
+      )
+      .execute();
+    const known = new Set(rows.map((r) => r.external_id));
+    return c.json({ known: ids.filter((id) => known.has(id)) });
+  });
+
   app.post("/intake", async (c) => {
     const body = await parseBody(c.req.raw, createIntakeBody);
     const channel = await db
       .selectFrom("channels")
-      .select("id")
+      .select(["id", "owner_entity_id"])
       .where("key", "=", body.channel_key)
       .executeTakeFirst();
     if (!channel) {
@@ -254,6 +315,16 @@ export function createApp(
         409,
       );
     }
+    let draft: unknown = body.draft;
+    let state = body.state;
+    if (body.state === "triage") {
+      const ruled = applyCollectionRules(body.draft as DraftInput, {
+        ownerId: channel.owner_entity_id,
+        subjects: await archiveSubjects(),
+      });
+      draft = ruled.draft;
+      state = ruled.triage ? "triage" : "pending";
+    }
     const created = await db
       .insertInto("intake_items")
       .values({
@@ -262,9 +333,9 @@ export function createApp(
         route: body.route,
         route_ref: body.route_ref ?? null,
         captured_at: body.captured_at,
-        draft: JSON.stringify(body.draft),
+        draft: JSON.stringify(draft),
         staged_files: JSON.stringify(body.staged_files),
-        state: body.state,
+        state,
       })
       .onConflict((oc) => oc.columns(["channel_id", "external_id", "route"]).doNothing())
       .returning("id")
@@ -272,9 +343,9 @@ export function createApp(
     if (!created) {
       throw new HTTPException(409, { message: "同じ経路から、同じ投稿の下書きが既にあります" });
     }
-    const check = draftSchema.safeParse(body.draft);
+    const check = draftSchema.safeParse(draft);
     return c.json(
-      { id: created.id, draft_valid: check.success, issues: check.error?.issues ?? [] },
+      { id: created.id, state, draft_valid: check.success, issues: check.error?.issues ?? [] },
       201,
     );
   });

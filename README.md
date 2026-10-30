@@ -24,9 +24,9 @@
   <img src="docs/images/architecture-light.svg" alt="閲覧サイト（Vercel）はログインした人の権限のまま Supabase を読み、承認などの書き込みは API に送る。Discord の入口と承認カードは Bot が扱い、Bot も API に下書きと承認を送る。API は Supabase に書き込み、ファイル実体を Google Drive に置く。バックアップは GitHub Actions が読み取り専用で Supabase を読み、毎日 Drive・毎週 非公開の GitHub に置く。ファンサイトは予定で、公開用のビューから public かつ承認済みのものだけで作る" width="900">
 </picture>
 
-- **書き込みの窓口は API の 1 か所**: 閲覧サイトも Bot も、承認などの書き込みは API を通す
+- **書き込みの窓口は API の 1 か所**: 閲覧サイトも Bot も、自動の収集の処理（非公開のリポジトリに置く）も、下書き・承認などの書き込みは API を通す
 - **読み取りはデータベースが守る**: 閲覧サイトはログインした人の権限のまま読み、見える範囲は行レベルセキュリティが決める
-- **費用は無料の範囲**: Supabase・Vercel・Google Drive・GitHub Actions の無料枠で動く。API は当面、運営者の PC で動かす
+- **費用は無料の範囲**: Supabase・Vercel・Google Drive・GitHub Actions の無料枠で動く。API は当面、運営者の手元のサーバー用の機械で動かす
 
 1 つの素材（アセット）が持つ情報の一覧は [docs/data.md](docs/data.md)。
 

@@ -26,6 +26,6 @@ const app = createApp(
   { viewerOrigins: config.VIEWER_ORIGINS },
 );
 
-serve({ fetch: app.fetch, port: config.PORT }, (info) => {
-  console.log(`API を起動しました: http://localhost:${info.port}`);
+serve({ fetch: app.fetch, port: config.PORT, hostname: config.HOST }, (info) => {
+  console.log(`API を起動しました: http://${config.HOST}:${info.port}`);
 });

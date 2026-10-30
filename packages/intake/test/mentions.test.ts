@@ -26,6 +26,12 @@ describe("別名の照合", () => {
     ]);
   });
 
+  it("空白の有無を問わず、一致した範囲の前後の空白は含めない", () => {
+    const text = "試験花子 さんと、試験　花子と";
+    const matches = findAliases(text, [hanako.name]);
+    expect(matches.map((m) => text.slice(m.start, m.end))).toEqual(["試験花子", "試験　花子"]);
+  });
+
   it("重なったときは長い別名を採る", () => {
     const matches = findAliases("試験 花子です", [hanako.name, "花子"]);
     expect(matches.map((m) => m.alias)).toEqual(["試験 花子"]);

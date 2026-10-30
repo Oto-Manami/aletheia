@@ -1,7 +1,8 @@
 // 言及の検出（設計書 決定記録 0021）
 //
 // 対象の人物の別名（名前・愛称・呼び方）を、本文と照合する規則。AI は使わない（決定記録 0011）。
-// - 照合の前に、全角・半角（NFKC）、大文字・小文字、カタカナ・ひらがなの違いをそろえる
+// - 照合の前に、全角・半角（NFKC）、大文字・小文字、カタカナ・ひらがなの違いをそろえ、空白を除く
+//   （「大野 愛実」と「大野愛実」を同じとみなす）
 // - 一致した場所は元の本文の位置で返す（画面で印を付けるため）
 // - 同じ場所に複数の別名が重なるときは、長いほうを採る
 // - 画像だけの登場は規則では見つけられない。画像ごとに「写っているか」の確認の候補だけを作る
@@ -25,29 +26,41 @@ export interface AliasMatch {
 }
 
 function foldChar(ch: string): string {
-  const n = ch.normalize("NFKC").toLowerCase();
+  if (/\s/u.test(ch)) return "";
+  const n = ch.normalize("NFKC").toLowerCase().replace(/\s/gu, "");
   // カタカナ（ァ〜ヶ）をひらがなにそろえる
   return n.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
 }
 
-/** 照合用にそろえた文字列と、そろえた後の各文字が元の何文字目かの対応 */
-export function foldForMatch(text: string): { folded: string; origin: number[] } {
+/**
+ * 照合用にそろえた文字列と、そろえた後の各文字が元の本文のどこから（origin）どこまで（originEnd）に
+ * 当たるかの対応
+ */
+export function foldForMatch(text: string): {
+  folded: string;
+  origin: number[];
+  originEnd: number[];
+} {
   let folded = "";
   const origin: number[] = [];
+  const originEnd: number[] = [];
   let i = 0;
   for (const ch of text) {
     const f = foldChar(ch);
-    for (let k = 0; k < f.length; k++) origin.push(i);
+    for (let k = 0; k < f.length; k++) {
+      origin.push(i);
+      originEnd.push(i + ch.length);
+    }
     folded += f;
     i += ch.length;
   }
   origin.push(i);
-  return { folded, origin };
+  return { folded, origin, originEnd };
 }
 
 /** 本文の中の別名をすべて探す。重なったときは長い別名を採る */
 export function findAliases(text: string, aliases: readonly string[]): AliasMatch[] {
-  const { folded, origin } = foldForMatch(text);
+  const { folded, origin, originEnd } = foldForMatch(text);
   const candidates: AliasMatch[] = [];
   const unique = [...new Set(aliases.map((a) => a.trim()).filter(Boolean))];
   for (const alias of unique) {
@@ -57,7 +70,7 @@ export function findAliases(text: string, aliases: readonly string[]): AliasMatc
     for (;;) {
       const at = folded.indexOf(key, from);
       if (at < 0) break;
-      candidates.push({ alias, start: origin[at]!, end: origin[at + key.length]! });
+      candidates.push({ alias, start: origin[at]!, end: originEnd[at + key.length - 1]! });
       from = at + 1;
     }
   }

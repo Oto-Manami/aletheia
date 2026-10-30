@@ -8,6 +8,8 @@ const schema = z.object({
   /** 閲覧サイトのログインを確かめる公開鍵の場所（Supabase の JWKS） */
   SUPABASE_JWKS_URL: z.url(),
   PORT: z.coerce.number().int().positive().default(8787),
+  /** 待ち受けるアドレス。既定は同じ機械からだけ（他の機械からは SSH のポート転送などで届かせる） */
+  HOST: z.string().min(1).default("127.0.0.1"),
   /** ブラウザから API を呼んでよい閲覧サイトの URL。カンマ区切り（例: https://viewer.example.com） */
   VIEWER_ORIGINS: z
     .string()
