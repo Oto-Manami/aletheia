@@ -17,6 +17,9 @@ describe("手元のフォルダ", () => {
       expect(moved.key).toBe("message/m/2026-10/x_01.jpg");
       expect(new TextDecoder().decode(await store.get(moved.key))).toBe("image-bytes");
       await expect(store.get("../outside")).rejects.toThrow();
+      await store.remove(moved.key);
+      await expect(store.get(moved.key)).rejects.toThrow();
+      await store.remove(moved.key);
       // 同じ名前のファイルは上書きしない
       await store.put(["a"], "b.jpg", bytes, "image/jpeg");
       await expect(store.put(["a"], "b.jpg", bytes, "image/jpeg")).rejects.toThrow();
@@ -114,6 +117,12 @@ function fakeDrive() {
       const id = decodeURIComponent(url.pathname.split("/").pop() ?? "");
       return json({ parents: parents.get(id) ?? [] });
     }
+    if (method === "DELETE") {
+      const id = decodeURIComponent(url.pathname.split("/").pop()!);
+      if (!parents.has(id)) return new Response(null, { status: 404 });
+      parents.delete(id);
+      return new Response(null, { status: 204 });
+    }
     if (method === "PATCH" && body.includes('"trashed":true')) {
       const id = decodeURIComponent(url.pathname.split("/").pop()!);
       trashed.add(id);
@@ -198,6 +207,16 @@ describe("Google Drive", () => {
       "application/gzip",
     );
     expect(fake.parents.get(again.key)).not.toEqual([old.key]);
+  });
+
+  it("ファイルを削除でき、既に無いファイルの削除は失敗にしない", async () => {
+    const fake = fakeDrive();
+    const store = drive(fake);
+    const { key } = await store.put(["_staging"], "a.jpg", bytes, "image/jpeg");
+    await store.remove(key);
+    expect(fake.parents.has(key)).toBe(false);
+    await store.remove(key);
+    expect(fake.calls.filter((c) => c.method === "DELETE")).toHaveLength(2);
   });
 
   it("検索式に入る名前の ' と \\ を逃がす", async () => {

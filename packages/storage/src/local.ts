@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { FileStore, FolderPath, StoredFile } from "./types.ts";
 
@@ -39,5 +39,9 @@ export class LocalFileStore implements FileStore {
 
   async get(key: string): Promise<Uint8Array> {
     return new Uint8Array(await readFile(this.pathOf(key)));
+  }
+
+  async remove(key: string): Promise<void> {
+    await rm(this.pathOf(key), { force: true });
   }
 }

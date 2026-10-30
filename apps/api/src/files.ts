@@ -196,3 +196,22 @@ export async function moveRejectedFiles(
   }
   return report;
 }
+
+/** 振り分けで「言及なし」にした下書きの、仮置きのファイルを削除する（設計書 決定記録 0021） */
+export async function removeStagedFiles(
+  files: FileStore,
+  stagedFiles: unknown,
+): Promise<FileReport> {
+  const report: FileReport = { stored: 0, duplicates: 0, failed: [] };
+  for (const file of stagedFilesOf(stagedFiles, files.provider)) {
+    try {
+      await files.remove(file.storage_key);
+    } catch (e) {
+      report.failed.push({
+        storage_key: file.storage_key,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  return report;
+}
