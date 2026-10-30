@@ -6,7 +6,7 @@
 import type { DraftInput } from "@aletheia/intake/draft";
 
 export type Classification = "public" | "private";
-export type IntakeState = "pending" | "on_hold" | "approved" | "rejected";
+export type IntakeState = "triage" | "pending" | "on_hold" | "approved" | "rejected";
 export type Decision = "approve" | "reject" | "hold";
 
 /** 承認待ちなどの一覧の 1 行 */
@@ -139,6 +139,35 @@ export interface MemberView {
   createdAt: string;
 }
 
+/** 振り分けの画像 1 枚。appears は「本人が写っている」を選んだか */
+export interface TriageImage {
+  ref: string;
+  previewUrl: string | null;
+  appears: boolean;
+}
+
+/** 本文の抜粋。marks は抜粋の中で別名が一致した位置 */
+export interface TriageSnippet {
+  text: string;
+  marks: [number, number][];
+}
+
+/** 振り分け待ちの記事 1 本（設計書 決定記録 0021） */
+export interface TriageItem {
+  id: string;
+  channelName: string;
+  capturedAt: string;
+  title: string | null;
+  publishedAt: string | null;
+  url: string | null;
+  /** 本文で見つかった別名の数 */
+  mentionCount: number;
+  aliases: string[];
+  snippets: TriageSnippet[];
+  images: TriageImage[];
+  draft: DraftInput;
+}
+
 export interface ArchiveSource {
   /** デモ版かどうか（画面に表示する） */
   readonly demo: boolean;
@@ -156,6 +185,14 @@ export interface ArchiveSource {
   findRefs(query: string): Promise<RefLabel[]>;
   search(query: string): Promise<SearchHit[]>;
   getPost(id: string): Promise<PostView>;
+  /** 振り分け待ちの記事（決定記録 0021） */
+  listTriage(): Promise<TriageItem[]>;
+  /** 残す。写っている画像の選択などを直した下書きを送り、承認待ちへ進める */
+  keepTriage(id: string, draft: DraftInput): Promise<void>;
+  /** 言及なしにする（まとめて）。確認済みの記録だけを残し、下書きと仮置きのファイルを消す */
+  discardTriage(
+    ids: string[],
+  ): Promise<{ done: string[]; failed: { id: string; error: string }[] }>;
   /** 招待リンクを作る（管理者だけ。決定記録 0019） */
   createInvite(note?: string): Promise<CreatedInvite>;
   listInvites(): Promise<InviteView[]>;

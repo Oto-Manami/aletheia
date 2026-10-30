@@ -7,6 +7,7 @@ import { MembersPage } from "./pages/Members.tsx";
 import { DisplaySettings, SettingsPage } from "./pages/Settings.tsx";
 import { PostPage } from "./pages/Post.tsx";
 import { SearchPage } from "./pages/Search.tsx";
+import { TriagePage } from "./pages/Triage.tsx";
 
 function Home() {
   const { viewer } = useApp();
@@ -33,6 +34,7 @@ export const routes: RouteObject[] = [
         element: <IntakePage />,
         children: [{ path: ":id", element: <IntakeDetailPage /> }],
       },
+      { path: "triage", element: <TriagePage /> },
       { path: "search", element: <SearchPage /> },
       { path: "posts/:id", element: <PostPage /> },
       {

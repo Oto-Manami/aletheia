@@ -1484,6 +1484,180 @@ select:disabled {
   overflow-wrap: anywhere;
 }
 
+/* ---------------------------------------------------------------- 振り分け */
+
+.triage-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.triage-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.triage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.triage-card {
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+  border-left: 3px solid var(--border);
+}
+
+.triage-card.has-signal {
+  border-left-color: var(--count-ink);
+}
+
+.triage-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.triage-head input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  flex: none;
+}
+
+.triage-title {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.triage-source {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.triage-name {
+  color: var(--ink);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.triage-link {
+  color: var(--muted);
+  display: inline-flex;
+}
+
+.tag.triage-mention {
+  background: var(--count-bg);
+  color: var(--count-ink);
+}
+
+.tag.triage-none {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  color: var(--muted);
+}
+
+.triage-snippet {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.triage-snippet mark {
+  background: var(--warn-bg);
+  color: var(--ink);
+  border-bottom: 2px solid var(--warn-border);
+  padding: 0 1px;
+}
+
+.triage-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.triage-image {
+  appearance: none;
+  position: relative;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  background: var(--subtle);
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.triage-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0.85;
+}
+
+.triage-image.is-on {
+  border-color: var(--count-ink);
+}
+
+.triage-image.is-on img {
+  opacity: 1;
+}
+
+.triage-image:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.triage-image-empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.triage-image-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--count-ink);
+  color: #fff;
+}
+
+.triage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.triage-picked {
+  font-size: 12px;
+  margin-right: auto;
+}
+
 /* ---------------------------------------------------------------- 設定 */
 
 .settings-tabs {
