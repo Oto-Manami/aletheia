@@ -7,6 +7,7 @@ import { gunzipSync } from "node:zlib";
 import { seed } from "@aletheia/db/testing/fixtures";
 import pg from "pg";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { appendFilteredRows } from "../src/dump.ts";
 import { exportDatabase, tableFile } from "../src/export.ts";
 
 const pool = new pg.Pool({
@@ -31,8 +32,11 @@ async function withSeed(
   try {
     await c.query("begin");
     const d = await seed(c);
-    await c.query(`grant ${role} to current_user`);
-    await c.query(`set local role ${role}`);
+    // owner はマイグレーションを適用したロールのまま（書き込みも行う）
+    if (role !== "owner") {
+      await c.query(`grant ${role} to current_user`);
+      await c.query(`set local role ${role}`);
+    }
     await fn(c, d);
   } finally {
     await c.query("rollback");
@@ -113,5 +117,47 @@ describe("表ごとの JSON Lines", () => {
     withSeed("aletheia_backup", async (c) => {
       await exportDatabase(c, dir, { ownTransaction: false });
       await expect(exportDatabase(c, dir, { ownTransaction: false })).rejects.toThrow(/EEXIST/);
+    }));
+});
+
+describe("振り分け待ちの下書き", () => {
+  const BODY = "架空のメンバーのブログ本文（振り分け待ち）";
+
+  it("書き出さない。ダンプに足す insert 文で、書き出した下書きを元に戻せる", () =>
+    withSeed("owner", async (c, d) => {
+      for (const [id, state] of [
+        ["t1", "triage"],
+        ["p1", "pending"],
+      ] as const) {
+        await c.query(
+          `insert into public.intake_items (channel_id, external_id, captured_at, route, state, draft)
+           values ($1, $2, now(), 'fetch', $3, $4)`,
+          [
+            d.freeChannel,
+            id,
+            state,
+            JSON.stringify({ body: state === "triage" ? BODY : "残す下書き" }),
+          ],
+        );
+      }
+      const result = await exportDatabase(c, dir, { ownTransaction: false });
+      const intake = result.tables.find((t) => t.table === "public.intake_items")!;
+      const rows = await readLines(join(dir, intake.file));
+      expect(rows.map((r) => r["external_id"])).toContain("p1");
+      expect(JSON.stringify(rows)).not.toContain(BODY);
+
+      // insert 文を作り、消した下書きを元に戻せることを確かめる
+      const dump = join(dir, "dump.sql.gz");
+      expect(await appendFilteredRows(dump, "public.intake_items", join(dir, intake.file))).toBe(
+        rows.length,
+      );
+      const sqlText = gunzipSync(await readFile(dump)).toString("utf8");
+      expect(sqlText).not.toContain(BODY);
+      await c.query("delete from public.intake_items where state <> 'triage'");
+      await c.query(sqlText);
+      const { rows: restored } = await c.query<{ external_id: string; draft: unknown }>(
+        "select external_id, draft from public.intake_items where external_id = 'p1'",
+      );
+      expect(restored).toEqual([{ external_id: "p1", draft: { body: "残す下書き" } }]);
     }));
 });

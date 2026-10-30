@@ -22,7 +22,7 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
 
 export type Int8 = ColumnType<string, bigint | number | string, bigint | number | string>;
 
-export type IntakeState = "approved" | "on_hold" | "pending" | "rejected";
+export type IntakeState = "approved" | "on_hold" | "pending" | "rejected" | "triage";
 
 export type Interval = ColumnType<IPostgresInterval, IPostgresInterval | number | string, IPostgresInterval | number | string>;
 
@@ -239,12 +239,22 @@ export interface CoverageChecks {
   checked_by: string | null;
   classification: Generated<Classification>;
   created_at: Generated<Timestamp>;
+  /**
+   * 情報源の中での記事の ID。アーカイブに入れなかった記事（振り分けで言及なし）はこれで記録する
+   */
+  external_id: string | null;
   id: Generated<string>;
   item_date: string | null;
   lens_keys: string[];
   note: string | null;
   post_id: string | null;
+  published_date: string | null;
+  /**
+   * 振り分けの結果: mention 言及あり（残した）・no_mention 言及なし（素材は残していない）
+   */
+  result: string | null;
   updated_at: Generated<Timestamp>;
+  url: string | null;
 }
 
 export interface CoverageLenses {

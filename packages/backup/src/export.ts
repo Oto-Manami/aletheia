@@ -5,6 +5,7 @@
 // - 日時は JST で書く（timestamptz は +09:00 の文字列になる）
 // - 書き出した行数を表ごとの count(*) と照合し、合わなければ失敗にする
 // - 記録（log）には表の名前と行数だけを出し、データの中身は出さない
+// - 振り分け待ちの下書きは書き出さない（言及の無い記事の本文を残さないため。設計書 決定記録 0021）
 
 import { createWriteStream } from "node:fs";
 import { mkdir, stat } from "node:fs/promises";
@@ -15,6 +16,16 @@ import { createGzip } from "node:zlib";
 import pg from "pg";
 
 export const SCHEMAS = ["public", "app"] as const;
+
+/** 書き出さない行の条件（表ごと）。件数の照合も同じ条件で行う */
+export const ROW_FILTERS: Record<string, string> = {
+  "public.intake_items": "state <> 'triage'",
+};
+
+function whereOf(schema: string, name: string): string {
+  const filter = ROW_FILTERS[`${schema}.${name}`];
+  return filter ? ` where ${filter}` : "";
+}
 
 export interface TableResult {
   /** スキーマ.表 */
@@ -81,7 +92,7 @@ async function exportTable(
   // 主キーの順に並べ、毎回の書き出しの差分を小さくする
   const order = table.pk ? ` order by ${table.pk.map(q).join(", ")}` : "";
   await client.query(
-    `declare backup_rows no scroll cursor for select row_to_json(t)::text as line from ${from} t${order}`,
+    `declare backup_rows no scroll cursor for select row_to_json(t)::text as line from ${from} t${whereOf(table.schema, table.name)}${order}`,
   );
   let written = 0;
   async function* lines() {
@@ -121,7 +132,7 @@ export async function exportDatabase(
     for (const table of tables) {
       const name = `${table.schema}.${table.name}`;
       const { rows } = await client.query<{ n: string }>(
-        `select count(*)::text as n from ${q(table.schema)}.${q(table.name)}`,
+        `select count(*)::text as n from ${q(table.schema)}.${q(table.name)}${whereOf(table.schema, table.name)}`,
       );
       const expected = Number(rows[0]!.n);
       const file = tableFile(table.schema, table.name);
