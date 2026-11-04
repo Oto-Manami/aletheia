@@ -7,6 +7,7 @@
 // | GET      | /intake/:id               | 下書き 1 件                        |
 // | POST     | /intake                   | 下書きを作る                       |
 // | POST     | /intake/known             | 取り込み済み・確認済みの投稿を返す |
+// | POST     | /intake/redetect          | 振り分け待ちの言及の印を付け直す   |
 // | POST     | /intake/:id/approve       | 承認して事実の層に反映する         |
 // | POST     | /intake/:id/reject        | 却下する                           |
 // | POST     | /intake/:id/hold          | 保留する                           |
@@ -29,6 +30,7 @@ import {
   keepTriage,
   rejectIntake,
   type Subject,
+  withoutAliasMatches,
 } from "@aletheia/intake";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -116,6 +118,18 @@ const listQuery = z.object({
   state: z.enum(["triage", "pending", "approved", "rejected", "on_hold"]).default("pending"),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
+
+/** キーの順に左右されない JSON（データベースの jsonb はキーを並べ替えて返すため） */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
 
 /** 誰の判断として記録するか。ログインした管理者ならその人、Bot なら伝えられた人 */
 function reviewerOf(actor: Actor, body: { reviewer_id?: string | undefined }): string | undefined {
@@ -249,16 +263,46 @@ export function createApp(
     return c.json({ item, draft_valid: check.success, issues: check.error?.issues ?? [] });
   });
 
-  /** 蓄積対象の人物（entities.attributes.archive_subject）。別名はデータから読む */
+  /**
+   * 蓄積対象（entities.attributes.archive_subject。人物と、その人の期など）。別名はデータから読む。
+   * attributes.peer_aliases は、書き手がそのグループに属するときだけ使う呼び方（「同期」）
+   */
   async function archiveSubjects(): Promise<Subject[]> {
     const rows = await db
       .selectFrom("entities")
-      .select(["id", "canonical_name", "aliases"])
+      .select([
+        "id",
+        "type",
+        "canonical_name",
+        "aliases",
+        sql<unknown>`attributes -> 'peer_aliases'`.as("peer_aliases"),
+      ])
       .where(sql<boolean>`attributes -> 'archive_subject' = 'true'::jsonb`)
       .where("merged_into", "is", null)
       .orderBy("canonical_name")
       .execute();
-    return rows.map((r) => ({ id: r.id, name: r.canonical_name, aliases: r.aliases }));
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.canonical_name,
+      aliases: r.aliases,
+      peerAliases: Array.isArray(r.peer_aliases)
+        ? r.peer_aliases.filter((a): a is string => typeof a === "string")
+        : [],
+      checkImages: r.type === "person",
+    }));
+  }
+
+  /** 発信者が属するグループ（member_of） */
+  async function groupsOf(entityId: string | null): Promise<string[]> {
+    if (!entityId) return [];
+    const rows = await db
+      .selectFrom("entity_relations")
+      .select("object_id")
+      .where("subject_id", "=", entityId)
+      .where("relation", "=", "member_of")
+      .where("review_state", "!=", "rejected")
+      .execute();
+    return rows.map((r) => r.object_id);
   }
 
   // 取り込み済み（下書きがある・投稿になった）か、振り分けで確認済みの外部 ID を返す。
@@ -298,6 +342,42 @@ export function createApp(
     return c.json({ known: ids.filter((id) => known.has(id)) });
   });
 
+  // 振り分け待ちの下書きの言及の印を、今の別名で付け直す（別名を足したとき）。
+  // 言及の規則が付けた紐付けだけを外して付け直し、人が選んだもの・発信者は変えない
+  app.post("/intake/redetect", async (c) => {
+    const subjects = await archiveSubjects();
+    const items = await db
+      .selectFrom("intake_items as i")
+      .innerJoin("channels as ch", "ch.id", "i.channel_id")
+      .select(["i.id", "i.draft", "ch.owner_entity_id"])
+      .where("i.state", "=", "triage")
+      .execute();
+    const groups = new Map<string, string[]>();
+    let updated = 0;
+    for (const item of items) {
+      const owner = item.owner_entity_id;
+      if (owner && !groups.has(owner)) groups.set(owner, await groupsOf(owner));
+      const before = item.draft as DraftInput;
+      const { draft } = applyCollectionRules(withoutAliasMatches(before), {
+        ownerId: owner,
+        subjects,
+        ownerGroups: owner ? (groups.get(owner) ?? []) : [],
+      });
+      // 言及の規則の紐付けが変わらなければ書き換えない
+      const matches = (d: DraftInput) =>
+        stableJson((d.links ?? []).filter((l) => l.evidence?.["rule"] === "alias_match"));
+      if (matches(draft) === matches(before)) continue;
+      await db
+        .updateTable("intake_items")
+        .set({ draft: JSON.stringify(draft) })
+        .where("id", "=", item.id)
+        .where("state", "=", "triage")
+        .execute();
+      updated++;
+    }
+    return c.json({ checked: items.length, updated });
+  });
+
   app.post("/intake", async (c) => {
     const body = await parseBody(c.req.raw, createIntakeBody);
     const channel = await db
@@ -321,6 +401,7 @@ export function createApp(
       const ruled = applyCollectionRules(body.draft as DraftInput, {
         ownerId: channel.owner_entity_id,
         subjects: await archiveSubjects(),
+        ownerGroups: await groupsOf(channel.owner_entity_id),
       });
       draft = ruled.draft;
       state = ruled.triage ? "triage" : "pending";

@@ -163,6 +163,8 @@ export interface TriageItem {
   /** 本文で見つかった別名の数 */
   mentionCount: number;
   aliases: string[];
+  /** 対象（本人・期）ごとの言及 */
+  mentions: { name: string; count: number; aliases: string[] }[];
   snippets: TriageSnippet[];
   images: TriageImage[];
   draft: DraftInput;

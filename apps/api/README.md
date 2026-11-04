@@ -61,6 +61,7 @@ curl http://127.0.0.1:8787/health   # {"ok":true}
 | GET      | `/intake/:id`                    | 下書き 1 件。下書きの形が正しいか（`draft_valid`）と問題点も返す                                                         |
 | POST     | `/intake`                        | 下書きを作る。`channel_key` / `external_id` / `route` / `route_ref` / `captured_at` / `draft` / `staged_files` / `state` |
 | POST     | `/intake/known`                  | `channel_key` と `external_ids`（500 件まで）のうち、取り込み済み・振り分けで確認済みのものを返す                        |
+| POST     | `/intake/redetect`               | 振り分け待ちの下書きの言及の印を、今の別名で付け直す（別名を足したとき）。`checked`・`updated` を返す                    |
 | POST     | `/intake/:id/approve`            | 承認して事実の層に反映する。`draft`（人が修正した下書き）/ `note` / `reviewer_id`                                        |
 | POST     | `/intake/:id/reject`             | 却下する。`note` / `reviewer_id`                                                                                         |
 | POST     | `/intake/:id/hold`               | 保留する。`note` / `reviewer_id`                                                                                         |
@@ -74,10 +75,10 @@ curl http://127.0.0.1:8787/health   # {"ok":true}
 
 メンバーのブログのように全件を取り込む経路は、`state: "triage"`（振り分け待ち）で送る（設計書 決定記録 0021）。API が次の紐付けを規則で足す。
 
-| 足すもの | 内容                                                                                                                                                        |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 発信者   | 情報源の持ち主（`channels.owner_entity_id`）を `author` で紐付ける                                                                                          |
-| 言及     | 蓄積対象の人物（`entities.attributes.archive_subject = true`）ごとに、別名が本文にあれば `mentioned`、画像ごとに「写っているか」の候補（`appears`、未選択） |
+| 足すもの | 内容                                                                                                                                                                                                                                                                                         |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 発信者   | 情報源の持ち主（`channels.owner_entity_id`）を `author` で紐付ける                                                                                                                                                                                                                           |
+| 言及     | 蓄積対象（`entities.attributes.archive_subject = true`。人物と、その人の期）ごとに、別名が本文にあれば `mentioned`。期の `attributes.peer_aliases`（「同期」など）は、発信者がその期に属するとき（`member_of`）だけ使う。人物には画像ごとに「写っているか」の候補（`appears`、未選択）も足す |
 
 発信者が蓄積対象の人物なら、振り分けを通さず承認待ち（`pending`）から始める。結果の `state` で、どちらになったかを返す。振り分けで「言及なし」と確認済みの記事は 409（`checked_no_mention`）で断る。
 

@@ -46,7 +46,7 @@ describe("振り分けの画面", () => {
     await screen.findByText("リハーサルの日");
     expect(cards()).toHaveLength(5);
     const first = cards()[0]!;
-    expect(within(first).getByText("言及 2")).toBeTruthy();
+    expect(within(first).getByText("試験 花子 2")).toBeTruthy();
     expect(within(first).getByText("はなちゃん").tagName).toBe("MARK");
 
     await user.click(within(first).getByRole("button", { name: "画像 2" }));

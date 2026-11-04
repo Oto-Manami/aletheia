@@ -10,6 +10,8 @@ import type { TriageImage, TriageItem, TriageSnippet } from "./types.ts";
 type Link = NonNullable<DraftInput["links"]>[number];
 
 interface MentionEvidence {
+  /** 言及された対象の名前（大野 愛実・日向坂46 五期生 など） */
+  subject?: string;
   count?: number;
   aliases?: string[];
   matches?: { asset: string; text_type: string; spans: [number, number][] }[];
@@ -21,7 +23,11 @@ const CONTEXT = 40;
 export function snippetsOf(text: string, spans: [number, number][]): TriageSnippet[] {
   const sorted = [...spans].sort((a, b) => a[0] - b[0]);
   const windows: { from: number; to: number; marks: [number, number][] }[] = [];
+  let covered = -1;
   for (const [s, e] of sorted) {
+    // 重なった一致（別の対象が同じ語に当たったときなど）は 1 つにする
+    if (s < covered) continue;
+    covered = e;
     const from = Math.max(0, s - CONTEXT);
     const to = Math.min(text.length, e + CONTEXT);
     const last = windows.at(-1);
@@ -55,13 +61,29 @@ export function triageItemOf(row: {
 }): TriageItem {
   const { draft } = row;
   const links = draft.links ?? [];
-  const mention = links.find(isMention);
-  const evidence = (mention?.evidence ?? {}) as MentionEvidence;
-
+  // 対象（本人・期）ごとの言及。同じ本文の位置はまとめて抜き出す
+  const evidences = links.filter(isMention).map((l) => (l.evidence ?? {}) as MentionEvidence);
+  const mentions = evidences.map((e) => ({
+    name: e.subject ?? "言及",
+    count: e.count ?? 1,
+    aliases: e.aliases ?? [],
+  }));
+  const spansByText = new Map<
+    string,
+    { asset: string; textType: string; spans: [number, number][] }
+  >();
+  for (const e of evidences) {
+    for (const m of e.matches ?? []) {
+      const key = `${m.asset}\u0000${m.text_type}`;
+      const entry = spansByText.get(key) ?? { asset: m.asset, textType: m.text_type, spans: [] };
+      entry.spans.push(...m.spans);
+      spansByText.set(key, entry);
+    }
+  }
   const snippets: TriageSnippet[] = [];
-  for (const m of evidence.matches ?? []) {
+  for (const m of spansByText.values()) {
     const asset = (draft.assets ?? []).find((a) => a.ref === m.asset);
-    const text = asset?.texts?.find((t) => t.text_type === m.text_type)?.content;
+    const text = asset?.texts?.find((t) => t.text_type === m.textType)?.content;
     if (text) snippets.push(...snippetsOf(text, m.spans));
   }
   if (snippets.length === 0) {
@@ -92,8 +114,9 @@ export function triageItemOf(row: {
     title: draft.post.title ?? null,
     publishedAt: draft.post.published_at ?? draft.post.published_date ?? null,
     url: draft.post.url ?? null,
-    mentionCount: mention ? (evidence.count ?? 1) : 0,
-    aliases: evidence.aliases ?? [],
+    mentionCount: mentions.reduce((n, m) => n + m.count, 0),
+    aliases: [...new Set(mentions.flatMap((m) => m.aliases))],
+    mentions,
     snippets,
     images,
     draft,

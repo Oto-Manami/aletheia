@@ -1559,6 +1559,13 @@ select:disabled {
   display: inline-flex;
 }
 
+.triage-mentions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
 .tag.triage-mention {
   background: var(--count-bg);
   color: var(--count-ink);

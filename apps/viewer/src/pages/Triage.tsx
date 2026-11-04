@@ -90,9 +90,13 @@ function TriageCard({
             )}
           </span>
         </div>
-        {item.mentionCount > 0 ? (
-          <span className="tag triage-mention" title={item.aliases.join("・")}>
-            言及 {item.mentionCount}
+        {item.mentions.length > 0 ? (
+          <span className="triage-mentions">
+            {item.mentions.map((m) => (
+              <span key={m.name} className="tag triage-mention" title={m.aliases.join("・")}>
+                {m.name} {m.count}
+              </span>
+            ))}
           </span>
         ) : (
           <span className="tag triage-none">言及なし</span>

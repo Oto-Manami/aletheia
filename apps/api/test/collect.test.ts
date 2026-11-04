@@ -121,3 +121,60 @@ describe("取り込み済みの確認", () => {
       expect(res.status).toBe(422);
     }));
 });
+
+describe("期への言及と、言及の印の付け直し", () => {
+  async function seedGeneration(ctx: Ctx, d: Seed, members: string[]) {
+    const r = await ctx.c.query(
+      `insert into public.entities (type, subtype, canonical_name, aliases, attributes, classification)
+       values ('group', 'generation', '架空坂 一期生', '{一期}', '{"archive_subject": true, "peer_aliases": ["同期"]}', 'public')
+       returning id`,
+    );
+    const generation = (r.rows[0] as { id: string }).id;
+    for (const m of members) {
+      await ctx.c.query(
+        `insert into public.entity_relations (subject_id, object_id, relation, classification)
+         values ($1, $2, 'member_of', 'public')`,
+        [m, generation],
+      );
+    }
+    expect(d.person).toBeTruthy();
+    return generation;
+  }
+
+  it("発信者が期に属すれば「同期」も期への言及として数え、期の画像の候補は作らない", () =>
+    withApi(async (ctx) => {
+      const d: Seed = await seed(ctx.c);
+      const generation = await seedGeneration(ctx, d, [d.person]);
+      const res = await ctx.call("POST", "/intake", collected("701", "同期と一期の話"));
+      const created = (await res.json()) as Created;
+      expect(created.state).toBe("triage");
+      expect(await links(ctx, created.id)).toEqual([
+        ["author", d.person, true],
+        ["mentioned", generation, true],
+      ]);
+    }));
+
+  it("別名を足したあと、振り分け待ちの記事の言及の印を付け直す", () =>
+    withApi(async (ctx) => {
+      const d: Seed = await seed(ctx.c);
+      await markSubject(ctx, d.otherMember, []);
+      const created = (await (
+        await ctx.call("POST", "/intake", collected("702", "じろうさんと"))
+      ).json()) as Created;
+      expect((await links(ctx, created.id)).map((l) => l[0])).toEqual(["author", "appears"]);
+
+      await markSubject(ctx, d.otherMember, ["じろう"]);
+      const res = await ctx.call("POST", "/intake/redetect", {});
+      expect(await res.json()).toEqual({ checked: 1, updated: 1 });
+      expect((await links(ctx, created.id)).map((l) => l[0])).toEqual([
+        "author",
+        "appears",
+        "mentioned",
+      ]);
+      // もう一度流しても、変わらなければ書き換えない
+      expect(await (await ctx.call("POST", "/intake/redetect", {})).json()).toEqual({
+        checked: 1,
+        updated: 0,
+      });
+    }));
+});

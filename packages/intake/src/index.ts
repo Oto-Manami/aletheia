@@ -11,7 +11,12 @@ export {
   rejectIntake,
   rejectIntakeIn,
 } from "./approve.ts";
-export { applyCollectionRules, type CollectionContext, type CollectionResult } from "./collect.ts";
+export {
+  applyCollectionRules,
+  type CollectionContext,
+  type CollectionResult,
+  withoutAliasMatches,
+} from "./collect.ts";
 export { type Draft, type DraftInput, draftSchema } from "./draft.ts";
 export {
   type AliasMatch,

@@ -6,6 +6,7 @@
 // - 一致した場所は元の本文の位置で返す（画面で印を付けるため）
 // - 同じ場所に複数の別名が重なるときは、長いほうを採る
 // - 画像だけの登場は規則では見つけられない。画像ごとに「写っているか」の確認の候補だけを作る
+// - 対象はグループ（期）でもよい。書き手がそのグループに属するときだけ使う呼び方（「同期」）も持てる
 
 import type { DraftInput } from "./draft.ts";
 
@@ -16,6 +17,10 @@ export interface Subject {
   name: string;
   /** 愛称・呼び方などの別名 */
   aliases: readonly string[];
+  /** 書き手が同じグループに属するときだけ、この対象を指す呼び方（期に対する「同期」など） */
+  peerAliases?: readonly string[];
+  /** 画像ごとに「写っているか」の候補を作るか（人物なら作る。グループは作らない） */
+  checkImages?: boolean;
 }
 
 export interface AliasMatch {
@@ -109,7 +114,16 @@ export function mentionConfidence(subject: Subject, matches: readonly AliasMatch
  * - 画像ごとに「写っているか」（appears）の確認の候補。規則では判断できないため未選択（accepted = false）
  * 既に同じ人物への同じ役割の紐付けがあれば足さない
  */
-export function proposeSubjectLinks(draft: DraftInput, subject: Subject): DraftInput {
+export function proposeSubjectLinks(
+  draft: DraftInput,
+  subject: Subject,
+  options: { peer?: boolean } = {},
+): DraftInput {
+  const names = [
+    subject.name,
+    ...subject.aliases,
+    ...(options.peer ? (subject.peerAliases ?? []) : []),
+  ];
   const links = [...(draft.links ?? [])];
   const has = (from: "post" | { asset: string }, role: string) =>
     links.some(
@@ -123,7 +137,7 @@ export function proposeSubjectLinks(draft: DraftInput, subject: Subject): DraftI
   const texts: { asset: string; text_type: string; matches: AliasMatch[] }[] = [];
   for (const asset of draft.assets ?? []) {
     for (const t of asset.texts ?? []) {
-      const matches = findAliases(t.content, [subject.name, ...subject.aliases]);
+      const matches = findAliases(t.content, names);
       if (matches.length > 0) texts.push({ asset: asset.ref, text_type: t.text_type, matches });
     }
   }
@@ -139,6 +153,7 @@ export function proposeSubjectLinks(draft: DraftInput, subject: Subject): DraftI
       accepted: true,
       evidence: {
         rule: "alias_match",
+        subject: subject.name,
         count: all.length,
         aliases: [...new Set(all.map((m) => m.alias))],
         matches: texts.map((t) => ({
@@ -150,7 +165,7 @@ export function proposeSubjectLinks(draft: DraftInput, subject: Subject): DraftI
     });
   }
 
-  for (const asset of draft.assets ?? []) {
+  for (const asset of subject.checkImages === false ? [] : (draft.assets ?? [])) {
     if (asset.media_type !== "image") continue;
     const from = { asset: asset.ref };
     if (has(from, "appears")) continue;
