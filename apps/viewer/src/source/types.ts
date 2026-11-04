@@ -42,6 +42,8 @@ export interface IntakeDetail extends IntakeSummary {
   previews: Record<string, string>;
   /** 素材（下書きの ref）ごとの、保存した Web ページの HTML（デモ版のみ） */
   pageHtml: Record<string, string>;
+  /** 情報源の有料・無料の既定（無料の情報源なら、承認の画面で公開区分を選ばせない） */
+  channelAvailability: string | null;
 }
 
 /** 下書きが指している人物・出来事などの表示名 */
@@ -185,6 +187,8 @@ export interface ArchiveSource {
   labels(refs: { id: string; type: RefLabel["type"] }[]): Promise<RefLabel[]>;
   /** 紐付けの行き先の候補を名前で探す */
   findRefs(query: string): Promise<RefLabel[]>;
+  /** 登場する人・写っている人のタグ付けの候補（entities.attributes.tag_candidate） */
+  listTagCandidates(): Promise<RefLabel[]>;
   search(query: string): Promise<SearchHit[]>;
   getPost(id: string): Promise<PostView>;
   /** 振り分け待ちの記事（決定記録 0021） */

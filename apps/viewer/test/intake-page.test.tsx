@@ -131,3 +131,37 @@ describe("動画", () => {
     expect(free.getAttribute("href")).toBe("https://example.com/watch/mihon-digest");
   });
 });
+
+describe("承認の画面のタグ付け", () => {
+  it("すべての写真に発信者を付け、登場する人を足して承認すると、下書きに記録される", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/intake");
+    const pending = await source.listIntake("pending");
+    const blog = pending.find((i) => i.title === "セットログはじめました")!;
+    await user.click(await screen.findByRole("link", { name: /セットログはじめました/ }));
+
+    await user.click(await screen.findByRole("button", { name: /すべての写真に .* を付ける/ }));
+    expect(screen.getByRole("button", { name: /すべての写真から .* を外す/ })).toBeTruthy();
+
+    const record = screen.getByRole("region", { name: "この記事で記録すること" });
+    const picker = within(record).getByLabelText("登場する人を足す");
+    const option = await within(picker).findByRole("option", { name: "仮名 ゆい" });
+    await user.selectOptions(picker, option);
+    expect(within(record).getByRole("button", { name: /仮名 ゆい/, pressed: true })).toBeTruthy();
+    expect(screen.getByText(/承認すると、.*を保存し、.*仮名 ゆい.*に紐付けます/)).toBeTruthy();
+
+    const checklist = screen.getByRole("region", { name: "確認すること" });
+    for (const b of within(checklist).queryAllByRole("button", { name: "合っている" })) {
+      await user.click(b);
+    }
+    await user.click(screen.getByRole("button", { name: "直して承認" }));
+    await screen.findByText("前の下書きを承認しました");
+
+    const approved = await source.getIntake(blog.id);
+    const links = approved.draft.links ?? [];
+    expect(
+      links.filter((l) => l.role === "appears" && l.accepted !== false).length,
+    ).toBeGreaterThan(0);
+    expect(links.some((l) => l.role === "mentioned" && l.origin === "human")).toBe(true);
+  });
+});

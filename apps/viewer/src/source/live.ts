@@ -73,6 +73,7 @@ interface ChannelRow {
   id: string;
   key: string;
   name: string;
+  availability?: string;
 }
 
 interface AssetRow {
@@ -201,7 +202,10 @@ export class LiveSource implements ArchiveSource {
       issues: IntakeIssue[];
     }>("GET", `/intake/${encodeURIComponent(id)}`);
     const [channel] = rowsOf<ChannelRow>(
-      await this.supabase.from("channels").select("id, key, name").eq("id", item.channel_id),
+      await this.supabase
+        .from("channels")
+        .select("id, key, name, availability")
+        .eq("id", item.channel_id),
     );
     return {
       ...summarize({
@@ -216,6 +220,7 @@ export class LiveSource implements ArchiveSource {
       // 承認待ちのファイルの表示は、API がファイルを返せるようになってから
       previews: {},
       pageHtml: {},
+      channelAvailability: channel?.availability ?? null,
     };
   }
 
@@ -288,6 +293,19 @@ export class LiveSource implements ArchiveSource {
         label: r.title,
       })),
     ];
+  }
+
+  async listTagCandidates(): Promise<RefLabel[]> {
+    const rows = rowsOf<{ id: string; canonical_name: string }>(
+      await this.supabase
+        .from("entities")
+        .select("id, canonical_name")
+        .eq("attributes->>tag_candidate", "true")
+        .is("merged_into", null)
+        .order("reading", { ascending: true, nullsFirst: false })
+        .limit(500),
+    );
+    return rows.map((r) => ({ id: r.id, type: "entity" as const, label: r.canonical_name }));
   }
 
   async search(query: string): Promise<SearchHit[]> {

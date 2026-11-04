@@ -177,4 +177,34 @@ describe("期への言及と、言及の印の付け直し", () => {
         updated: 0,
       });
     }));
+
+  it("タグ付けの候補のメンバーは、承認待ちの本人の記事にも登場の候補として付け直す", () =>
+    withApi(async (ctx) => {
+      const d: Seed = await seed(ctx.c);
+      await markSubject(ctx, d.person);
+      const created = (await (
+        await ctx.call("POST", "/intake", collected("703", "内部三郎さんと会いました"))
+      ).json()) as Created;
+      expect(created.state).toBe("pending");
+      expect((await links(ctx, created.id)).map((l) => l[0])).toEqual(["author"]);
+
+      await ctx.c.query(
+        `update public.entities set attributes = attributes || '{"tag_candidate": true}' where id = $1`,
+        [d.privatePerson],
+      );
+      expect(await (await ctx.call("POST", "/intake/redetect", {})).json()).toEqual({
+        checked: 1,
+        updated: 1,
+      });
+      const res = await ctx.call("GET", `/intake/${created.id}`);
+      const { item } = (await res.json()) as {
+        item: {
+          draft: { links: { role: string; to_id: string; evidence?: { purpose?: string } }[] };
+        };
+      };
+      expect(item.draft.links.map((l) => [l.role, l.to_id, l.evidence?.purpose])).toEqual([
+        ["author", d.person, undefined],
+        ["mentioned", d.privatePerson, "tag"],
+      ]);
+    }));
 });

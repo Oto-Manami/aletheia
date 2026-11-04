@@ -20,7 +20,11 @@ interface MentionEvidence {
 const CONTEXT = 40;
 
 /** 一致した位置の前後を切り出す。近い一致は 1 つの抜粋にまとめる */
-export function snippetsOf(text: string, spans: [number, number][]): TriageSnippet[] {
+export function snippetsOf(
+  text: string,
+  spans: [number, number][],
+  context: number = CONTEXT,
+): TriageSnippet[] {
   const sorted = [...spans].sort((a, b) => a[0] - b[0]);
   const windows: { from: number; to: number; marks: [number, number][] }[] = [];
   let covered = -1;
@@ -28,8 +32,8 @@ export function snippetsOf(text: string, spans: [number, number][]): TriageSnipp
     // 重なった一致（別の対象が同じ語に当たったときなど）は 1 つにする
     if (s < covered) continue;
     covered = e;
-    const from = Math.max(0, s - CONTEXT);
-    const to = Math.min(text.length, e + CONTEXT);
+    const from = Math.max(0, s - context);
+    const to = Math.min(text.length, e + context);
     const last = windows.at(-1);
     if (last && from <= last.to) {
       last.to = Math.max(last.to, to);
@@ -48,8 +52,14 @@ export function snippetsOf(text: string, spans: [number, number][]): TriageSnipp
   });
 }
 
+/** 振り分けで残すかを決める言及（本人・期）。登場するメンバーのタグ付けの候補（purpose = tag）は除く */
 function isMention(l: Link): boolean {
-  return l.role === "mentioned" && l.from === "post" && l.accepted !== false;
+  return (
+    l.role === "mentioned" &&
+    l.from === "post" &&
+    l.accepted !== false &&
+    l.evidence?.["purpose"] !== "tag"
+  );
 }
 
 export function triageItemOf(row: {
