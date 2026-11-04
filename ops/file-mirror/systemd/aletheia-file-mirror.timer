@@ -1,0 +1,11 @@
+# 毎日 1 回。データベースのバックアップ（毎日 3:30 に Drive へ）の後に写す
+[Unit]
+Description=aletheia: mirror archive files from Drive (daily)
+
+[Timer]
+OnCalendar=*-*-* 04:47:00 Asia/Tokyo
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

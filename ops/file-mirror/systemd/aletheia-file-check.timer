@@ -1,0 +1,11 @@
+# 毎週日曜。食い違いがあると失敗で終わる（systemctl --user --failed で分かる）
+[Unit]
+Description=aletheia: check mirrored archive files (weekly)
+
+[Timer]
+OnCalendar=Sun *-*-* 06:13:00 Asia/Tokyo
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

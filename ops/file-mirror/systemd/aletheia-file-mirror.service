@@ -1,0 +1,8 @@
+# ファイル実体の控え: Drive の差分をこの機械に写す（設計書 決定記録 0023）
+[Unit]
+Description=aletheia: mirror archive files from Drive
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/aletheia/file-mirror.env
+ExecStart=%h/aletheia/ops/file-mirror/mirror.sh sync
