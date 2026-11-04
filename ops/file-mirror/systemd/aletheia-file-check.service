@@ -1,0 +1,8 @@
+# ファイル実体の控え: Drive と控えの中身をハッシュで突き合わせる（設計書 決定記録 0023）
+[Unit]
+Description=aletheia: check mirrored archive files against Drive
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/aletheia/file-mirror.env
+ExecStart=%h/aletheia/ops/file-mirror/mirror.sh check
