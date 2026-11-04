@@ -11,6 +11,7 @@ import {
   demoSnsPostHtml,
   demoTriage,
   placeholderImage,
+  PEOPLE,
   REFS,
 } from "./demo-data.ts";
 import { proposeSubjectLinks } from "@aletheia/intake/mentions";
@@ -230,6 +231,11 @@ export class DemoSource implements ArchiveSource {
     await this.delay();
     const q = query.trim();
     return q ? REFS.filter((r) => r.label.includes(q)) : [];
+  }
+
+  async listTagCandidates(): Promise<RefLabel[]> {
+    await this.delay();
+    return REFS.filter((r) => r.type === "entity" && r.id !== PEOPLE.gen5);
   }
 
   async search(query: string): Promise<SearchHit[]> {

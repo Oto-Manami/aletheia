@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { ChevronLeft } from "lucide-react";
 import { DraftEditor } from "../components/DraftEditor.tsx";
+import { MemberTags } from "../components/MemberTags.tsx";
 import { approvalSummary, ReviewChecklist } from "../components/ReviewChecklist.tsx";
 import { SourcePreview } from "../components/SourcePreview.tsx";
 import { Tags } from "../components/Tags.tsx";
@@ -83,6 +84,7 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
     (location.state as { done?: string } | null)?.done ?? null,
   );
   const [labels, setLabels] = useState(new Map<string, string>());
+  const [candidates] = useLoad(() => source.listTagCandidates(), [source]);
 
   const refs = refsOf(draft);
   const refsKey = refs.map((r) => r.id).join(",");
@@ -184,6 +186,15 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
         source={source}
         readOnly={!decidable || busy !== null}
         onLabel={(ref) => setLabels((prev) => new Map(prev).set(ref.id, ref.label))}
+      />
+
+      <MemberTags
+        draft={draft}
+        onChange={setDraft}
+        candidates={candidates.status === "ready" ? candidates.data : []}
+        labels={labels}
+        previews={detail.previews}
+        readOnly={!decidable || busy !== null}
       />
 
       <div className="intake-body">

@@ -102,4 +102,40 @@ describe("全件を取り込む経路の規則", () => {
     const ruled = applyCollectionRules(draft, { ownerId: otherMember, subjects: [subject] }).draft;
     expect(withoutAliasMatches(ruled).links?.map((l) => l.role)).toEqual(["author", "appears"]);
   });
+
+  it("タグ付けの候補のメンバーは、振り分けとは別の目的の言及の候補にする。書いた本人と蓄積対象は除く", () => {
+    const third: Subject = {
+      id: "00000000-0000-4000-8000-000000000004",
+      name: "架空 三子",
+      aliases: [],
+    };
+    const body: DraftInput = {
+      ...draft,
+      assets: [
+        {
+          ref: "body",
+          media_type: "text",
+          texts: [
+            {
+              text_type: "body",
+              content: "架空三子さんと試験 花子さんに会いました。試験 次郎です",
+            },
+          ],
+        },
+      ],
+    };
+    const { draft: next } = applyCollectionRules(body, {
+      ownerId: otherMember,
+      subjects: [subject],
+      tagCandidates: [subject, third, { id: otherMember, name: "試験 次郎", aliases: [] }],
+    });
+    expect(
+      next.links
+        ?.filter((l) => l.role === "mentioned")
+        .map((l) => [l.to_id, l.evidence?.["purpose"]]),
+    ).toEqual([
+      [subject.id, "archive"],
+      [third.id, "tag"],
+    ]);
+  });
 });

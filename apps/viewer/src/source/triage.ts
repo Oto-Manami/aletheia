@@ -48,8 +48,14 @@ export function snippetsOf(text: string, spans: [number, number][]): TriageSnipp
   });
 }
 
+/** 振り分けで残すかを決める言及（本人・期）。登場するメンバーのタグ付けの候補（purpose = tag）は除く */
 function isMention(l: Link): boolean {
-  return l.role === "mentioned" && l.from === "post" && l.accepted !== false;
+  return (
+    l.role === "mentioned" &&
+    l.from === "post" &&
+    l.accepted !== false &&
+    l.evidence?.["purpose"] !== "tag"
+  );
 }
 
 export function triageItemOf(row: {

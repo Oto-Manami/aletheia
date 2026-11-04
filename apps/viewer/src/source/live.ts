@@ -290,6 +290,19 @@ export class LiveSource implements ArchiveSource {
     ];
   }
 
+  async listTagCandidates(): Promise<RefLabel[]> {
+    const rows = rowsOf<{ id: string; canonical_name: string }>(
+      await this.supabase
+        .from("entities")
+        .select("id, canonical_name")
+        .eq("attributes->>tag_candidate", "true")
+        .is("merged_into", null)
+        .order("reading", { ascending: true, nullsFirst: false })
+        .limit(500),
+    );
+    return rows.map((r) => ({ id: r.id, type: "entity" as const, label: r.canonical_name }));
+  }
+
   async search(query: string): Promise<SearchHit[]> {
     const q = query.trim();
     if (!q) return [];

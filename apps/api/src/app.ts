@@ -292,6 +292,18 @@ export function createApp(
     }));
   }
 
+  /** 登場するメンバーのタグ付けの候補（entities.attributes.tag_candidate）。名前と別名はデータから読む */
+  async function tagCandidates(): Promise<Subject[]> {
+    const rows = await db
+      .selectFrom("entities")
+      .select(["id", "canonical_name", "aliases"])
+      .where(sql<boolean>`attributes -> 'tag_candidate' = 'true'::jsonb`)
+      .where("merged_into", "is", null)
+      .orderBy("canonical_name")
+      .execute();
+    return rows.map((r) => ({ id: r.id, name: r.canonical_name, aliases: r.aliases }));
+  }
+
   /** 発信者が属するグループ（member_of） */
   async function groupsOf(entityId: string | null): Promise<string[]> {
     if (!entityId) return [];
@@ -342,15 +354,17 @@ export function createApp(
     return c.json({ known: ids.filter((id) => known.has(id)) });
   });
 
-  // 振り分け待ちの下書きの言及の印を、今の別名で付け直す（別名を足したとき）。
-  // 言及の規則が付けた紐付けだけを外して付け直し、人が選んだもの・発信者は変えない
+  // 全件を取り込む経路の、振り分け待ち・承認待ちの下書きの言及の印を、今の別名で付け直す（別名や
+  // タグ付けの候補を足したとき）。言及の規則が付けた紐付けだけを外して付け直し、人が選んだもの・発信者は変えない
   app.post("/intake/redetect", async (c) => {
     const subjects = await archiveSubjects();
+    const candidates = await tagCandidates();
     const items = await db
       .selectFrom("intake_items as i")
       .innerJoin("channels as ch", "ch.id", "i.channel_id")
-      .select(["i.id", "i.draft", "ch.owner_entity_id"])
-      .where("i.state", "=", "triage")
+      .select(["i.id", "i.state", "i.draft", "ch.owner_entity_id"])
+      .where("i.state", "in", ["triage", "pending"])
+      .where("i.route", "=", "fetch")
       .execute();
     const groups = new Map<string, string[]>();
     let updated = 0;
@@ -362,6 +376,7 @@ export function createApp(
         ownerId: owner,
         subjects,
         ownerGroups: owner ? (groups.get(owner) ?? []) : [],
+        tagCandidates: candidates,
       });
       // 言及の規則の紐付けが変わらなければ書き換えない
       const matches = (d: DraftInput) =>
@@ -371,7 +386,7 @@ export function createApp(
         .updateTable("intake_items")
         .set({ draft: JSON.stringify(draft) })
         .where("id", "=", item.id)
-        .where("state", "=", "triage")
+        .where("state", "=", item.state)
         .execute();
       updated++;
     }
@@ -402,6 +417,7 @@ export function createApp(
         ownerId: channel.owner_entity_id,
         subjects: await archiveSubjects(),
         ownerGroups: await groupsOf(channel.owner_entity_id),
+        tagCandidates: await tagCandidates(),
       });
       draft = ruled.draft;
       state = ruled.triage ? "triage" : "pending";

@@ -117,7 +117,14 @@ export function mentionConfidence(subject: Subject, matches: readonly AliasMatch
 export function proposeSubjectLinks(
   draft: DraftInput,
   subject: Subject,
-  options: { peer?: boolean } = {},
+  options: {
+    peer?: boolean;
+    /**
+     * 何のための言及か。archive は振り分けで残すかを決める対象（本人・期）、tag は登場するメンバーの
+     * タグ付けの候補（承認のときに人が確かめる）
+     */
+    purpose?: "archive" | "tag";
+  } = {},
 ): DraftInput {
   const names = [
     subject.name,
@@ -154,6 +161,7 @@ export function proposeSubjectLinks(
       evidence: {
         rule: "alias_match",
         subject: subject.name,
+        purpose: options.purpose ?? "archive",
         count: all.length,
         aliases: [...new Set(all.map((m) => m.alias))],
         matches: texts.map((t) => ({
