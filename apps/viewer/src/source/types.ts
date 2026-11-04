@@ -42,6 +42,8 @@ export interface IntakeDetail extends IntakeSummary {
   previews: Record<string, string>;
   /** 素材（下書きの ref）ごとの、保存した Web ページの HTML（デモ版のみ） */
   pageHtml: Record<string, string>;
+  /** 情報源の有料・無料の既定（無料の情報源なら、承認の画面で公開区分を選ばせない） */
+  channelAvailability: string | null;
 }
 
 /** 下書きが指している人物・出来事などの表示名 */

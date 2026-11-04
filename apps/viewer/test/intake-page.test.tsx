@@ -140,13 +140,15 @@ describe("承認の画面のタグ付け", () => {
     const blog = pending.find((i) => i.title === "セットログはじめました")!;
     await user.click(await screen.findByRole("link", { name: /セットログはじめました/ }));
 
-    const tags = await screen.findByRole("region", { name: "登場する人・写っている人" });
-    await user.click(within(tags).getByRole("button", { name: /すべての写真に .* を付ける/ }));
-    expect(within(tags).getByRole("button", { name: /すべての写真から .* を外す/ })).toBeTruthy();
-    const picker = within(tags).getByLabelText("登場する人を足す");
+    await user.click(await screen.findByRole("button", { name: /すべての写真に .* を付ける/ }));
+    expect(screen.getByRole("button", { name: /すべての写真から .* を外す/ })).toBeTruthy();
+
+    const record = screen.getByRole("region", { name: "この記事で記録すること" });
+    const picker = within(record).getByLabelText("登場する人を足す");
     const option = await within(picker).findByRole("option", { name: "仮名 ゆい" });
     await user.selectOptions(picker, option);
-    expect(within(tags).getByRole("button", { name: /仮名 ゆい/, pressed: true })).toBeTruthy();
+    expect(within(record).getByRole("button", { name: /仮名 ゆい/, pressed: true })).toBeTruthy();
+    expect(screen.getByText(/承認すると、.*を保存し、.*仮名 ゆい.*に紐付けます/)).toBeTruthy();
 
     const checklist = screen.getByRole("region", { name: "確認すること" });
     for (const b of within(checklist).queryAllByRole("button", { name: "合っている" })) {

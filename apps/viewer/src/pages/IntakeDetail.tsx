@@ -3,8 +3,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { ChevronLeft } from "lucide-react";
 import { DraftEditor } from "../components/DraftEditor.tsx";
-import { MemberTags } from "../components/MemberTags.tsx";
-import { approvalSummary, ReviewChecklist } from "../components/ReviewChecklist.tsx";
+import { MentionView } from "../components/MentionView.tsx";
+import { PhotoTags } from "../components/PhotoTags.tsx";
+import { RecordPanel } from "../components/RecordPanel.tsx";
+import { ReviewChecklist } from "../components/ReviewChecklist.tsx";
 import { SourcePreview } from "../components/SourcePreview.tsx";
 import { Tags } from "../components/Tags.tsx";
 import { useApp } from "../context.tsx";
@@ -42,6 +44,34 @@ function issuesOf(draft: DraftInput): IntakeIssue[] {
         path: i.path.filter((p): p is string | number => typeof p !== "symbol"),
         message: i.message,
       }));
+}
+
+/** 承認すると何が起きるかを、ふだんの言葉で */
+function approvalSentence(draft: DraftInput, name: (id: string) => string): string {
+  const assets = draft.assets ?? [];
+  const photos = assets.filter((a) => a.media_type === "image").length;
+  const kept = [
+    assets.some((a) => a.media_type === "webpage") ? "記事のページ" : null,
+    assets.some((a) => (a.texts ?? []).length > 0) ? "本文" : null,
+    photos > 0 ? `写真 ${photos} 枚` : null,
+    assets.length - photos > 0 &&
+    !assets.some((a) => a.media_type === "webpage" || (a.texts ?? []).length > 0)
+      ? `素材 ${assets.length - photos} 件`
+      : null,
+  ].filter(Boolean);
+  const people = [
+    ...new Set(
+      (draft.links ?? [])
+        .filter((l) => l.to_type === "entity" && l.accepted !== false)
+        .map((l) => l.to_id),
+    ),
+  ].map(name);
+  const who =
+    people.length === 0
+      ? ""
+      : `、${people.slice(0, 4).join("・")}${people.length > 4 ? ` ほか ${people.length - 4} 人` : ""}に紐付けます`;
+  const visibility = draft.post.classification === "public" ? "公開" : "非公開";
+  return `承認すると、${kept.join("・") || "投稿"}を保存し${who ? who : "ます"}。${visibility}の記録になります。`;
 }
 
 function refsOf(draft: DraftInput): { id: string; type: RefLabel["type"] }[] {
@@ -85,6 +115,9 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
   );
   const [labels, setLabels] = useState(new Map<string, string>());
   const [candidates] = useLoad(() => source.listTagCandidates(), [source]);
+  const candidateList = candidates.status === "ready" ? candidates.data : [];
+  const name = (id: string) =>
+    labels.get(id) ?? candidateList.find((c) => c.id === id)?.label ?? "（読み込み中）";
 
   const refs = refsOf(draft);
   const refsKey = refs.map((r) => r.id).join(",");
@@ -107,6 +140,8 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
   );
   const dirty = JSON.stringify(draft) !== JSON.stringify(detail.draft);
   const decidable = detail.state === "pending" || detail.state === "on_hold";
+  const readOnly = !decidable || busy !== null;
+  const hasText = (draft.assets ?? []).some((a) => (a.texts ?? []).length > 0);
 
   const decide = async (decision: Decision) => {
     setBusy(decision);
@@ -177,54 +212,68 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
         </p>
       )}
 
-      <ReviewChecklist
-        draft={draft}
-        initial={detail.draft}
-        onChange={setDraft}
-        labels={labels}
-        previews={detail.previews}
-        source={source}
-        readOnly={!decidable || busy !== null}
-        onLabel={(ref) => setLabels((prev) => new Map(prev).set(ref.id, ref.label))}
-      />
+      {reviewItems(draft, detail.draft).length > 0 && (
+        <ReviewChecklist
+          draft={draft}
+          initial={detail.draft}
+          onChange={setDraft}
+          labels={labels}
+          previews={detail.previews}
+          source={source}
+          readOnly={!decidable || busy !== null}
+          onLabel={(ref) => setLabels((prev) => new Map(prev).set(ref.id, ref.label))}
+        />
+      )}
 
-      <MemberTags
-        draft={draft}
-        onChange={setDraft}
-        candidates={candidates.status === "ready" ? candidates.data : []}
-        labels={labels}
-        previews={detail.previews}
-        readOnly={!decidable || busy !== null}
-      />
-
-      <div className="intake-body">
-        <section className="panel panel-pad" aria-label="元の投稿">
-          <h3 className="column-title">元の投稿</h3>
-          <SourcePreview draft={draft} previews={detail.previews} pageHtml={detail.pageHtml} />
-        </section>
-        <section className="panel panel-pad" aria-label="下書き">
-          <h3 className="column-title">
-            すべての項目
-            <span className="dirty">
-              {dirty ? "直した内容は承認のときに送ります" : "必要なときだけ直してください"}
-            </span>
-          </h3>
-          <DraftEditor
+      <div className="approval-layout">
+        <div className="approval-main">
+          {hasText && <MentionView draft={draft} />}
+          <PhotoTags
             draft={draft}
             onChange={setDraft}
-            labels={labels}
-            issues={issues}
-            warnings={warnings}
-            source={source}
-            readOnly={!decidable || busy !== null}
-            onLabel={(ref) => setLabels((prev) => new Map(prev).set(ref.id, ref.label))}
+            candidates={candidateList}
+            name={name}
+            previews={detail.previews}
+            readOnly={readOnly}
           />
-        </section>
+          <details className="panel panel-pad more" open={!hasText}>
+            <summary className="column-title">元の投稿と保存の状況</summary>
+            <SourcePreview draft={draft} previews={detail.previews} pageHtml={detail.pageHtml} />
+          </details>
+          <details className="panel panel-pad more" aria-label="下書き">
+            <summary className="column-title">
+              詳しく直す（すべての項目）
+              <span className="dirty">
+                {dirty ? "直した内容は承認のときに送ります" : "日付・URL・公開区分などを直すとき"}
+              </span>
+            </summary>
+            <DraftEditor
+              draft={draft}
+              onChange={setDraft}
+              labels={labels}
+              issues={issues}
+              warnings={warnings}
+              source={source}
+              readOnly={readOnly}
+              onLabel={(ref) => setLabels((prev) => new Map(prev).set(ref.id, ref.label))}
+            />
+          </details>
+        </div>
+        <aside className="approval-side">
+          <RecordPanel
+            draft={draft}
+            onChange={setDraft}
+            candidates={candidateList}
+            name={name}
+            channelAvailability={detail.channelAvailability}
+            readOnly={readOnly}
+          />
+        </aside>
       </div>
 
       {decidable && (
         <footer className="actions">
-          <p className="actions-summary">{approvalSummary(draft)}</p>
+          <p className="actions-summary">{approvalSentence(draft, name)}</p>
           <div className="actions-note">
             <label htmlFor="decision-note" className="visually-hidden">
               判断のメモ

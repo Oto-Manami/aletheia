@@ -186,6 +186,7 @@ export class DemoSource implements ArchiveSource {
       reviewNote: item.reviewNote,
       previews: this.previews.get(id) ?? {},
       pageHtml: this.pageHtml.get(id) ?? {},
+      channelAvailability: item.channelKey.startsWith("blog:") ? "free" : null,
     };
   }
 

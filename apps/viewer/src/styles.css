@@ -2180,25 +2180,119 @@ a.button {
   }
 }
 
-/* 承認の画面のタグ付け（登場する人・写っている人） */
-.member-tags {
+/* 承認の画面: 記事（左）と、この記事で記録すること（右） */
+.approval-layout {
   display: grid;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
 }
 
-.tag-row {
+.approval-main {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.approval-side {
+  position: sticky;
+  top: 16px;
+}
+
+@media (max-width: 960px) {
+  .approval-layout {
+    grid-template-columns: 1fr;
+  }
+  .approval-side {
+    position: static;
+    order: -1;
+  }
+}
+
+.mention-paragraph {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--count-ink);
+  background: var(--subtle);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.mention-paragraph figcaption {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.mention-text {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.8;
+}
+
+.article-body p {
+  white-space: pre-wrap;
+  line-height: 1.8;
+  margin: 0 0 1em;
+}
+
+details.more > summary {
+  cursor: pointer;
+  list-style: revert;
+}
+
+details.more[open] > summary {
+  margin-bottom: 12px;
+}
+
+.photos-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
-.tag-row-label {
-  font-size: 13px;
+.photos-head .column-title {
+  margin: 0;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.photos-head .quiet {
+  font-size: 12px;
+  font-weight: normal;
+}
+
+.record-list {
+  display: grid;
+  gap: 4px 0;
+  margin: 0;
+}
+
+.record-list dt {
+  font-size: 12px;
   color: var(--muted);
-  min-width: 7em;
+  margin-top: 8px;
 }
 
+.record-list dd {
+  margin: 0;
+}
+
+.record-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.record .quiet {
+  font-size: 12px;
+}
+
+/* 承認の画面のタグ付け（登場する人・写っている人） */
 .person-chip {
   display: inline-flex;
   align-items: center;
@@ -2250,6 +2344,7 @@ a.button {
 }
 
 .photo-tag-image {
+  position: relative;
   aspect-ratio: 3 / 4;
   border-radius: var(--radius);
   background: var(--subtle);
@@ -2277,4 +2372,22 @@ a.button {
   align-items: center;
   gap: 2px;
   font-size: 13px;
+}
+
+.photo-tag.has-people .photo-tag-image {
+  outline: 2px solid var(--count-ink);
+  outline-offset: -2px;
+}
+
+.photo-tag-number {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
 }

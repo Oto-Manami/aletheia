@@ -73,6 +73,7 @@ interface ChannelRow {
   id: string;
   key: string;
   name: string;
+  availability?: string;
 }
 
 interface AssetRow {
@@ -201,7 +202,10 @@ export class LiveSource implements ArchiveSource {
       issues: IntakeIssue[];
     }>("GET", `/intake/${encodeURIComponent(id)}`);
     const [channel] = rowsOf<ChannelRow>(
-      await this.supabase.from("channels").select("id, key, name").eq("id", item.channel_id),
+      await this.supabase
+        .from("channels")
+        .select("id, key, name, availability")
+        .eq("id", item.channel_id),
     );
     return {
       ...summarize({
@@ -216,6 +220,7 @@ export class LiveSource implements ArchiveSource {
       // 承認待ちのファイルの表示は、API がファイルを返せるようになってから
       previews: {},
       pageHtml: {},
+      channelAvailability: channel?.availability ?? null,
     };
   }
 

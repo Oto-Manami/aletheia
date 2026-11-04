@@ -7,26 +7,15 @@
 
 import { Check, ExternalLink } from "lucide-react";
 import { useState } from "react";
+import { Snippet } from "../components/Snippet.tsx";
 import { useApp } from "../context.tsx";
 import { formatInstant } from "../format.ts";
 import { withAppears } from "../source/triage.ts";
-import type { TriageItem, TriageSnippet } from "../source/types.ts";
+import type { TriageItem } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 import { useLayout } from "./Layout.tsx";
 
 type Filter = "all" | "mention" | "none";
-
-function Snippet({ snippet }: { snippet: TriageSnippet }) {
-  const parts: React.ReactNode[] = [];
-  let at = 0;
-  snippet.marks.forEach(([s, e], i) => {
-    if (s > at) parts.push(snippet.text.slice(at, s));
-    parts.push(<mark key={i}>{snippet.text.slice(s, e)}</mark>);
-    at = e;
-  });
-  if (at < snippet.text.length) parts.push(snippet.text.slice(at));
-  return <p className="triage-snippet">{parts}</p>;
-}
 
 function hasSignal(item: TriageItem, appears: Record<string, boolean>): boolean {
   return item.mentionCount > 0 || item.images.some((img) => appears[img.ref] ?? img.appears);
