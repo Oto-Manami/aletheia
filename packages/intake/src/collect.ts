@@ -1,7 +1,8 @@
 // 全件を取り込む経路（振り分けを通る経路）の下書きに、規則で決まる紐付けを足す（設計書 決定記録 0021・0022）
 //
 // - 発信者: 情報源の持ち主（channels.owner_entity_id）を、投稿の発信者（author）として紐付ける
-// - 言及: 蓄積対象の人物（entities.attributes.archive_subject）ごとに、別名の一致で言及の候補を作る
+// - 言及: 蓄積対象（entities.attributes.archive_subject。人物と、その人の期）ごとに、別名の一致で
+//   言及の候補を作る。期の「同期」のような呼び方は、書き手がその期に属するときだけ使う
 // - 発信者が蓄積対象の人物なら、振り分けを通さず承認待ちから始める（本人のブログはすべて残す）
 // どの人物・情報源かはデータから読み、コードには書かない。
 
@@ -11,8 +12,10 @@ import { proposeSubjectLinks, type Subject } from "./mentions.ts";
 export interface CollectionContext {
   /** 情報源の持ち主（発信者）の人物 ID。持ち主の無い情報源は null */
   ownerId: string | null;
-  /** 蓄積対象の人物 */
+  /** 蓄積対象（人物・グループ） */
   subjects: readonly Subject[];
+  /** 発信者が属するグループ（member_of）の ID */
+  ownerGroups?: readonly string[];
 }
 
 export interface CollectionResult {
@@ -50,7 +53,19 @@ export function applyCollectionRules(draft: DraftInput, ctx: CollectionContext):
   for (const subject of ctx.subjects) {
     // 本人が書いたものに、本人への言及・写っているかの候補は作らない
     if (subject.id === ctx.ownerId) continue;
-    next = proposeSubjectLinks(next, subject);
+    next = proposeSubjectLinks(next, subject, {
+      peer: ctx.ownerGroups?.includes(subject.id) ?? false,
+    });
   }
   return { draft: next, triage: !ownBlog };
+}
+
+/** 言及の検出の規則が付けた紐付け（付け直すときに外す）。人が選んだもの・発信者は残す */
+export function withoutAliasMatches(draft: DraftInput): DraftInput {
+  return {
+    ...draft,
+    links: (draft.links ?? []).filter(
+      (l) => !(l.origin === "rule" && l.evidence?.["rule"] === "alias_match"),
+    ),
+  };
 }

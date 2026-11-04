@@ -1,6 +1,12 @@
 // 全件を取り込む経路の規則（データベースを使わない）。人物はすべて架空
 import { describe, expect, it } from "vitest";
-import { applyCollectionRules, type DraftInput, draftSchema, type Subject } from "../src/index.ts";
+import {
+  applyCollectionRules,
+  type DraftInput,
+  draftSchema,
+  type Subject,
+  withoutAliasMatches,
+} from "../src/index.ts";
 
 const subject: Subject = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -49,5 +55,51 @@ describe("全件を取り込む経路の規則", () => {
     const none = applyCollectionRules(draft, { ownerId: null, subjects: [subject] });
     expect(none.draft.links?.some((l) => l.role === "author")).toBe(false);
     expect(none.triage).toBe(true);
+  });
+
+  it("期への言及は期に紐付け、「同期」は書き手がその期に属するときだけ数える。期の画像の候補は作らない", () => {
+    const generation: Subject = {
+      id: "00000000-0000-4000-8000-000000000003",
+      name: "架空坂 一期生",
+      aliases: ["一期"],
+      peerAliases: ["同期"],
+      checkImages: false,
+    };
+    const body: DraftInput = {
+      ...draft,
+      assets: [
+        {
+          ref: "body",
+          media_type: "text",
+          texts: [{ text_type: "body", content: "同期と一期のみんなで" }],
+        },
+        { ref: "image-1", media_type: "image" },
+      ],
+    };
+    const mentionOf = (d: DraftInput) =>
+      d.links?.find((l) => l.role === "mentioned" && l.to_id === generation.id)?.evidence;
+
+    const peer = applyCollectionRules(body, {
+      ownerId: otherMember,
+      subjects: [generation],
+      ownerGroups: [generation.id],
+    }).draft;
+    expect(mentionOf(peer)).toMatchObject({
+      count: 2,
+      aliases: ["同期", "一期"],
+      subject: "架空坂 一期生",
+    });
+    expect(peer.links?.some((l) => l.role === "appears")).toBe(false);
+
+    const outsider = applyCollectionRules(body, {
+      ownerId: otherMember,
+      subjects: [generation],
+    }).draft;
+    expect(mentionOf(outsider)).toMatchObject({ count: 1, aliases: ["一期"] });
+  });
+
+  it("付け直すときは、言及の規則が付けた紐付けだけを外す", () => {
+    const ruled = applyCollectionRules(draft, { ownerId: otherMember, subjects: [subject] }).draft;
+    expect(withoutAliasMatches(ruled).links?.map((l) => l.role)).toEqual(["author", "appears"]);
   });
 });
