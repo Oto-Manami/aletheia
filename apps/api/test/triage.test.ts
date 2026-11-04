@@ -2,7 +2,7 @@
 import { seed } from "@aletheia/db/testing/fixtures";
 import { describe, expect, it } from "vitest";
 import type { StagedFile } from "../src/files.ts";
-import { type Ctx, withApi } from "./helpers.ts";
+import { type Ctx, discordUser, tokenFor, withApi } from "./helpers.ts";
 
 type Seed = Awaited<ReturnType<typeof seed>>;
 
@@ -103,5 +103,41 @@ describe("振り分け", () => {
       const body = (await res.json()) as { done: string[]; failed: { id: string }[] };
       expect(body.done).toEqual([a.id]);
       expect(body.failed.map((f) => f.id)).toEqual([b.id]);
+    }));
+
+  it("参加者は残すことと承認ができ、言及なしは管理者だけができる。判断した人の名前が一覧に出る", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const admin = await discordUser(ctx.c, "11111111-1111-4111-8111-111111111111", "admin");
+      const viewer = await discordUser(ctx.c, "22222222-2222-4222-8222-222222222222", "viewer");
+      await ctx.c.query(
+        "update app.user_profiles set display_name = '参加者' where role = 'viewer'",
+      );
+      const asViewer = await tokenFor(viewer);
+      const kept = await triageDraft(ctx, d, "301");
+      const other = await triageDraft(ctx, d, "302");
+
+      expect((await ctx.call("POST", `/intake/${other.id}/no-mention`, {}, asViewer)).status).toBe(
+        403,
+      );
+      expect(
+        (await ctx.call("POST", "/intake/no-mention", { ids: [other.id] }, asViewer)).status,
+      ).toBe(403);
+      expect((await ctx.call("POST", "/intake/redetect", {}, asViewer)).status).toBe(403);
+      expect(
+        (await ctx.call("POST", `/intake/${other.id}/no-mention`, {}, await tokenFor(admin)))
+          .status,
+      ).toBe(200);
+
+      expect((await ctx.call("POST", `/intake/${kept.id}/keep`, {}, asViewer)).status).toBe(200);
+      expect((await ctx.call("POST", `/intake/${kept.id}/approve`, {}, asViewer)).status).toBe(200);
+      const list = (await (
+        await ctx.call("GET", "/intake?state=approved", undefined, asViewer)
+      ).json()) as {
+        items: { id: string; reviewed_by_name: string | null; reviewed_at: string }[];
+      };
+      const row = list.items.find((i) => i.id === kept.id);
+      expect(row?.reviewed_by_name).toBe("参加者");
+      expect(row?.reviewed_at).toBeTruthy();
     }));
 });

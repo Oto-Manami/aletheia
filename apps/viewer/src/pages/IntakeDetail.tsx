@@ -198,6 +198,12 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
             {draft.context["memo"]}
           </p>
         )}
+        {detail.reviewedAt && detail.state !== "pending" && (
+          <p className="intake-meta">
+            {STATE_LABELS[detail.state]}：{formatInstant(detail.reviewedAt)}
+            {detail.reviewedByName && <> ・ {detail.reviewedByName}</>}
+          </p>
+        )}
         {detail.reviewNote && (
           <p className="memo">
             <span className="memo-label">判断のメモ</span>

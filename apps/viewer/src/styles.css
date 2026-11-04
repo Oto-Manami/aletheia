@@ -2391,3 +2391,9 @@ details.more[open] > summary {
   font-size: 12px;
   text-align: center;
 }
+
+/* 承認済み・却下・保留の一覧の、判断した日時と人（履歴） */
+.intake-reviewed {
+  font-size: 12px;
+  color: var(--muted);
+}
