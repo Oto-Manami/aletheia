@@ -96,7 +96,9 @@ describe("振り分けの画面", () => {
     list.mockRestore();
     count.mockRestore();
     for (const card of cards()) {
-      await user.click(within(card).getByRole("button", { name: "残す" }));
+      // ニュースは「残す」の代わりに「出来事にする」なので、ここでは関係なしにする
+      const keep = within(card).queryByRole("button", { name: "残す" });
+      await user.click(keep ?? within(card).getByRole("button", { name: "関係なし" }));
     }
     await user.click(await screen.findByRole("button", { name: "続きを読み込む" }));
     expect(await screen.findByText("振り分け待ちの記事はありません。")).toBeTruthy();
@@ -162,5 +164,51 @@ describe("振り分けの画面", () => {
     ).toBeTruthy();
     const nav = screen.getByRole("navigation", { name: "画面" });
     expect(within(nav).queryByRole("link", { name: /振り分け/ })).toBeNull();
+  });
+
+  it("ニュースは、題名・種類・日付・時刻の初めの値から出来事を作り、出典として紐付けて保存する", async () => {
+    const user = userEvent.setup();
+    const source = open();
+    await screen.findByText("リハーサルの日");
+    await user.selectOptions(screen.getByLabelText("情報源"), "news");
+    await waitFor(() => expect(cards()).toHaveLength(3));
+    const card = cards().find((c) => c.textContent?.includes("ラジオ「仮の時間」に試験 花子"))!;
+    expect(within(card).queryByRole("button", { name: "残す" })).toBeNull();
+    await user.click(within(card).getByRole("button", { name: "出来事にする" }));
+
+    const quick = within(card).getByRole("group", { name: "出来事をその場で作る" });
+    expect(within(quick).getByLabelText<HTMLSelectElement>("種類").value).toBe("episode");
+    expect(within(quick).getByLabelText<HTMLInputElement>("題名").value).toBe(
+      "ラジオ「仮の時間」に試験 花子が出演！",
+    );
+    expect(within(quick).getByLabelText<HTMLInputElement>("日付").value).toBe("2026-10-30");
+    expect(within(quick).getByLabelText<HTMLInputElement>("時刻（任意）").value).toBe("21:00");
+    expect(
+      within(quick).getByRole("checkbox", { name: "試験 花子 の出演を付ける" }),
+    ).toHaveProperty("checked", true);
+    const save = within(card).getByRole("button", { name: "出来事にして保存" });
+    expect(save).toHaveProperty("disabled", true);
+    await user.click(within(quick).getByRole("button", { name: "作って紐付ける" }));
+    await waitFor(() => expect(save).toHaveProperty("disabled", false));
+    await user.click(save);
+    await waitFor(() => expect(cards()).toHaveLength(2));
+
+    // ニュースは承認の一覧に回らず、出来事に出典として紐付いて保存される
+    expect(
+      (await source.listIntake("pending")).some((i) => i.title?.includes("に試験 花子が出演")),
+    ).toBe(false);
+    const approved = (await source.listIntake("approved")).find((i) =>
+      i.title?.includes("ラジオ「仮の時間」に試験 花子"),
+    )!;
+    const links = (await source.getIntake(approved.id)).draft.links ?? [];
+    expect(links.filter((l) => l.role === "about" && l.to_type === "event")).toHaveLength(1);
+    const { items } = await source.listEvents({ query: "ラジオ「仮の時間」に試験 花子が出演" });
+    expect(items[0]).toMatchObject({
+      kind: "episode",
+      startsOn: "2026-10-30",
+      hasSources: true,
+      subjectStatus: "appeared",
+      classification: "public",
+    });
   });
 });

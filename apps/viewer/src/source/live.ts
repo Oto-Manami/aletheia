@@ -58,6 +58,8 @@ function rowsOf<T>(res: Result): T[] {
 }
 
 interface IntakeRow {
+  /** 振り分け待ちの一覧だけが返す */
+  channel_kind?: string;
   id: string;
   channel_key: string;
   channel_name: string;
@@ -520,6 +522,7 @@ export class LiveSource implements ArchiveSource {
             channelName: i.channel_name,
             capturedAt: i.captured_at,
             draft: i.draft,
+            channelKind: i.channel_kind ?? null,
           },
           subjects,
         ),

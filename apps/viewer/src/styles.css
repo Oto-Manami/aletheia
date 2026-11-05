@@ -3045,3 +3045,46 @@ details.more[open] > summary {
   font-size: 12px;
   color: var(--faint);
 }
+
+/* 振り分けで、ニュースを出来事にする（設計書 決定記録 0029） */
+.news-events {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--hover);
+}
+
+.news-events .event-links {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.news-events .record-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.quick-dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.quick-subject {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.quick-subject input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+}

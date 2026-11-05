@@ -12,13 +12,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router";
-import {
-  ClassificationChoice,
-  EntityPicker,
-  type Picked,
-  PickedChip,
-  useSearch,
-} from "../components/EntityPicker.tsx";
+import { EntityPicker, type Picked, PickedChip, useSearch } from "../components/EntityPicker.tsx";
 import { useApp } from "../context.tsx";
 import {
   EVENT_KIND_LABELS,
@@ -31,7 +25,6 @@ import {
   PARTICIPANT_STATUS_LABELS,
 } from "../format.ts";
 import type {
-  Classification,
   DatePrecision,
   EventDetail,
   EventInput,
@@ -214,7 +207,6 @@ interface FormState {
   parent: Picked | null;
   rows: Row[];
   sources: string[];
-  classification: Classification | null;
 }
 
 /** 種類ごとの、蓄積対象の人物の役割の初めの値 */
@@ -278,7 +270,6 @@ function emptyForm(subjects: RefLabel[], parent: Picked | null): FormState {
       auto: true,
     })),
     sources: [""],
-    classification: null,
   };
 }
 
@@ -310,7 +301,6 @@ function formOf(e: EventDetail, subjects: RefLabel[]): FormState {
       auto: false,
     })),
     sources: e.sources.length > 0 ? e.sources.map((s) => s.url) : [""],
-    classification: e.classification,
   };
 }
 
@@ -324,7 +314,6 @@ function toInput(f: FormState): { input: EventInput } | { problems: string[] } {
   if (f.end.trim() && !endsOn) problems.push("終わりの日付の形が正しくありません");
   if (endsOn && !startsOn) problems.push("終わりの日付だけでは保存できません");
   if (startsOn && endsOn && endsOn < startsOn) problems.push("終わりの日付が始まりより前です");
-  if (!f.classification) problems.push("公開区分を選んでください");
   const sources = f.sources.map((s) => s.trim()).filter(Boolean);
   for (const url of sources) {
     if (!/^https?:\/\/\S+$/.test(url)) problems.push(`出典の URL の形が正しくありません: ${url}`);
@@ -339,7 +328,7 @@ function toInput(f: FormState): { input: EventInput } | { problems: string[] } {
   if (episodeNumber !== null && !(Number.isInteger(episodeNumber) && episodeNumber >= 0)) {
     problems.push("回の番号は 0 以上の整数で入れてください");
   }
-  if (problems.length > 0 || !f.classification) return { problems };
+  if (problems.length > 0) return { problems };
   const withTime = (time: string) =>
     f.precision === "day" && startsOn && time ? `${startsOn}T${time}:00+09:00` : null;
   return {
@@ -360,7 +349,8 @@ function toInput(f: FormState): { input: EventInput } | { problems: string[] } {
           ? `${startsOn}T${f.endTime}:00+09:00`
           : null,
       sources: sources.map((url) => ({ url })),
-      classification: f.classification,
+      // 出来事は仕事と公式の発表だけなので、すべて公開（設計書 決定記録 0029）
+      classification: "public",
       participants: f.rows.map((r) => ({
         entityId: r.entityId,
         role: r.role,
@@ -852,19 +842,6 @@ function EventForm({
           >
             <Plus size={14} aria-hidden="true" /> URL を足す
           </button>
-        </section>
-
-        <section className="editor-section">
-          <ClassificationChoice
-            name={`${formId}-classification`}
-            value={f.classification}
-            onChange={(classification) => set({ classification })}
-          />
-          {!f.classification && (
-            <p className="field-hint">
-              公式に告知・発表された仕事は「公開」、それ以外は「非公開」を選びます。
-            </p>
-          )}
         </section>
       </fieldset>
 

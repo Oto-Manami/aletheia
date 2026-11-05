@@ -69,6 +69,7 @@ export function triageItemOf(
     capturedAt: string;
     draft: DraftInput;
     previews?: Record<string, string>;
+    channelKind?: string | null;
   },
   /** 蓄積対象の人物（本人）の ID。ほかの対象（期など）への言及と分ける */
   subjectIds: ReadonlySet<string> = new Set(),
@@ -152,6 +153,7 @@ export function triageItemOf(
     groupMentions: countOf("group"),
     otherNames: [...new Set(otherNames)],
     category: typeof category === "string" && category ? category : null,
+    channelKind: row.channelKind ?? null,
     aliases: [...new Set(mentions.flatMap((m) => m.aliases))],
     mentions,
     snippets,

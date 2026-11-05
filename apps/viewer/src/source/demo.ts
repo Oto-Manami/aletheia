@@ -377,6 +377,7 @@ export class DemoSource implements ArchiveSource {
           channelName: t.channelName,
           capturedAt: t.capturedAt,
           draft: t.draft,
+          channelKind: t.channelKind ?? "blog",
           previews: Object.fromEntries(
             Object.entries(t.photos).map(([ref, hue]) => [ref, placeholderImage(ref, hue)]),
           ),
