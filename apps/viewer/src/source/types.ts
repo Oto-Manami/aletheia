@@ -175,6 +175,112 @@ export interface TriageItem {
   draft: DraftInput;
 }
 
+/** 出来事（仕事と公式の発表。設計書 決定記録 0020・0027） */
+export type ParticipantStatus = "scheduled" | "appeared" | "not_appearing" | "cancelled";
+export type DatePrecision = "day" | "month" | "year";
+
+/** 出来事の一覧の 1 行 */
+export interface EventSummary {
+  id: string;
+  kind: string;
+  eventType: string | null;
+  title: string;
+  parentId: string | null;
+  startsOn: string | null;
+  endsOn: string | null;
+  datePrecision: string | null;
+  workName: string | null;
+  /** 出典の URL が付いているか */
+  hasSources: boolean;
+  /** 蓄積対象の人物の出演の状態 */
+  subjectStatus: ParticipantStatus | null;
+  classification: Classification;
+}
+
+export interface EventParticipantView {
+  entityId: string;
+  entityName: string;
+  role: string;
+  status: ParticipantStatus;
+  characterName: string | null;
+}
+
+/** 出来事 1 件（作る・直す画面） */
+export interface EventDetail {
+  id: string;
+  kind: string;
+  eventType: string | null;
+  title: string;
+  parentId: string | null;
+  parentTitle: string | null;
+  workId: string | null;
+  workName: string | null;
+  venueId: string | null;
+  venueName: string | null;
+  episodeNumber: number | null;
+  startsOn: string | null;
+  endsOn: string | null;
+  datePrecision: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  sources: { url: string }[];
+  classification: Classification;
+  participants: EventParticipantView[];
+  children: {
+    id: string;
+    kind: string;
+    title: string;
+    startsOn: string | null;
+    datePrecision: string | null;
+  }[];
+  createdAt: string;
+  updatedAt: string;
+  createdByName: string | null;
+  updatedByName: string | null;
+}
+
+/** 出来事を作る・直すときに送るもの */
+export interface EventInput {
+  kind: string;
+  eventType: string | null;
+  title: string;
+  parentId: string | null;
+  workId: string | null;
+  venueId: string | null;
+  episodeNumber: number | null;
+  startsOn: string | null;
+  endsOn: string | null;
+  datePrecision: DatePrecision | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  sources: { url: string }[];
+  classification: Classification;
+  participants: {
+    entityId: string;
+    role: string;
+    status: ParticipantStatus;
+    characterName: string | null;
+  }[];
+}
+
+/** 閲覧サイトから作れる作品・相手の種類 */
+export type EditableEntityType = "person" | "work" | "organization" | "place";
+
+/** 作品・相手の候補（名前で探した結果） */
+export interface EntityOption {
+  id: string;
+  type: string;
+  subtype: string | null;
+  label: string;
+}
+
+export interface NewEntity {
+  type: EditableEntityType;
+  subtype: string | null;
+  name: string;
+  classification: Classification;
+}
+
 export interface ArchiveSource {
   /** デモ版かどうか（画面に表示する） */
   readonly demo: boolean;
@@ -214,6 +320,20 @@ export interface ArchiveSource {
   listMembers(): Promise<MemberView[]>;
   /** 閲覧者を外す（管理者は外せない） */
   removeMember(discordUserId: string): Promise<void>;
+  /** 出来事の一覧（日付の新しい順。題名・作品名で探す、種類で絞る） */
+  listEvents(filter?: { query?: string; kind?: string }): Promise<{
+    items: EventSummary[];
+    total: number;
+  }>;
+  getEvent(id: string): Promise<EventDetail>;
+  /** 出来事を作る（id が null）・直す。出来事の ID を返す */
+  saveEvent(id: string | null, input: EventInput): Promise<string>;
+  /** 作品・相手を名前で探す */
+  findEntities(query: string, types: readonly string[]): Promise<EntityOption[]>;
+  /** 作品・相手を作る。同じ種類・同じ名前があれば、それを返す */
+  createEntity(entity: NewEntity): Promise<EntityOption & { created: boolean }>;
+  /** 蓄積対象の人物（出来事を作るとき、出演の行を最初から置く） */
+  listArchiveSubjects(): Promise<RefLabel[]>;
 }
 
 /** API・データベースから返った失敗を、画面にそのまま出せる文にしたもの */

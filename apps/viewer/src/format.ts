@@ -105,3 +105,136 @@ export function routeLabel(route: string): string {
   if (route.startsWith("archive:")) return "外部のアーカイブから";
   return ROUTE_LABELS[route] ?? route;
 }
+
+/** 出来事の種類（設計書 語彙 4 章）。並びは作る画面の選択肢の順 */
+export const EVENT_KIND_LABELS: Record<string, string> = {
+  episode: "番組の回（テレビ・ラジオ・配信）",
+  publication: "掲載（雑誌・書籍・Web）",
+  live: "ライブ・ツアー（まとまり）",
+  performance: "公演（1 公演・1 部）",
+  event: "イベント（ランウェイ・会見など）",
+  meet_greet: "ミート＆グリート",
+  release: "発売・公開",
+  cm_run: "CM・広告の掲出",
+  campaign: "タイアップ・コラボ",
+  announcement: "公式発表",
+  recognition: "受賞・ランキング",
+  other: "その他",
+};
+
+/** 出来事の種類の短い名前（一覧のバッジ） */
+export const EVENT_KIND_SHORT: Record<string, string> = {
+  episode: "番組",
+  publication: "掲載",
+  live: "ライブ",
+  performance: "公演",
+  event: "イベント",
+  meet_greet: "ミーグリ",
+  release: "発売",
+  cm_run: "CM",
+  campaign: "タイアップ",
+  announcement: "発表",
+  recognition: "受賞",
+  other: "その他",
+};
+
+/** イベントの細かい種類（属性 event_type） */
+export const EVENT_TYPE_LABELS: Record<string, string> = {
+  fashion_show: "ファッションショー・ランウェイ",
+  press: "記者発表・会見・舞台挨拶",
+  fan_meeting: "ファン向けイベント",
+  release_event: "発売記念イベント",
+  exhibition: "展示・写真展",
+  other: "その他",
+};
+
+/** 出演・参加の役割（設計書 語彙 5 章） */
+export const PARTICIPANT_ROLE_LABELS: Record<string, string> = {
+  performer: "出演",
+  mc: "司会・進行",
+  personality: "パーソナリティ",
+  regular: "レギュラー",
+  guest: "ゲスト",
+  cast: "役を演じる",
+  voice: "声の出演",
+  cover: "表紙",
+  gravure: "グラビア",
+  interview: "インタビュー・対談",
+  model: "モデル",
+  fashion: "ファッションページ",
+  serial: "連載",
+  comment: "コメント出演",
+  speaker: "登壇",
+  host: "主体（ミーグリの対象など）",
+  announced: "発表の対象",
+  other: "その他",
+};
+
+export const PARTICIPANT_STATUS_LABELS: Record<string, string> = {
+  scheduled: "予定",
+  appeared: "出演した",
+  not_appearing: "出ていない",
+  cancelled: "中止",
+};
+
+/** 作品・相手の細かい種類（設計書 語彙 2 章） */
+export const ENTITY_SUBTYPE_LABELS: Record<string, Record<string, string>> = {
+  work: {
+    tv_program: "テレビ番組",
+    radio_program: "ラジオ番組",
+    web_program: "配信番組",
+    magazine: "雑誌",
+    drama: "ドラマ",
+    film: "映画",
+    stage: "舞台",
+    cm: "CM・広告",
+    single: "シングル",
+    album: "アルバム",
+    song: "楽曲",
+    music_video: "MV",
+    photobook: "写真集",
+    book: "書籍",
+    anime: "アニメ",
+    game: "ゲーム",
+    other: "その他",
+  },
+  place: {
+    venue: "会場・スタジオ",
+    area: "地域・都市",
+    shop: "店舗",
+    facility: "施設",
+  },
+  organization: {
+    broadcaster: "放送局・配信サービス",
+    publisher: "出版社",
+    brand: "企業・ブランド",
+    label: "レコード会社・事務所",
+    other: "その他",
+  },
+  person: {
+    talent: "共演者・タレント",
+    staff: "スタッフ",
+    member: "グループのメンバー",
+    other: "その他",
+  },
+};
+
+/** 出来事の日付（精度に合わせて。期間は「〜」でつなぐ） */
+export function eventDateLabel(
+  startsOn: string | null,
+  endsOn: string | null,
+  precision: string | null,
+): string {
+  if (!startsOn) return "日付なし";
+  const start = formatDate(startsOn, precision);
+  return endsOn && endsOn !== startsOn ? `${start}〜${formatDate(endsOn, precision)}` : start;
+}
+
+/** 時刻（JST の HH:MM）。無ければ空 */
+export function jstTime(value: string | null): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const parts = Object.fromEntries(jst.formatToParts(d).map((p) => [p.type, p.value]));
+  return `${parts["hour"]}:${parts["minute"]}`;
+}

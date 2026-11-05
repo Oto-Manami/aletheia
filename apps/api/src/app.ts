@@ -16,6 +16,7 @@
 // | POST     | /intake/no-mention        | 振り分け: まとめて言及なし         |
 // | POST     | /resolve                  | URL から情報源と外部 ID を判定する |
 // | POST     | /files/staging            | ファイルを承認待ちの場所に保存する |
+// | GET/POST | /events・/entities        | 出来事と作品・相手を作る・直す（events.ts） |
 
 import type { Database } from "@aletheia/db/client";
 import {
@@ -39,6 +40,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { FileStore } from "@aletheia/storage";
 import { type Actor, assertAdmin, type AuthEnv, type AuthOptions, requireMember } from "./auth.ts";
+import { registerEventRoutes } from "./events.ts";
 import { finalizeApprovedFiles, moveRejectedFiles, removeStagedFiles, stageFile } from "./files.ts";
 
 const uuid = z.uuid();
@@ -198,6 +200,10 @@ export function createApp(
   app.use("/intake", requireMember(db, auth));
   app.use("/resolve", requireMember(db, auth));
   app.use("/files/*", requireMember(db, auth));
+  app.use("/events", requireMember(db, auth));
+  app.use("/events/*", requireMember(db, auth));
+  app.use("/entities", requireMember(db, auth));
+  registerEventRoutes(app, db);
 
   app.post("/files/staging", async (c) => {
     if (!files) throw new HTTPException(503, { message: "ファイルの保存先が設定されていません" });
