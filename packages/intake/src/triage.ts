@@ -2,8 +2,9 @@
 //
 // 全件を取り込む経路の下書きは「振り分け待ち」（triage）から始まる。
 // - 残す: 承認待ち（pending）に進め、確認済みの記録（結果 mention）を残す
-// - 言及なし: 確認済みの記録（結果 no_mention）を残し、下書きを削除する。
-//   本文は変更履歴に残らない（データベースの側で伏せる）。仮置きのファイルは呼ぶ側が削除する
+// - 言及なし: 確認済みの記録（結果 no_mention）を残し、下書きを置き場（discarded）に移す。置き場は
+//   直近 10 件までで、古いものは下書きを削除する（決定記録 0031）。本文は変更履歴に残らない（データベースの
+//   側で伏せる）。削除した下書きの仮置きのファイルは呼ぶ側が削除する
 
 import type { Database } from "@aletheia/db/client";
 import type { DB } from "@aletheia/db/database";
@@ -115,24 +116,96 @@ export function keepAndApprove(
   });
 }
 
+/** 「言及なし」にしたものを、戻せるように置いておく件数（設計書 決定記録 0031） */
+export const DISCARD_KEEP = 10;
+
 /**
- * 言及なし: 確認済みの記録を残して下書きを削除する（呼ぶ側のトランザクションの中で）。
- * 仮置きのファイルの一覧を返す（呼ぶ側が保存先から削除する）
+ * 言及なし: 確認済みの記録を残し、下書きを置き場（discarded）に移す（呼ぶ側のトランザクションの中で）。
+ * 置き場は直近 {@link DISCARD_KEEP} 件までで、それより古いものは下書きを削除する。
+ * 削除した下書きの仮置きのファイルの一覧を返す（呼ぶ側が保存先から削除する）
  */
 export async function discardTriageIn(
   trx: Trx,
   intakeId: string,
   options: TriageOptions = {},
-): Promise<{ stagedFiles: unknown }> {
+): Promise<{ stagedFiles: unknown[] }> {
   const intake = await lockTriage(trx, intakeId);
   await recordCheck(trx, intake, "no_mention", options);
-  await trx.deleteFrom("intake_items").where("id", "=", intakeId).execute();
-  return { stagedFiles: intake.staged_files };
+  await trx
+    .updateTable("intake_items")
+    // まとめて言及なしにしたときも順番が付くよう、時刻は文の実行時のものにする
+    .set({
+      state: "discarded",
+      reviewed_by: options.reviewerId ?? null,
+      reviewed_at: sql<string>`clock_timestamp()`,
+    })
+    .where("id", "=", intakeId)
+    .execute();
+  const old = await trx
+    .selectFrom("intake_items")
+    .select(["id", "staged_files"])
+    .where("state", "=", "discarded")
+    .orderBy("reviewed_at", "desc")
+    .orderBy("id")
+    .offset(DISCARD_KEEP)
+    .limit(1000)
+    .forUpdate()
+    .execute();
+  if (old.length === 0) return { stagedFiles: [] };
+  await trx
+    .deleteFrom("intake_items")
+    .where(
+      "id",
+      "in",
+      old.map((o) => o.id),
+    )
+    .execute();
+  return {
+    stagedFiles: old.flatMap((o) => (Array.isArray(o.staged_files) ? o.staged_files : [])),
+  };
 }
 
-/** 言及なし: 確認済みの記録を残して下書きを削除する */
+/** 言及なし: 確認済みの記録を残し、下書きを置き場に移す（古いものは削除する） */
 export function discardTriage(db: Database, intakeId: string, options: TriageOptions = {}) {
   return inTransaction(db, (trx) => discardTriageIn(trx, intakeId, options));
+}
+
+/**
+ * 言及なしを取り消す: 置き場の下書きを振り分け待ちに戻し、確認済みの記録（言及なし）を消す
+ * （設計書 決定記録 0031）
+ */
+export function restoreDiscarded(db: Database, intakeId: string): Promise<void> {
+  return inTransaction(db, async (trx) => {
+    const intake = await trx
+      .selectFrom("intake_items")
+      .select(["id", "state", "channel_id", "external_id"])
+      .where("id", "=", intakeId)
+      .forUpdate()
+      .executeTakeFirst();
+    if (!intake) {
+      throw new IntakeError(
+        "not_found",
+        "戻せる下書きが見つかりません（直近 10 件より古いものは戻せません）",
+      );
+    }
+    if (intake.state !== "discarded") {
+      throw new IntakeError(
+        "already_decided",
+        `この下書きは言及なしの置き場にありません（${intake.state}）`,
+      );
+    }
+    await trx
+      .updateTable("intake_items")
+      .set({ state: "triage", reviewed_by: null, reviewed_at: null })
+      .where("id", "=", intakeId)
+      .execute();
+    await trx
+      .deleteFrom("coverage_checks")
+      .where("channel_id", "=", intake.channel_id)
+      .where("external_id", "=", intake.external_id)
+      .where("result", "=", "no_mention")
+      .execute();
+  });
 }
 
 /** この記事が既に「言及なし」と確認済みか（取り込み直しを防ぐ） */

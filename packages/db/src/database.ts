@@ -22,7 +22,7 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
 
 export type Int8 = ColumnType<string, bigint | number | string, bigint | number | string>;
 
-export type IntakeState = "approved" | "on_hold" | "pending" | "rejected" | "triage";
+export type IntakeState = "approved" | "discarded" | "on_hold" | "pending" | "rejected" | "triage";
 
 export type Interval = ColumnType<IPostgresInterval, IPostgresInterval | number | string, IPostgresInterval | number | string>;
 

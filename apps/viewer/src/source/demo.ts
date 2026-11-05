@@ -23,6 +23,7 @@ import { bySignal, matchesMention, TRIAGE_FILTERS, triageItemOf } from "./triage
 import {
   type ArchiveSource,
   type Decision,
+  type DiscardedItem,
   type EntityOption,
   type EventDetail,
   type EventInput,
@@ -84,6 +85,7 @@ export class DemoSource implements ArchiveSource {
   private pageHtml = new Map<string, Record<string, string>>();
   private invites: (InviteView & { token: string })[] = [];
   private events = new DemoEvents();
+  private discarded: { item: DemoTriage; at: string }[] = [];
   private triage: DemoTriage[] = demoTriage().map((t) => ({
     ...t,
     // 取り込みのときと同じ規則で、言及と画像の確認の候補を付ける
@@ -421,9 +423,38 @@ export class DemoSource implements ArchiveSource {
     });
   }
 
+  async listDiscarded(): Promise<DiscardedItem[]> {
+    await this.delay();
+    return this.discarded.map(({ item, at }) => ({
+      id: item.id,
+      channelName: item.channelName,
+      title: item.draft.post.title ?? null,
+      url: item.draft.post.url ?? null,
+      discardedAt: at,
+      discardedByName: "デモの運営者",
+    }));
+  }
+
+  async restoreDiscarded(id: string): Promise<void> {
+    await this.delay();
+    const held = this.discarded.find((d) => d.item.id === id);
+    if (!held) throw new SourceError("戻せる記事が見つかりません", 404);
+    this.discarded = this.discarded.filter((d) => d.item.id !== id);
+    this.triage = [...this.triage, held.item].sort((a, b) =>
+      a.capturedAt.localeCompare(b.capturedAt),
+    );
+  }
+
   async discardTriage(ids: string[]) {
     await this.delay();
     const done = ids.filter((id) => this.triage.some((t) => t.id === id));
+    // 言及なしにしたものは、直近 10 件まで置いておく（決定記録 0031）
+    const now = Date.now();
+    const moved = done.map((id, i) => ({
+      item: this.triage.find((t) => t.id === id)!,
+      at: new Date(now + i).toISOString(),
+    }));
+    this.discarded = [...moved.reverse(), ...this.discarded].slice(0, 10);
     this.triage = this.triage.filter((t) => !ids.includes(t.id));
     return {
       done,

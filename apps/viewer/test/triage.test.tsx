@@ -98,6 +98,37 @@ describe("振り分けの画面", () => {
     expect(await screen.findByRole("button", { name: "選んだ 4 件を言及なしにする" })).toBeTruthy();
   });
 
+  it("言及なしにした直近のものは、開くと並び、振り分け待ちに戻せる", async () => {
+    const user = userEvent.setup();
+    const source = open();
+    await screen.findByText("リハーサルの日");
+    const list = vi.spyOn(source, "listDiscarded");
+    await user.click(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" }));
+    await user.click(screen.getByRole("button", { name: "選んだ 5 件を言及なしにする" }));
+    expect(await screen.findByText("5 件を言及なしにしました")).toBeTruthy();
+    expect(cards()).toHaveLength(4);
+    // 開くまでは読み込まない
+    expect(list).not.toHaveBeenCalled();
+
+    await user.click(screen.getByText("直近に言及なしにしたもの（10 件まで戻せます）"));
+    const held = await screen.findByRole("list", { name: "直近に言及なしにしたもの" });
+    const rows = within(held).getAllByRole("listitem");
+    expect(rows).toHaveLength(5);
+    const title = rows[0]!.querySelector(".triage-discarded-title")?.textContent ?? "";
+    await user.click(within(rows[0]!).getByRole("button", { name: /を振り分け待ちに戻す/ }));
+    expect(await screen.findByText(`「${title}」を振り分け待ちに戻しました`)).toBeTruthy();
+    await waitFor(() => expect(cards()).toHaveLength(5));
+    // 読み直した一覧から消える
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("list", { name: "直近に言及なしにしたもの" })).getAllByRole(
+          "listitem",
+        ),
+      ).toHaveLength(4),
+    );
+    expect((await source.listDiscarded()).map((d) => d.title)).not.toContain(title);
+  });
+
   it("本当の件数を出し、表示した分を終えたら続きを読み込める", async () => {
     const user = userEvent.setup();
     const source = new DemoSource(0);

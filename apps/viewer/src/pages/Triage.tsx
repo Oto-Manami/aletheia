@@ -5,7 +5,7 @@
 // - 画像を並べ、本人が写っている画像をクリックで選ぶ（画像だけの登場は規則では見つけられない）
 // - 言及も写っている画像も無い記事は、まとめて「言及なし」にできる
 
-import { Check, ExternalLink } from "lucide-react";
+import { Check, ExternalLink, Undo2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { DraftInput } from "@aletheia/intake/draft";
 import { useSearchParams } from "react-router";
@@ -17,6 +17,7 @@ import { newsDates } from "../source/news-dates.ts";
 import { confirmPeopleTags, eventsOf } from "../source/tags.ts";
 import { matchesMention, TRIAGE_FILTERS, withAppears } from "../source/triage.ts";
 import type {
+  DiscardedItem,
   TriageCounts,
   TriageItem,
   TriageMentionFilter,
@@ -310,6 +311,99 @@ function NewsEvents({
   );
 }
 
+/**
+ * 直近に言及なしにしたもの（10 件まで。戻せる。設計書 決定記録 0031）。開いたときだけ読み込み、
+ * 振り分けの画面の表示とボタンを重くしない
+ */
+function RecentlyDiscarded({
+  refresh,
+  onRestored,
+}: {
+  refresh: number;
+  onRestored: (item: DiscardedItem) => void;
+}) {
+  const { source } = useApp();
+  const [open, setOpen] = useState(false);
+  const [list, reload] = useLoad(
+    () => (open ? source.listDiscarded() : Promise.resolve([])),
+    [source, open, refresh],
+  );
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const restore = (item: DiscardedItem) => {
+    setBusy(item.id);
+    setError(null);
+    source
+      .restoreDiscarded(item.id)
+      .then(() => {
+        reload();
+        onRestored(item);
+      })
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : String(e));
+        reload();
+      })
+      .finally(() => setBusy(null));
+  };
+
+  return (
+    <details className="triage-discarded" onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>直近に言及なしにしたもの（10 件まで戻せます）</summary>
+      {open && list.status === "loading" && <p className="quiet">読み込んでいます</p>}
+      {open && list.status === "error" && (
+        <p className="error" role="alert">
+          読めませんでした: {list.error.message}
+        </p>
+      )}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      {open && list.status === "ready" && list.data.length === 0 && (
+        <p className="quiet">まだありません。</p>
+      )}
+      {open && list.status === "ready" && list.data.length > 0 && (
+        <ul aria-label="直近に言及なしにしたもの">
+          {list.data.map((item) => (
+            <li key={item.id}>
+              <span className="event-material-channel">{item.channelName}</span>
+              <span className="triage-discarded-title">
+                {item.title ?? "（題名なし）"}
+                {item.url && (
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    aria-label="元の記事を開く"
+                    className="triage-link"
+                  >
+                    <ExternalLink size={13} aria-hidden="true" />
+                  </a>
+                )}
+              </span>
+              <span className="quiet triage-discarded-when">
+                {item.discardedAt ? formatInstant(item.discardedAt) : ""}
+                {item.discardedByName ? `（${item.discardedByName}）` : ""}
+              </span>
+              <button
+                type="button"
+                className="button"
+                disabled={busy !== null}
+                aria-label={`「${item.title ?? "（題名なし）"}」を振り分け待ちに戻す`}
+                onClick={() => restore(item)}
+              >
+                <Undo2 size={14} aria-hidden="true" /> 戻す
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
+  );
+}
+
 /** まとめて言及なしにするとき、1 回に送る件数 */
 const BULK_CHUNK = 20;
 
@@ -329,6 +423,8 @@ export function TriagePage() {
   const [gone, setGone] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  // 言及なしにしたら、開いている「直近に言及なしにしたもの」を読み直す
+  const [discardVersion, setDiscardVersion] = useState(0);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
 
   if (!viewer.isMember) {
@@ -412,6 +508,7 @@ export function TriagePage() {
       );
     } finally {
       setProgress(null);
+      if (done > 0) setDiscardVersion((v) => v + 1);
     }
     if (failed.length > 0) {
       reload();
@@ -567,6 +664,20 @@ export function TriagePage() {
         <p className={message.error ? "error" : "quiet"} role={message.error ? "alert" : "status"}>
           {message.text}
         </p>
+      )}
+      {viewer.isAdmin && (
+        <RecentlyDiscarded
+          refresh={discardVersion}
+          onRestored={(item) => {
+            // 処理済みとして隠していたものを、また一覧に出す
+            setGone((g) => new Set([...g].filter((id) => id !== item.id)));
+            reload();
+            setMessage({
+              text: `「${item.title ?? "（題名なし）"}」を振り分け待ちに戻しました`,
+              error: false,
+            });
+          }}
+        />
       )}
 
       {list.status === "loading" && <p className="quiet">読み込んでいます</p>}
