@@ -72,6 +72,32 @@ describe("振り分けの画面", () => {
     expect(screen.getByRole("tab", { name: "言及なし 0" })).toBeTruthy();
   });
 
+  it("まとめて言及なしにする途中で止まったら、終わった分を伝え、一覧を読み直して画面を合わせる", async () => {
+    const user = userEvent.setup();
+    const source = new DemoSource(0);
+    const original = source.discardTriage.bind(source);
+    // 1 回目は 1 件だけ通り、ほかは「振り分け待ちではない」で失敗する
+    vi.spyOn(source, "discardTriage").mockImplementationOnce(async (ids) => {
+      const r = await original(ids.slice(0, 1));
+      return {
+        done: r.done,
+        failed: ids.slice(1).map((id) => ({ id, error: "振り分け待ちではありません" })),
+      };
+    });
+    const list = vi.spyOn(source, "listTriage");
+    open(admin, source);
+    await screen.findByText("リハーサルの日");
+    const calls = list.mock.calls.length;
+    await user.click(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" }));
+    await user.click(screen.getByRole("button", { name: "選んだ 5 件を言及なしにする" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "1 件を言及なしにしました。4 件はできませんでした（振り分け待ちではありません）。一覧を読み直しました",
+    );
+    await waitFor(() => expect(list.mock.calls.length).toBeGreaterThan(calls));
+    // 一覧から消えたものは、選んだ数に入れない
+    expect(await screen.findByRole("button", { name: "選んだ 4 件を言及なしにする" })).toBeTruthy();
+  });
+
   it("本当の件数を出し、表示した分を終えたら続きを読み込める", async () => {
     const user = userEvent.setup();
     const source = new DemoSource(0);
