@@ -28,6 +28,7 @@ import {
   holdIntake,
   IntakeError,
   isCheckedNoMention,
+  keepAndApprove,
   keepTriage,
   rejectIntake,
   type Subject,
@@ -74,6 +75,9 @@ const decisionBody = z.object({
 });
 
 const approveBody = decisionBody.extend({ draft: z.unknown().optional() });
+
+/** 残す。approve を付けると、そのまま承認する（ニュースを出来事に紐付けるとき） */
+const keepBody = approveBody.extend({ approve: z.boolean().optional() });
 
 const bulkNoMentionBody = decisionBody.extend({ ids: z.array(uuid).min(1).max(200) });
 
@@ -516,8 +520,17 @@ export function createApp(
   // 振り分け（設計書 決定記録 0021）
   app.post("/intake/:id/keep", async (c) => {
     const id = idParam(c.req.param("id"));
-    const body = await parseBody(c.req.raw, approveBody);
+    const body = await parseBody(c.req.raw, keepBody);
     const reviewerId = reviewerOf(c.get("actor"), body);
+    if (body.approve) {
+      // 残すと承認を 1 つのトランザクションで行う。失敗したら振り分け待ちのまま（決定記録 0030）
+      const result = await keepAndApprove(db, id, {
+        ...(reviewerId ? { reviewerId } : {}),
+        ...(body.draft !== undefined ? { draft: body.draft } : {}),
+      });
+      const filesReport = files ? await finalizeApprovedFiles(db, files, id, result.postId) : null;
+      return c.json({ ...result, files: filesReport });
+    }
     await keepTriage(db, id, {
       ...(reviewerId ? { reviewerId } : {}),
       ...(body.draft !== undefined ? { draft: body.draft } : {}),

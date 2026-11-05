@@ -619,9 +619,8 @@ export function TriagePage() {
             }
             onDiscard={viewer.isAdmin ? () => discard([item.id]).then(() => undefined) : null}
             onToEvents={async (draft) => {
-              // 残してから、そのまま承認する（ニュースは承認の一覧に回さない）
-              await source.keepTriage(item.id, draft);
-              await source.decide(item.id, "approve", { draft });
+              // 残すと承認を 1 回で行う。失敗したら振り分け待ちのまま（ニュースは承認の一覧に回さない）
+              await source.keepAndApprove(item.id, draft);
               finish([item.id]);
             }}
           />

@@ -531,6 +531,10 @@ export class LiveSource implements ArchiveSource {
     };
   }
 
+  async keepAndApprove(id: string, draft: DraftInput): Promise<void> {
+    await this.api("POST", `/intake/${encodeURIComponent(id)}/keep`, { draft, approve: true });
+  }
+
   async keepTriage(id: string, draft: DraftInput): Promise<void> {
     await this.api("POST", `/intake/${encodeURIComponent(id)}/keep`, { draft });
   }

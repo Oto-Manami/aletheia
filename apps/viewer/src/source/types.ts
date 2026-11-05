@@ -369,6 +369,10 @@ export interface ArchiveSource {
   }>;
   /** 残す。写っている画像の選択などを直した下書きを送り、承認待ちへ進める */
   keepTriage(id: string, draft: DraftInput): Promise<void>;
+  /**
+   * 残して、そのまま承認する（ニュースを出来事に紐付けるとき）。1 回の処理で行い、失敗したら振り分け待ちのまま
+   */
+  keepAndApprove(id: string, draft: DraftInput): Promise<void>;
   /** 言及なしにする（まとめて）。確認済みの記録だけを残し、下書きと仮置きのファイルを消す */
   discardTriage(
     ids: string[],
