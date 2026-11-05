@@ -69,6 +69,18 @@ describe("振り分け", () => {
       expect((await ctx.call("POST", `/intake/${id}/keep`, {})).status).toBe(409);
     }));
 
+  it("一覧は上限までだが、その状態の本当の件数も返す", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      for (const n of ["211", "212", "213"]) await triageDraft(ctx, d, n);
+      const list = (await (await ctx.call("GET", "/intake?state=triage&limit=2")).json()) as {
+        items: unknown[];
+        total: number;
+      };
+      expect(list.items).toHaveLength(2);
+      expect(list.total).toBe(3);
+    }));
+
   it("言及なしにすると下書きと仮置きのファイルが消え、同じ記事は取り込み直されない", () =>
     withApi(async (ctx) => {
       const d = await seed(ctx.c);

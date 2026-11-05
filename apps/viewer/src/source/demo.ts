@@ -170,6 +170,12 @@ export class DemoSource implements ArchiveSource {
       .map((i) => this.summary(i));
   }
 
+  async countIntake(state: IntakeState): Promise<number> {
+    await this.delay();
+    if (state === "triage") return this.triage.length;
+    return this.intakes.filter((i) => i.state === state).length;
+  }
+
   private find(id: string): DemoIntake {
     const item = this.intakes.find((i) => i.id === id);
     if (!item) throw new SourceError("下書きが見つかりません", 404);

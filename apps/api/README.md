@@ -79,7 +79,7 @@ curl http://127.0.0.1:8787/health   # {"ok":true}
 | メソッド | パス                             | 内容                                                                                                                                                  |
 | -------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET      | `/health`                        | 動いているか（認証なし）                                                                                                                              |
-| GET      | `/intake?state=pending&limit=50` | 下書きの一覧（取得日時の古い順）                                                                                                                      |
+| GET      | `/intake?state=pending&limit=50` | 下書きの一覧（取得日時の古い順。上限 200 件）と、その状態の本当の件数（`total`）                                                                      |
 | GET      | `/intake/:id`                    | 下書き 1 件。下書きの形が正しいか（`draft_valid`）と問題点も返す                                                                                      |
 | POST     | `/intake`                        | 下書きを作る。`channel_key` / `external_id` / `route` / `route_ref` / `captured_at` / `draft` / `staged_files` / `state`                              |
 | POST     | `/intake/known`                  | `channel_key` と `external_ids`（500 件まで）のうち、取り込み済み・振り分けで確認済みのものを返す                                                     |

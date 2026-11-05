@@ -261,7 +261,13 @@ export function createApp(
       .orderBy(decided ? "i.reviewed_at" : "i.captured_at", decided ? "desc" : "asc")
       .limit(q.data.limit)
       .execute();
-    return c.json({ items });
+    // 一覧は上限までしか返さないので、その状態の本当の件数も返す（画面の件数の表示）
+    const { total } = await db
+      .selectFrom("intake_items")
+      .select((eb) => eb.fn.countAll<string>().as("total"))
+      .where("state", "=", q.data.state)
+      .executeTakeFirstOrThrow();
+    return c.json({ items, total: Number(total) });
   });
 
   app.get("/intake/:id", async (c) => {
