@@ -285,6 +285,10 @@ export interface Entities {
   canonical_name: string;
   classification: Generated<Classification>;
   created_at: Generated<Timestamp>;
+  /**
+   * 閲覧サイトで作った人（auth.users の ID）。取り込み・移行で作ったものは null
+   */
+  created_by: string | null;
   id: Generated<string>;
   merged_into: string | null;
   normalized_name: Generated<string | null>;
@@ -292,6 +296,10 @@ export interface Entities {
   subtype: string | null;
   type: EntityType;
   updated_at: Generated<Timestamp>;
+  /**
+   * 閲覧サイトで最後に直した人（auth.users の ID）
+   */
+  updated_by: string | null;
 }
 
 export interface EntityIdentifiers {
@@ -369,6 +377,10 @@ export interface Events {
   attributes: Generated<Json>;
   classification: Generated<Classification>;
   created_at: Generated<Timestamp>;
+  /**
+   * 閲覧サイトで作った人（auth.users の ID）。取り込み・移行で作ったものは null
+   */
+  created_by: string | null;
   date_precision: DatePrecision | null;
   ends_at: Timestamp | null;
   ends_on: string | null;
@@ -380,6 +392,10 @@ export interface Events {
   starts_on: string | null;
   title: string | null;
   updated_at: Generated<Timestamp>;
+  /**
+   * 閲覧サイトで最後に直した人（auth.users の ID）
+   */
+  updated_by: string | null;
   venue_id: string | null;
   work_id: string | null;
 }

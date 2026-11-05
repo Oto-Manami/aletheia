@@ -16,16 +16,21 @@ import {
 } from "./demo-data.ts";
 import { proposeSubjectLinks } from "@aletheia/intake/mentions";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
+import { DemoEvents } from "./demo-events.ts";
 import { triageItemOf } from "./triage.ts";
 import {
   type ArchiveSource,
   type Decision,
+  type EntityOption,
+  type EventDetail,
+  type EventInput,
   type IntakeDetail,
   type IntakeIssue,
   type IntakeState,
   type IntakeSummary,
   type InviteView,
   type MemberView,
+  type NewEntity,
   type PostView,
   type RefLabel,
   type Role,
@@ -72,6 +77,7 @@ export class DemoSource implements ArchiveSource {
   private previews = new Map<string, Record<string, string>>();
   private pageHtml = new Map<string, Record<string, string>>();
   private invites: (InviteView & { token: string })[] = [];
+  private events = new DemoEvents();
   private triage: DemoTriage[] = demoTriage().map((t) => ({
     ...t,
     // 取り込みのときと同じ規則で、言及と画像の確認の候補を付ける
@@ -388,5 +394,35 @@ export class DemoSource implements ArchiveSource {
       done,
       failed: ids.filter((id) => !done.includes(id)).map((id) => ({ id, error: "見つかりません" })),
     };
+  }
+
+  async listEvents(filter?: { query?: string; kind?: string }) {
+    await this.delay();
+    return this.events.list(filter);
+  }
+
+  async getEvent(id: string): Promise<EventDetail> {
+    await this.delay();
+    return this.events.get(id);
+  }
+
+  async saveEvent(id: string | null, input: EventInput): Promise<string> {
+    await this.delay();
+    return this.events.save(id, input);
+  }
+
+  async findEntities(query: string, types: readonly string[]): Promise<EntityOption[]> {
+    await this.delay();
+    return this.events.find(query, types);
+  }
+
+  async createEntity(entity: NewEntity) {
+    await this.delay();
+    return this.events.create(entity);
+  }
+
+  async listArchiveSubjects(): Promise<RefLabel[]> {
+    await this.delay();
+    return this.events.subjects();
   }
 }
