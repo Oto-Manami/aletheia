@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { ChevronLeft, ExternalLink } from "lucide-react";
 import { DraftEditor } from "../components/DraftEditor.tsx";
+import { EventLinks } from "../components/EventLinks.tsx";
 import { MentionView } from "../components/MentionView.tsx";
 import { PhotoTags } from "../components/PhotoTags.tsx";
 import { RecordPanel } from "../components/RecordPanel.tsx";
@@ -283,6 +284,14 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
             candidates={candidateList}
             name={name}
             channelAvailability={detail.channelAvailability}
+            readOnly={readOnly}
+          />
+          <EventLinks
+            draft={draft}
+            onChange={setDraft}
+            name={name}
+            onLabel={(ref) => setLabels((prev) => new Map(prev).set(ref.id, ref.label))}
+            subject={photoSubject}
             readOnly={readOnly}
           />
           {decidable && (

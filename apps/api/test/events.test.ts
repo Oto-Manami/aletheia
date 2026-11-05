@@ -231,4 +231,31 @@ describe("出来事を作る・直す", () => {
         ).status,
       ).toBe(401);
     }));
+
+  it("期間に重なる出来事だけを返せる（承認の画面で、投稿日の前後の候補を出す）", () =>
+    withApi(async (ctx) => {
+      const make = async (title: string, starts_on: string, ends_on?: string) =>
+        (
+          await json<{ id: string }>(
+            ctx.call("POST", "/events", {
+              ...base,
+              title,
+              starts_on,
+              ...(ends_on ? { ends_on } : {}),
+            }),
+          )
+        ).id;
+      const before = await make("試験の前の回", "2026-10-01");
+      const tour = await make("試験のツアー", "2026-10-20", "2026-11-10");
+      const inside = await make("試験の当日", "2026-11-05");
+      await make("試験の後の回", "2026-12-01");
+      const list = await json<{ items: { id: string }[] }>(
+        ctx.call("GET", "/events?from=2026-10-29&to=2026-11-12"),
+      );
+      const ids = list.items.map((i) => i.id);
+      expect(ids).toContain(tour);
+      expect(ids).toContain(inside);
+      expect(ids).not.toContain(before);
+      expect(ids).toHaveLength(2);
+    }));
 });

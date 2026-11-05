@@ -2,7 +2,7 @@
 //
 // | メソッド | パス          | 内容                                                       |
 // |----------|---------------|------------------------------------------------------------|
-// | GET      | /events       | 出来事の一覧（日付の新しい順。題名・作品名で探す、種類で絞る） |
+// | GET      | /events       | 出来事の一覧（日付の新しい順。題名・作品名で探す、種類・期間で絞る） |
 // | GET      | /events/:id   | 出来事 1 件（出演・作品・会場・親子・作った人と直した人）  |
 // | POST     | /events       | 出来事を作る                                               |
 // | POST     | /events/:id   | 出来事を直す（出演は送ったものに合わせる）                 |
@@ -108,6 +108,9 @@ const entityInput = z.object({
 const listQuery = z.object({
   q: z.string().trim().max(100).optional(),
   kind: key.optional(),
+  /** この期間（JST の暦日）に重なる出来事だけ。承認の画面で、投稿日の前後の出来事を候補に出す */
+  from: date.optional(),
+  to: date.optional(),
   limit: z.coerce.number().int().min(1).max(200).default(100),
 });
 
@@ -318,7 +321,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
   app.get("/events", async (c) => {
     const q = listQuery.safeParse(c.req.query());
     if (!q.success) badRequest("条件が正しくありません");
-    const { q: text, kind, limit } = q.data;
+    const { q: text, kind, from, to, limit } = q.data;
     let query = db
       .selectFrom("events as e")
       .leftJoin("entities as w", "w.id", "e.work_id")
@@ -346,6 +349,10 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       .orderBy("e.created_at", "desc")
       .limit(limit);
     if (kind) query = query.where("e.kind", "=", kind);
+    if (to) query = query.where("e.starts_on", "<=", to);
+    if (from) {
+      query = query.where(sql<boolean>`coalesce(e.ends_on, e.starts_on) >= ${from}`);
+    }
     if (text) {
       const pattern = `%${text.replace(/[%_\\]/g, (ch) => `\\${ch}`)}%`;
       query = query.where((eb) =>

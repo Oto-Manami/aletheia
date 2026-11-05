@@ -334,8 +334,8 @@ export interface ArchiveSource {
   listMembers(): Promise<MemberView[]>;
   /** 閲覧者を外す（管理者は外せない） */
   removeMember(discordUserId: string): Promise<void>;
-  /** 出来事の一覧（日付の新しい順。題名・作品名で探す、種類で絞る） */
-  listEvents(filter?: { query?: string; kind?: string }): Promise<{
+  /** 出来事の一覧（日付の新しい順。題名・作品名で探す、種類・期間（JST の暦日）で絞る） */
+  listEvents(filter?: { query?: string; kind?: string; from?: string; to?: string }): Promise<{
     items: EventSummary[];
     total: number;
   }>;

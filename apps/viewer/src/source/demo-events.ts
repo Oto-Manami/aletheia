@@ -201,10 +201,13 @@ export class DemoEvents {
     };
   }
 
-  list(filter: { query?: string; kind?: string } = {}) {
+  list(filter: { query?: string; kind?: string; from?: string; to?: string } = {}) {
     const q = filter.query?.trim() ?? "";
+    const { from, to } = filter;
     const items = this.events
       .filter((e) => !filter.kind || e.kind === filter.kind)
+      .filter((e) => !to || (e.startsOn !== null && e.startsOn <= to))
+      .filter((e) => !from || (e.endsOn ?? e.startsOn ?? "") >= from)
       .filter((e) => !q || e.title.includes(q) || (e.workName ?? "").includes(q))
       .sort((a, b) => (b.startsOn ?? "").localeCompare(a.startsOn ?? ""))
       .map((e) => this.summary(e));

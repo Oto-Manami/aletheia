@@ -76,25 +76,25 @@ curl http://127.0.0.1:8787/health   # {"ok":true}
 
 ## エンドポイント
 
-| メソッド | パス                             | 内容                                                                                                                                                                                                    |
-| -------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET      | `/health`                        | 動いているか（認証なし）                                                                                                                                                                                |
-| GET      | `/intake?state=pending&limit=50` | 下書きの一覧（取得日時の古い順。上限 200 件）と、その状態の本当の件数（`total`）                                                                                                                        |
-| GET      | `/intake/:id`                    | 下書き 1 件。下書きの形が正しいか（`draft_valid`）と問題点も返す                                                                                                                                        |
-| POST     | `/intake`                        | 下書きを作る。`channel_key` / `external_id` / `route` / `route_ref` / `captured_at` / `draft` / `staged_files` / `state`                                                                                |
-| POST     | `/intake/known`                  | `channel_key` と `external_ids`（500 件まで）のうち、取り込み済み・振り分けで確認済みのものを返す                                                                                                       |
-| POST     | `/intake/redetect`               | 全件を取り込む経路の、振り分け待ち・承認待ちの下書きの言及の印を、今の別名で付け直す（別名やタグ付けの候補を足したとき）。`checked`・`updated` を返す                                                   |
-| POST     | `/intake/:id/approve`            | 承認して事実の層に反映する。`draft`（人が修正した下書き）/ `note` / `reviewer_id`                                                                                                                       |
-| POST     | `/intake/:id/reject`             | 却下する。`note` / `reviewer_id`                                                                                                                                                                        |
-| POST     | `/intake/:id/hold`               | 保留する。`note` / `reviewer_id`                                                                                                                                                                        |
-| POST     | `/intake/:id/keep`               | 振り分け: 残す（承認待ちへ）。`draft`（人が選んだ画像を反映した下書き）/ `note` / `reviewer_id`                                                                                                         |
-| POST     | `/intake/:id/no-mention`         | 振り分け: 言及なし。確認済みの記録を残し、下書きと仮置きのファイルを消す                                                                                                                                |
-| POST     | `/intake/no-mention`             | 振り分け: まとめて言及なし。`ids`（200 件まで）                                                                                                                                                         |
-| GET      | `/events?q=&kind=&limit=100`     | 出来事の一覧（日付の新しい順）。題名・作品名で探す。出典があるか（`has_sources`）、蓄積対象の人物の出演の状態（`subject_status`）も返す                                                                 |
-| GET      | `/events/:id`                    | 出来事 1 件。出演・作品・会場・親・下の出来事、作った人・最後に直した人の名前                                                                                                                           |
-| POST     | `/events`                        | 出来事を作る（下の「出来事を作る・直す」）                                                                                                                                                              |
-| POST     | `/events/:id`                    | 出来事を直す。出演は送ったものに合わせる（無くなったものは外れ、変更履歴に残る）                                                                                                                        |
-| POST     | `/entities`                      | 作品・相手を作る。`type`（`person` / `work` / `organization` / `place`）/ `subtype` / `canonical_name` / `reading` / `classification`。同じ種類・同じ名前があれば作らずにそれを返す（`created: false`） |
+| メソッド | パス                                   | 内容                                                                                                                                                                                                    |
+| -------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET      | `/health`                              | 動いているか（認証なし）                                                                                                                                                                                |
+| GET      | `/intake?state=pending&limit=50`       | 下書きの一覧（取得日時の古い順。上限 200 件）と、その状態の本当の件数（`total`）                                                                                                                        |
+| GET      | `/intake/:id`                          | 下書き 1 件。下書きの形が正しいか（`draft_valid`）と問題点も返す                                                                                                                                        |
+| POST     | `/intake`                              | 下書きを作る。`channel_key` / `external_id` / `route` / `route_ref` / `captured_at` / `draft` / `staged_files` / `state`                                                                                |
+| POST     | `/intake/known`                        | `channel_key` と `external_ids`（500 件まで）のうち、取り込み済み・振り分けで確認済みのものを返す                                                                                                       |
+| POST     | `/intake/redetect`                     | 全件を取り込む経路の、振り分け待ち・承認待ちの下書きの言及の印を、今の別名で付け直す（別名やタグ付けの候補を足したとき）。`checked`・`updated` を返す                                                   |
+| POST     | `/intake/:id/approve`                  | 承認して事実の層に反映する。`draft`（人が修正した下書き）/ `note` / `reviewer_id`                                                                                                                       |
+| POST     | `/intake/:id/reject`                   | 却下する。`note` / `reviewer_id`                                                                                                                                                                        |
+| POST     | `/intake/:id/hold`                     | 保留する。`note` / `reviewer_id`                                                                                                                                                                        |
+| POST     | `/intake/:id/keep`                     | 振り分け: 残す（承認待ちへ）。`draft`（人が選んだ画像を反映した下書き）/ `note` / `reviewer_id`                                                                                                         |
+| POST     | `/intake/:id/no-mention`               | 振り分け: 言及なし。確認済みの記録を残し、下書きと仮置きのファイルを消す                                                                                                                                |
+| POST     | `/intake/no-mention`                   | 振り分け: まとめて言及なし。`ids`（200 件まで）                                                                                                                                                         |
+| GET      | `/events?q=&kind=&from=&to=&limit=100` | 出来事の一覧（日付の新しい順）。題名・作品名で探す。`from`・`to`（JST の暦日）で、その期間に重なるものだけにできる。出典があるか（`has_sources`）、蓄積対象の人物の出演の状態（`subject_status`）も返す |
+| GET      | `/events/:id`                          | 出来事 1 件。出演・作品・会場・親・下の出来事、作った人・最後に直した人の名前                                                                                                                           |
+| POST     | `/events`                              | 出来事を作る（下の「出来事を作る・直す」）                                                                                                                                                              |
+| POST     | `/events/:id`                          | 出来事を直す。出演は送ったものに合わせる（無くなったものは外れ、変更履歴に残る）                                                                                                                        |
+| POST     | `/entities`                            | 作品・相手を作る。`type`（`person` / `work` / `organization` / `place`）/ `subtype` / `canonical_name` / `reading` / `classification`。同じ種類・同じ名前があれば作らずにそれを返す（`created: false`） |
 
 形の足りない下書きも作れる（人が補ってから承認するため）。形の検査は承認のときに行う。
 

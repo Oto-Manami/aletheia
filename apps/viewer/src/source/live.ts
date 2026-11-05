@@ -535,10 +535,12 @@ export class LiveSource implements ArchiveSource {
     );
   }
 
-  async listEvents(filter: { query?: string; kind?: string } = {}) {
+  async listEvents(filter: { query?: string; kind?: string; from?: string; to?: string } = {}) {
     const params = new URLSearchParams({ limit: "200" });
     if (filter.query?.trim()) params.set("q", filter.query.trim());
     if (filter.kind) params.set("kind", filter.kind);
+    if (filter.from) params.set("from", filter.from);
+    if (filter.to) params.set("to", filter.to);
     const { items, total } = await this.api<{ items: EventRow[]; total: number }>(
       "GET",
       `/events?${params.toString()}`,
