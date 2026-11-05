@@ -576,6 +576,8 @@ export class LiveSource implements ArchiveSource {
       event: e,
       participants,
       children,
+      usage,
+      can_delete,
     } = await this.api<EventDetailResponse>("GET", `/events/${encodeURIComponent(id)}`);
     const attributes = e.attributes ?? {};
     const sources = Array.isArray(attributes["sources"])
@@ -620,6 +622,8 @@ export class LiveSource implements ArchiveSource {
       updatedAt: e.updated_at,
       createdByName: e.created_by_name,
       updatedByName: e.updated_by_name,
+      canDelete: can_delete,
+      usage,
     };
   }
 
@@ -649,6 +653,10 @@ export class LiveSource implements ArchiveSource {
     const path = id ? `/events/${encodeURIComponent(id)}` : "/events";
     const result = await this.api<{ id: string }>("POST", path, body);
     return result.id;
+  }
+
+  async deleteEvent(id: string): Promise<void> {
+    await this.api("POST", `/events/${encodeURIComponent(id)}/delete`, {});
   }
 
   async findEntities(query: string, types: readonly string[]): Promise<EntityOption[]> {
@@ -766,4 +774,6 @@ interface EventDetailResponse {
     starts_on: string | null;
     date_precision: string | null;
   }[];
+  usage: { links: number; drafts: number; children: number };
+  can_delete: boolean;
 }

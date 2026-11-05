@@ -72,7 +72,7 @@ function TriageCard({
   subject: RefLabel | null;
 }) {
   const [busy, setBusy] = useState(false);
-  // 公式サイトのニュースは、残す代わりに出来事にする（設計書 決定記録 0029）
+  // 公式サイトのニュースは、残す代わりに出来事に足す（設計書 決定記録 0029・0030）
   const news = item.channelKind === "web";
   const [toEvents, setToEvents] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -215,7 +215,7 @@ function TriageCard({
           )}
           {news ? (
             <button type="button" className="button primary" onClick={() => setToEvents(true)}>
-              出来事にする
+              出来事に足す
             </button>
           ) : (
             <button
@@ -280,7 +280,7 @@ function NewsEvents({
   const linked = eventsOf(draft);
 
   return (
-    <div className="news-events" role="group" aria-label="このニュースを出来事にする">
+    <div className="news-events" role="group" aria-label="このニュースを出来事に足す">
       <EventLinks
         draft={draft}
         onChange={setDraft}
@@ -289,7 +289,7 @@ function NewsEvents({
         subject={subject}
         readOnly={busy}
         prefill={prefill}
-        title="このニュースから作る出来事"
+        title="このニュースを足す出来事"
       />
       {error && (
         <p className="error" role="alert">

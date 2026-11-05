@@ -15,6 +15,7 @@ export interface NewsPrefill {
 
 const PUBLICATION = /雑誌|号|掲載|表紙|グラビア|誌面|写真集|連載|Web|WEB|インタビュー/;
 const LIVE = /ライブ|LIVE|公演|ツアー|TOUR/;
+const MILESTONE = /発表|お披露目|加入|卒業|就任|選抜|センター/;
 
 /** カテゴリ（記号・表示名）と本文の語から、出来事の種類を決める */
 export function kindOfNews(code: string | null, category: string | null, text: string): string {
@@ -28,6 +29,8 @@ export function kindOfNews(code: string | null, category: string | null, text: s
   if (c === "release" || category === "リリース") return "release";
   if (c === "ticket" || category === "チケット") return LIVE.test(text) ? "live" : "event";
   if (c === "audition" || category === "オーディション") return "announcement";
+  // カテゴリで決まらないものは、節目の発表の語があれば公式発表（設計書 決定記録 0030）
+  if (MILESTONE.test(text)) return "announcement";
   return "other";
 }
 
@@ -56,6 +59,12 @@ export function newsPrefill(news: {
   const text = `${news.title}\n${news.body}`;
   const [baseYear, baseMonth] = (news.publishedDate ?? "").split("-").map(Number);
   const dates: string[] = [];
+  // 「本日」が日付より前に出てくるときは、ニュースの日付のこと
+  const today = text.search(/本日/);
+  const firstDate = text.search(/\d{1,2}月\d{1,2}日/);
+  if (news.publishedDate && today >= 0 && (firstDate < 0 || today < firstDate)) {
+    dates.push(news.publishedDate);
+  }
   let firstTime: string | null = null;
   for (const m of text.matchAll(DATE)) {
     const month = Number(m[2]);

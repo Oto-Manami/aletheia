@@ -258,4 +258,67 @@ describe("出来事を作る・直す", () => {
       expect(ids).not.toContain(before);
       expect(ids).toHaveLength(2);
     }));
+
+  it("消せるのは管理者と作った本人で、素材が紐付いていない・下の出来事が無いときだけ。消した前の状態は履歴に残る", () =>
+    withApi(async (ctx) => {
+      const hanako = await subject(ctx);
+      const owner = await participant(ctx);
+      const other = await tokenFor(
+        await discordUser(ctx.c, "44444444-4444-4444-8444-444444444444", "viewer"),
+      );
+      const admin = await tokenFor(
+        await discordUser(ctx.c, "55555555-5555-4555-8555-555555555555", "admin"),
+      );
+      const make = async (body: Record<string, unknown>, token: string) =>
+        (await json<{ id: string }>(ctx.call("POST", "/events", { ...base, ...body }, token))).id;
+
+      const mine = await make(
+        { participants: [{ entity_id: hanako, role: "performer", status: "appeared" }] },
+        owner,
+      );
+      const canDelete = async (id: string, token: string) =>
+        (await json<{ can_delete: boolean }>(ctx.call("GET", `/events/${id}`, undefined, token)))
+          .can_delete;
+      expect(await canDelete(mine, owner)).toBe(true);
+      expect(await canDelete(mine, other)).toBe(false);
+      expect((await ctx.call("POST", `/events/${mine}/delete`, {}, other)).status).toBe(403);
+      expect((await ctx.call("POST", `/events/${mine}/delete`, {}, owner)).status).toBe(200);
+      expect((await ctx.call("GET", `/events/${mine}`, undefined, owner)).status).toBe(404);
+      const { rows } = await ctx.c.query<{ table_name: string; changed_by: string }>(
+        `select table_name, changed_by::text from app.history
+         where operation = 'DELETE' and table_name in ('events', 'event_participants') order by id`,
+      );
+      expect(rows.map((r) => r.table_name)).toEqual(["event_participants", "events"]);
+      expect(new Set(rows.map((r) => r.changed_by))).toEqual(
+        new Set(["33333333-3333-4333-8333-333333333333"]),
+      );
+
+      // 管理者は、ほかの人が作った出来事も消せる
+      const byOwner = await make({}, owner);
+      expect((await ctx.call("POST", `/events/${byOwner}/delete`, {}, admin)).status).toBe(200);
+
+      // 素材が紐付いている・下の出来事がある出来事は消せない
+      const linked = await make({}, owner);
+      const { rows: post } = await ctx.c.query<{ id: string }>(
+        `with ch as (
+           insert into public.channels (key, name, kind, availability, item_unit, classification)
+           values ('web:test_news', '試験のニュース', 'web', 'free', 'post', 'public') returning id
+         )
+         insert into public.posts (channel_id, external_id, classification)
+         select id, 'N0001', 'public' from ch returning id`,
+      );
+      await ctx.c.query(
+        `insert into public.links (from_type, from_id, to_type, to_id, role, classification)
+         values ('post', $1, 'event', $2, 'about', 'public')`,
+        [post[0]!.id, linked],
+      );
+      expect(await canDelete(linked, owner)).toBe(false);
+      const res = await ctx.call("POST", `/events/${linked}/delete`, {}, admin);
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { error: string }).error).toContain("素材が 1 件");
+
+      const parent = await make({ kind: "live" }, owner);
+      await make({ kind: "performance", parent_id: parent }, owner);
+      expect((await ctx.call("POST", `/events/${parent}/delete`, {}, owner)).status).toBe(409);
+    }));
 });

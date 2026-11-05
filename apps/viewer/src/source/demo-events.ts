@@ -95,6 +95,8 @@ function event(
     updatedAt: stamp,
     createdByName: "デモの運営者",
     updatedByName: "デモの運営者",
+    canDelete: true,
+    usage: { links: 0, drafts: 0, children: 0 },
     ...partial,
   };
 }
@@ -214,11 +216,15 @@ export class DemoEvents {
     return { items, total: this.events.length };
   }
 
-  get(id: string): EventDetail {
+  get(id: string, linked = 0): EventDetail {
     const e = this.events.find((x) => x.id === id);
     if (!e) throw new SourceError("見つかりません", 404);
+    const children = this.events.filter((c) => c.parentId === id).length;
     return {
       ...e,
+      usage: { links: linked, drafts: 0, children },
+      // デモ版の閲覧者は運営者なので、何も紐付いていなければ消せる
+      canDelete: linked === 0 && children === 0,
       children: this.events
         .filter((c) => c.parentId === id)
         .map((c) => ({
@@ -278,6 +284,19 @@ export class DemoEvents {
       ? this.events.map((x) => (x.id === next.id ? next : x))
       : [...this.events, next];
     return next.id;
+  }
+
+  remove(id: string, linked: number): void {
+    if (!this.events.some((x) => x.id === id)) throw new SourceError("見つかりません", 404);
+    if (linked > 0) {
+      throw new SourceError(
+        `素材が ${linked} 件紐付いているため消せません。先に紐付けを外してください`,
+        409,
+      );
+    }
+    const children = this.events.filter((x) => x.parentId === id).length;
+    if (children > 0) throw new SourceError(`下の出来事が ${children} 件あるため消せません`, 409);
+    this.events = this.events.filter((x) => x.id !== id);
   }
 
   find(query: string, types: readonly string[]): EntityOption[] {

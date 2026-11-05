@@ -170,10 +170,20 @@ function EventRow({ event: e, to }: { event: EventSummary; to: string }) {
 }
 
 export function EventsEmpty() {
+  // 出来事を消したあとは、その知らせを出す
+  const location = useLocation();
+  const notice = (location.state as { notice?: string } | null)?.notice ?? null;
   return (
-    <div className="split-empty">
-      左の一覧から出来事を選ぶか、「作る」から新しく記録してください。
-    </div>
+    <>
+      {notice && (
+        <p className="notice event-notice" role="status">
+          {notice}
+        </p>
+      )}
+      <div className="split-empty">
+        左の一覧から出来事を選ぶか、「作る」から新しく記録してください。
+      </div>
+    </>
   );
 }
 
@@ -861,6 +871,7 @@ function EventForm({
         </p>
       )}
       <div className="event-form-actions">
+        {detail && <DeleteEvent detail={detail} />}
         {!detail && (
           <Link to="/events" className="button">
             やめる
@@ -871,6 +882,75 @@ function EventForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * 出来事を消す（管理者と作った本人。素材が紐付いていないときだけ。設計書 決定記録 0030）。
+ * 押すとその場で確かめてから消す。消す前の状態は変更履歴に残る
+ */
+function DeleteEvent({ detail }: { detail: EventDetail }) {
+  const { source } = useApp();
+  const layout = useLayout();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { links, drafts, children } = detail.usage;
+
+  if (!detail.canDelete) {
+    const reason =
+      links + drafts > 0
+        ? `素材が ${links + drafts} 件紐付いているため、消せません`
+        : children > 0
+          ? `下の出来事が ${children} 件あるため、消せません`
+          : "消せるのは、管理者とこの出来事を作った人だけです";
+    return <span className="event-delete-note">{reason}</span>;
+  }
+  if (!asking) {
+    return (
+      <button type="button" className="button danger event-delete" onClick={() => setAsking(true)}>
+        この出来事を消す
+      </button>
+    );
+  }
+  return (
+    <span className="event-delete-confirm" role="group" aria-label="出来事を消すかの確認">
+      <span>「{detail.title}」を消しますか？</span>
+      <button type="button" className="button" disabled={busy} onClick={() => setAsking(false)}>
+        やめる
+      </button>
+      <button
+        type="button"
+        className="button danger"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          setError(null);
+          source
+            .deleteEvent(detail.id)
+            .then(() => {
+              layout.changed();
+              void navigate(
+                { pathname: "/events", search: listSearch(params) },
+                { state: { notice: `「${detail.title}」を消しました` } },
+              );
+            })
+            .catch((e: unknown) => {
+              setBusy(false);
+              setError(e instanceof Error ? e.message : String(e));
+            });
+        }}
+      >
+        消す
+      </button>
+      {error && (
+        <span className="error" role="alert">
+          {error}
+        </span>
+      )}
+    </span>
   );
 }
 

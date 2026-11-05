@@ -259,6 +259,10 @@ export interface EventDetail {
   updatedAt: string;
   createdByName: string | null;
   updatedByName: string | null;
+  /** 見ている人が消せるか（管理者か作った本人で、何も紐付いていないとき。設計書 決定記録 0030） */
+  canDelete: boolean;
+  /** この出来事を指しているもの（素材の紐付け・取り込みの下書き・下の出来事）の数 */
+  usage: { links: number; drafts: number; children: number };
 }
 
 /** 出来事を作る・直すときに送るもの */
@@ -358,6 +362,8 @@ export interface ArchiveSource {
   getEvent(id: string): Promise<EventDetail>;
   /** 出来事を作る（id が null）・直す。出来事の ID を返す */
   saveEvent(id: string | null, input: EventInput): Promise<string>;
+  /** 出来事を消す（管理者と作った本人。素材が紐付いていないときだけ） */
+  deleteEvent(id: string): Promise<void>;
   /** 作品・相手を名前で探す */
   findEntities(query: string, types: readonly string[]): Promise<EntityOption[]>;
   /** 作品・相手を作る。同じ種類・同じ名前があれば、それを返す */

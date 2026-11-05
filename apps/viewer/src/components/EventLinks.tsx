@@ -86,7 +86,8 @@ export function EventLinks({
     query,
     async (q) => (await source.listEvents({ query: q })).items,
   );
-  const [creating, setCreating] = useState(prefill !== undefined);
+  // 既にある出来事を選ぶのを先にし、新しく作る欄は押したときだけ開く（設計書 決定記録 0030）
+  const [creating, setCreating] = useState(false);
 
   const add = (e: { id: string; title: string }) => {
     onLabel({ id: e.id, type: "event", label: e.title });
@@ -139,7 +140,7 @@ export function EventLinks({
           <input
             id={`${id}-q`}
             type="search"
-            placeholder="題名で探す"
+            placeholder={prefill ? "既にある出来事を題名で探す" : "題名で探す"}
             value={query}
             autoComplete="off"
             onChange={(e) => {
@@ -183,7 +184,11 @@ export function EventLinks({
               onClick={() => setCreating(true)}
             >
               <Plus size={12} aria-hidden="true" />{" "}
-              {prefill && linked.length > 0 ? "もう 1 つ作る" : "出来事をその場で作る"}
+              {prefill
+                ? linked.length > 0
+                  ? "もう 1 つ新しく作る"
+                  : "合う出来事が無ければ、新しく作る"
+                : "出来事をその場で作る"}
             </button>
           )}
         </>

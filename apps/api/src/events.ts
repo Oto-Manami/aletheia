@@ -6,9 +6,11 @@
 // | GET      | /events/:id   | 出来事 1 件（出演・作品・会場・親子・作った人と直した人）  |
 // | POST     | /events       | 出来事を作る                                               |
 // | POST     | /events/:id   | 出来事を直す（出演は送ったものに合わせる）                 |
+// | POST     | /events/:id/delete | 出来事を消す（管理者と作った本人。素材が紐付いていないときだけ） |
 // | POST     | /entities     | 作品・相手を作る（同じ種類・同じ名前があればそれを返す）   |
 //
-// 参加者みんなが作り・直せる。消す操作は置かない（出演を外すことはできる。変更履歴に残る）。
+// 参加者みんなが作り・直せる。消せるのは管理者と作った本人で、素材が紐付いていない出来事だけ
+// （設計書 決定記録 0030）。消した・外したものは変更履歴に残る。
 // 人が作ったものは人の判断として、承認を経ずにそのまま入る。
 
 import type { Database } from "@aletheia/db/client";
@@ -155,6 +157,37 @@ async function parse<T extends z.ZodType>(req: Request, schema: T): Promise<z.ou
 
 function userIdOf(actor: Actor): string | null {
   return actor.kind === "user" ? actor.userId : null;
+}
+
+/** 出来事を指しているもの（素材の紐付け・取り込みの下書き・下の出来事）の数 */
+async function usageOf(db: Kysely<DB>, eventId: string) {
+  const [links, drafts, children] = await Promise.all([
+    sql<{ n: string }>`
+      select count(*) as n from public.links l
+      where (l.to_type = 'event' and l.to_id = ${eventId})
+         or (l.to_type = 'event_item'
+             and l.to_id in (select id from public.event_items where event_id = ${eventId}))
+    `.execute(db),
+    sql<{ n: string }>`
+      select count(*) as n from public.intake_items i
+      where i.state in ('triage', 'pending', 'on_hold')
+        and coalesce(i.draft -> 'links', '[]'::jsonb) @> ${JSON.stringify([{ to_type: "event", to_id: eventId }])}::jsonb
+    `.execute(db),
+    sql<{
+      n: string;
+    }>`select count(*) as n from public.events where parent_id = ${eventId}`.execute(db),
+  ]);
+  return {
+    links: Number(links.rows[0]?.n ?? 0),
+    drafts: Number(drafts.rows[0]?.n ?? 0),
+    children: Number(children.rows[0]?.n ?? 0),
+  };
+}
+
+/** 消してよい人か（管理者・Bot と、作った本人） */
+function mayDelete(actor: Actor, createdBy: string | null): boolean {
+  if (actor.kind === "service") return true;
+  return actor.role === "admin" || (createdBy !== null && createdBy === actor.userId);
 }
 
 /**
@@ -406,7 +439,15 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       .where("parent_id", "=", id.data)
       .orderBy(sql`starts_on asc nulls last`)
       .execute();
-    return c.json({ event, participants, children });
+    const usage = await usageOf(db, id.data);
+    const deletable = usage.links === 0 && usage.drafts === 0 && usage.children === 0;
+    return c.json({
+      event,
+      participants,
+      children,
+      usage,
+      can_delete: deletable && mayDelete(c.get("actor"), event.created_by),
+    });
   });
 
   app.post("/events", async (c) => {
@@ -451,6 +492,41 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       await syncParticipants(trx, id.data, input, userId);
     });
     return c.json({ id: id.data });
+  });
+
+  app.post("/events/:id/delete", async (c) => {
+    const id = z.uuid().safeParse(c.req.param("id"));
+    if (!id.success) throw new HTTPException(404, { message: "見つかりません" });
+    const actor = c.get("actor");
+    await inTransaction(db, userIdOf(actor), async (trx) => {
+      const event = await trx
+        .selectFrom("events")
+        .select(["id", "created_by"])
+        .where("id", "=", id.data)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!event) throw new HTTPException(404, { message: "見つかりません" });
+      if (!mayDelete(actor, event.created_by)) {
+        throw new HTTPException(403, {
+          message: "消せるのは、管理者とこの出来事を作った人だけです",
+        });
+      }
+      const usage = await usageOf(trx, id.data);
+      if (usage.links > 0 || usage.drafts > 0) {
+        throw new HTTPException(409, {
+          message: `素材が ${usage.links + usage.drafts} 件紐付いているため消せません。先に紐付けを外してください`,
+        });
+      }
+      if (usage.children > 0) {
+        throw new HTTPException(409, {
+          message: `下の出来事が ${usage.children} 件あるため消せません`,
+        });
+      }
+      await trx.deleteFrom("event_participants").where("event_id", "=", id.data).execute();
+      await trx.deleteFrom("event_items").where("event_id", "=", id.data).execute();
+      await trx.deleteFrom("events").where("id", "=", id.data).execute();
+    });
+    return c.json({ ok: true });
   });
 
   app.post("/entities", async (c) => {

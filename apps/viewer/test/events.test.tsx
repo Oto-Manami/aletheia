@@ -108,6 +108,24 @@ describe("出来事", () => {
     expect(saved.sources).toEqual([{ url: "https://example.com/news/magazine" }]);
   });
 
+  it("何も紐付いていない出来事は、確かめてから消せる。紐付いている出来事は消せない", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/events/e1000000-0000-4000-8000-000000000011");
+    await screen.findByRole("heading", { name: "出来事を直す" });
+    await user.click(screen.getByRole("button", { name: "この出来事を消す" }));
+    const confirm = screen.getByRole("group", { name: "出来事を消すかの確認" });
+    await user.click(within(confirm).getByRole("button", { name: "消す" }));
+    expect(await screen.findByText("「冬の試験公演 1 日目」を消しました")).toBeTruthy();
+    expect((await source.listEvents({ query: "1 日目" })).items).toEqual([]);
+    cleanup();
+
+    open("/events/e1000000-0000-4000-8000-000000000003");
+    await screen.findByRole("heading", { name: "出来事を直す" });
+    // 素材（デモの下書き）が紐付き、下の出来事もある出来事は消せない
+    expect(screen.getByText(/件(紐付いている|ある)ため、消せません/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "この出来事を消す" })).toBeNull();
+  });
+
   it("参加者として登録されていない人には、出来事の画面もメニューも出さない", async () => {
     open("/events", { ...member, isMember: false });
     expect(

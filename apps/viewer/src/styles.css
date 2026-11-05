@@ -3088,3 +3088,25 @@ details.more[open] > summary {
   margin: 0;
   accent-color: var(--primary);
 }
+
+/* 出来事を消す（左に寄せ、直す・作るのボタンと離す） */
+.event-delete,
+.event-delete-note,
+.event-delete-confirm {
+  margin-right: auto;
+}
+
+.event-delete-note {
+  align-self: center;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.event-delete-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--danger);
+}

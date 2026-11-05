@@ -429,12 +429,24 @@ export class DemoSource implements ArchiveSource {
 
   async getEvent(id: string): Promise<EventDetail> {
     await this.delay();
-    return this.events.get(id);
+    const linked = this.intakes.filter((i) =>
+      (i.draft.links ?? []).some((l) => l.to_type === "event" && l.to_id === id),
+    ).length;
+    return this.events.get(id, linked);
   }
 
   async saveEvent(id: string | null, input: EventInput): Promise<string> {
     await this.delay();
     return this.events.save(id, input);
+  }
+
+  async deleteEvent(id: string): Promise<void> {
+    await this.delay();
+    // デモ版では、承認待ち・承認済みの下書きの紐付けも、紐付いているものとして数える
+    const linked = this.intakes.filter((i) =>
+      (i.draft.links ?? []).some((l) => l.to_type === "event" && l.to_id === id),
+    ).length;
+    this.events.remove(id, linked);
   }
 
   async findEntities(query: string, types: readonly string[]): Promise<EntityOption[]> {

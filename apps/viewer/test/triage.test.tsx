@@ -174,8 +174,13 @@ describe("振り分けの画面", () => {
     await waitFor(() => expect(cards()).toHaveLength(3));
     const card = cards().find((c) => c.textContent?.includes("ラジオ「仮の時間」に試験 花子"))!;
     expect(within(card).queryByRole("button", { name: "残す" })).toBeNull();
-    await user.click(within(card).getByRole("button", { name: "出来事にする" }));
+    await user.click(within(card).getByRole("button", { name: "出来事に足す" }));
 
+    // 既にある出来事を選ぶ欄が先で、新しく作る欄は押したときだけ開く
+    expect(within(card).queryByRole("group", { name: "出来事をその場で作る" })).toBeNull();
+    await user.click(
+      within(card).getByRole("button", { name: /合う出来事が無ければ、新しく作る/ }),
+    );
     const quick = within(card).getByRole("group", { name: "出来事をその場で作る" });
     expect(within(quick).getByLabelText<HTMLSelectElement>("種類").value).toBe("episode");
     expect(within(quick).getByLabelText<HTMLInputElement>("題名").value).toBe(

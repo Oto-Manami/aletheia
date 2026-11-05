@@ -52,4 +52,16 @@ describe("ニュースから出来事の初めの値を作る", () => {
     expect(kindOfNews("goods", "グッズ", "")).toBe("other");
     expect(titleWithoutDate("お知らせ")).toBe("お知らせ");
   });
+
+  it("「本日」が日付より前にあればニュースの日付にし、節目の発表の語があれば公式発表にする", () => {
+    const p = newsPrefill({
+      title: "試験グループ 2 期生の発表がスタート！",
+      body: "本日より、2 期生の発表がスタートいたしました！ 3月12日(水)以降も、毎日 1 名ずつ発表します。",
+      publishedDate: "2025-03-11",
+      category: "その他",
+      categoryCode: "other",
+    });
+    expect(p).toMatchObject({ kind: "announcement", date: "2025-03-11" });
+    expect(p.dates).toEqual(["2025-03-11", "2025-03-12"]);
+  });
 });
