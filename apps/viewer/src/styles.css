@@ -2667,6 +2667,68 @@ details.more[open] > summary {
   align-items: baseline;
 }
 
+/* 出来事に紐付いた素材 */
+.event-material-count {
+  margin: 0;
+  font-size: 13px;
+}
+
+.event-materials {
+  display: grid;
+  gap: 6px;
+}
+
+.event-materials h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.event-materials ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.event-materials li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 8px 10px;
+}
+
+.event-materials li + li {
+  border-top: 1px solid var(--border);
+}
+
+.event-material-channel {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--subtle);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.event-material-title {
+  flex: 1 1 16em;
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.event-material-date {
+  font-size: 12px;
+}
+
+.event-material-open {
+  flex: none;
+}
+
 .event-add-child,
 .event-add-source {
   justify-self: start;
@@ -2861,6 +2923,33 @@ details.more[open] > summary {
   gap: 4px;
 }
 
+.source-item {
+  display: grid;
+  gap: 4px;
+}
+
+/* 出典の URL の見出し（取り込み済みの素材から） */
+.source-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 2px solid var(--border-strong);
+  font-size: 13px;
+}
+
+.source-preview.is-none {
+  font-size: 12px;
+}
+
+.source-preview .source-preview-state {
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
 .form-problems {
   margin: 0;
   padding: 10px 12px 10px 28px;
@@ -3021,16 +3110,15 @@ details.more[open] > summary {
   overflow-wrap: anywhere;
 }
 
-.event-create-open {
-  justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
+.event-create-hint {
+  margin: 0;
 }
 
-.event-links .picker-create {
-  gap: 10px;
+.event-create-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--ink);
 }
 
 /* 振り分けのニュースのカテゴリと、ほかのメンバーの名前 */
@@ -3046,7 +3134,7 @@ details.more[open] > summary {
   color: var(--faint);
 }
 
-/* 振り分けで、ニュースを出来事にする（設計書 決定記録 0029） */
+/* 振り分けで、ニュースを出来事に紐付ける（設計書 決定記録 0029・0030） */
 .news-events {
   display: grid;
   gap: 12px;
@@ -3067,24 +3155,24 @@ details.more[open] > summary {
   color: var(--ink);
 }
 
-.quick-dates {
-  display: flex;
+/* 出来事を消す（左に寄せ、直す・作るのボタンと離す） */
+.event-delete,
+.event-delete-note,
+.event-delete-confirm {
+  margin-right: auto;
+}
+
+.event-delete-note {
+  align-self: center;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.event-delete-confirm {
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-}
-
-.quick-subject {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 13px;
-  color: var(--ink);
-}
-
-.quick-subject input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--primary);
+  color: var(--danger);
 }

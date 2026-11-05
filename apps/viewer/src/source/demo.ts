@@ -33,6 +33,7 @@ import {
   type InviteView,
   type MemberView,
   type NewEntity,
+  type SourcePreview,
   type PostView,
   type RefLabel,
   type Role,
@@ -424,17 +425,99 @@ export class DemoSource implements ArchiveSource {
 
   async listEvents(filter?: { query?: string; kind?: string; from?: string; to?: string }) {
     await this.delay();
-    return this.events.list(filter);
+    const linked = new Set(
+      this.intakes.flatMap((i) =>
+        (i.draft.links ?? []).filter((l) => l.to_type === "event").map((l) => l.to_id),
+      ),
+    );
+    return this.events.list(filter, linked);
   }
 
   async getEvent(id: string): Promise<EventDetail> {
     await this.delay();
-    return this.events.get(id);
+    // デモ版では、出来事に紐付けた下書き（承認待ち・承認済み）を、紐付いた素材として見せる
+    const materials = this.intakes.flatMap((i) => {
+      const link = (i.draft.links ?? []).find((l) => l.to_type === "event" && l.to_id === id);
+      if (!link) return [];
+      return [
+        {
+          postId: null,
+          title: i.draft.post.title ?? null,
+          url: i.draft.post.url ?? null,
+          publishedAt: i.draft.post.published_at ?? null,
+          publishedDate: i.draft.post.published_date ?? null,
+          channelName: i.channelName,
+          channelKind: i.channelKey.split(":")[0] ?? "other",
+          role: link.role,
+        },
+      ];
+    });
+    return this.events.get(id, materials);
   }
 
   async saveEvent(id: string | null, input: EventInput): Promise<string> {
     await this.delay();
     return this.events.save(id, input);
+  }
+
+  async deleteEvent(id: string): Promise<void> {
+    await this.delay();
+    // デモ版では、承認待ち・承認済みの下書きの紐付けも、紐付いているものとして数える
+    const linked = this.intakes.filter((i) =>
+      (i.draft.links ?? []).some((l) => l.to_type === "event" && l.to_id === id),
+    ).length;
+    this.events.remove(id, linked);
+  }
+
+  async previewSource(url: string): Promise<SourcePreview | null> {
+    await this.delay();
+    // 書き方の違い（http・末尾の /・# 以降）はそろえて比べる
+    const key = (u: string) =>
+      u
+        .trim()
+        .replace(/#.*$/, "")
+        .replace(/^https?:\/\//i, "")
+        .replace(/\/$/, "");
+    const post = this.posts.find((p) => p.url && key(p.url) === key(url));
+    if (post) {
+      return {
+        state: "saved",
+        postId: post.id,
+        intakeId: null,
+        title: post.title,
+        channelName: post.channelName,
+        publishedAt: post.publishedAt,
+        publishedDate: post.publishedDate,
+      };
+    }
+    const triage = this.triage.find((t) => t.draft.post.url && key(t.draft.post.url) === key(url));
+    if (triage) {
+      return {
+        state: "triage",
+        postId: null,
+        intakeId: triage.id,
+        title: triage.draft.post.title ?? null,
+        channelName: triage.channelName,
+        publishedAt: triage.draft.post.published_at ?? null,
+        publishedDate: triage.draft.post.published_date ?? null,
+      };
+    }
+    const intake = this.intakes.find(
+      (i) =>
+        i.draft.post.url &&
+        key(i.draft.post.url) === key(url) &&
+        (i.state === "pending" || i.state === "on_hold"),
+    );
+    if (!intake) return null;
+    return {
+      state: intake.state as SourcePreview["state"],
+      postId: null,
+      intakeId: intake.id,
+      title: intake.draft.post.title ?? null,
+      channelName: intake.channelName,
+      publishedAt: intake.draft.post.published_at ?? null,
+      publishedDate: intake.draft.post.published_date ?? null,
+    };
   }
 
   async findEntities(query: string, types: readonly string[]): Promise<EntityOption[]> {

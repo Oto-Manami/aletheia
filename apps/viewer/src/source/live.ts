@@ -16,6 +16,7 @@ import {
   type EventInput,
   type EventSummary,
   type NewEntity,
+  type SourcePreview,
   type ParticipantStatus,
   type IntakeDetail,
   type IntakeIssue,
@@ -576,6 +577,9 @@ export class LiveSource implements ArchiveSource {
       event: e,
       participants,
       children,
+      usage,
+      can_delete,
+      materials,
     } = await this.api<EventDetailResponse>("GET", `/events/${encodeURIComponent(id)}`);
     const attributes = e.attributes ?? {};
     const sources = Array.isArray(attributes["sources"])
@@ -620,6 +624,18 @@ export class LiveSource implements ArchiveSource {
       updatedAt: e.updated_at,
       createdByName: e.created_by_name,
       updatedByName: e.updated_by_name,
+      canDelete: can_delete,
+      usage,
+      materials: materials.map((m) => ({
+        postId: m.post_id,
+        title: m.title,
+        url: m.url,
+        publishedAt: m.published_at,
+        publishedDate: m.published_date,
+        channelName: m.channel_name,
+        channelKind: m.channel_kind,
+        role: m.role,
+      })),
     };
   }
 
@@ -649,6 +665,36 @@ export class LiveSource implements ArchiveSource {
     const path = id ? `/events/${encodeURIComponent(id)}` : "/events";
     const result = await this.api<{ id: string }>("POST", path, body);
     return result.id;
+  }
+
+  async deleteEvent(id: string): Promise<void> {
+    await this.api("POST", `/events/${encodeURIComponent(id)}/delete`, {});
+  }
+
+  async previewSource(url: string): Promise<SourcePreview | null> {
+    const r = await this.api<
+      | { found: false }
+      | {
+          found: true;
+          state: SourcePreview["state"];
+          post_id: string | null;
+          intake_id: string | null;
+          title: string | null;
+          channel_name: string;
+          published_at: string | null;
+          published_date: string | null;
+        }
+    >("GET", `/events/source-preview?url=${encodeURIComponent(url)}`);
+    if (!r.found) return null;
+    return {
+      state: r.state,
+      postId: r.post_id,
+      intakeId: r.intake_id,
+      title: r.title,
+      channelName: r.channel_name,
+      publishedAt: r.published_at,
+      publishedDate: r.published_date,
+    };
   }
 
   async findEntities(query: string, types: readonly string[]): Promise<EntityOption[]> {
@@ -765,5 +811,17 @@ interface EventDetailResponse {
     title: string | null;
     starts_on: string | null;
     date_precision: string | null;
+  }[];
+  usage: { links: number; drafts: number; children: number };
+  can_delete: boolean;
+  materials: {
+    post_id: string;
+    title: string | null;
+    url: string | null;
+    published_at: string | null;
+    published_date: string | null;
+    channel_name: string;
+    channel_kind: string;
+    role: string;
   }[];
 }

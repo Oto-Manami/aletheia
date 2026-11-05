@@ -37,9 +37,13 @@ describe("出来事", () => {
     open();
     await screen.findByText("冬の試験公演 1 日目");
     expect(rows()[0]?.textContent).toContain("冬の試験公演（架空ホール）");
+    // 手で入れた URL も紐付いた素材も無いものは「出典なし」
+    const day1 = rows().find((r) => r.textContent?.includes("冬の試験公演 1 日目"))!;
+    expect(within(day1).getByText("出典なし")).toBeTruthy();
+    expect(within(day1).getByText("予定")).toBeTruthy();
+    // URL は無くても、素材が紐付いていれば出典あり
     const magazine = rows().find((r) => r.textContent?.includes("『月刊ミホン』12 月号"))!;
-    expect(within(magazine).getByText("出典なし")).toBeTruthy();
-    expect(within(magazine).getByText("予定")).toBeTruthy();
+    expect(within(magazine).queryByText("出典なし")).toBeNull();
 
     await user.type(screen.getByRole("searchbox", { name: "題名・作品名で探す" }), "仮の時間");
     await waitFor(() => expect(rows()).toHaveLength(1));
@@ -106,6 +110,52 @@ describe("出来事", () => {
     const saved = await source.getEvent("e1000000-0000-4000-8000-000000000001");
     expect(saved.participants[0]?.status).toBe("appeared");
     expect(saved.sources).toEqual([{ url: "https://example.com/news/magazine" }]);
+  });
+
+  it("出典の URL を入れると、取り込み済みの素材なら見出しを見せる", async () => {
+    const user = userEvent.setup();
+    open("/events/e1000000-0000-4000-8000-000000000001");
+    await screen.findByRole("heading", { name: "出来事を直す" });
+    // 振り分け待ちのニュース（書き方の違いはそろえる）
+    await user.type(screen.getByLabelText("出典の URL 1"), "http://example.com/news/7/");
+    const preview = await screen.findByLabelText("出典の見出し");
+    expect(preview.textContent).toContain("10月30日(金)ラジオ「仮の時間」に試験 花子が出演！");
+    expect(preview.textContent).toContain("振り分け待ち");
+
+    // 保存済みの投稿は、投稿の画面へのリンクになる
+    await user.click(screen.getByRole("button", { name: /URL を足す/ }));
+    await user.type(screen.getByLabelText("出典の URL 2"), "https://example.com/news/76010");
+    expect(
+      await screen.findByRole("link", { name: "『月刊ミホン』11 月号、表紙は試験花子" }),
+    ).toBeTruthy();
+
+    // 取り込んでいない URL は、外に取りに行かずにそう伝える
+    await user.click(screen.getByRole("button", { name: /URL を足す/ }));
+    await user.type(screen.getByLabelText("出典の URL 3"), "https://example.org/other");
+    expect(await screen.findByText(/取り込み済みの素材には見つかりません/)).toBeTruthy();
+  });
+
+  it("何も紐付いていない出来事は、確かめてから消せる。紐付いている出来事は消せない", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/events/e1000000-0000-4000-8000-000000000011");
+    await screen.findByRole("heading", { name: "出来事を直す" });
+    await user.click(screen.getByRole("button", { name: "この出来事を消す" }));
+    const confirm = screen.getByRole("group", { name: "出来事を消すかの確認" });
+    await user.click(within(confirm).getByRole("button", { name: "消す" }));
+    expect(await screen.findByText("「冬の試験公演 1 日目」を消しました")).toBeTruthy();
+    expect((await source.listEvents({ query: "1 日目" })).items).toEqual([]);
+    cleanup();
+
+    open("/events/e1000000-0000-4000-8000-000000000003");
+    await screen.findByRole("heading", { name: "出来事を直す" });
+    // 素材（デモの下書き）が紐付き、下の出来事もある出来事は消せない
+    expect(screen.getByText(/件(紐付いている|ある)ため、消せません/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "この出来事を消す" })).toBeNull();
+    // 紐付いている素材が、出典のところに並ぶ
+    const materials = screen.getByRole("heading", { name: /紐付いている素材（\d+ 件）/ });
+    const list = within(materials.parentElement as HTMLElement).getAllByRole("listitem");
+    expect(list.length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: /紐付いている素材 \d+ 件/ })).toBeTruthy();
   });
 
   it("参加者として登録されていない人には、出来事の画面もメニューも出さない", async () => {

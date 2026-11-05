@@ -3,12 +3,14 @@
 // | メソッド | パス          | 内容                                                       |
 // |----------|---------------|------------------------------------------------------------|
 // | GET      | /events       | 出来事の一覧（日付の新しい順。題名・作品名で探す、種類・期間で絞る） |
-// | GET      | /events/:id   | 出来事 1 件（出演・作品・会場・親子・作った人と直した人）  |
+// | GET      | /events/:id   | 出来事 1 件（出演・作品・会場・親子・紐付いた素材・作った人と直した人） |
 // | POST     | /events       | 出来事を作る                                               |
 // | POST     | /events/:id   | 出来事を直す（出演は送ったものに合わせる）                 |
+// | POST     | /events/:id/delete | 出来事を消す（管理者と作った本人。素材が紐付いていないときだけ） |
 // | POST     | /entities     | 作品・相手を作る（同じ種類・同じ名前があればそれを返す）   |
 //
-// 参加者みんなが作り・直せる。消す操作は置かない（出演を外すことはできる。変更履歴に残る）。
+// 参加者みんなが作り・直せる。消せるのは管理者と作った本人で、素材が紐付いていない出来事だけ
+// （設計書 決定記録 0030）。消した・外したものは変更履歴に残る。
 // 人が作ったものは人の判断として、承認を経ずにそのまま入る。
 
 import type { Database } from "@aletheia/db/client";
@@ -155,6 +157,37 @@ async function parse<T extends z.ZodType>(req: Request, schema: T): Promise<z.ou
 
 function userIdOf(actor: Actor): string | null {
   return actor.kind === "user" ? actor.userId : null;
+}
+
+/** 出来事を指しているもの（素材の紐付け・取り込みの下書き・下の出来事）の数 */
+async function usageOf(db: Kysely<DB>, eventId: string) {
+  const [links, drafts, children] = await Promise.all([
+    sql<{ n: string }>`
+      select count(*) as n from public.links l
+      where (l.to_type = 'event' and l.to_id = ${eventId})
+         or (l.to_type = 'event_item'
+             and l.to_id in (select id from public.event_items where event_id = ${eventId}))
+    `.execute(db),
+    sql<{ n: string }>`
+      select count(*) as n from public.intake_items i
+      where i.state in ('triage', 'pending', 'on_hold')
+        and coalesce(i.draft -> 'links', '[]'::jsonb) @> ${JSON.stringify([{ to_type: "event", to_id: eventId }])}::jsonb
+    `.execute(db),
+    sql<{
+      n: string;
+    }>`select count(*) as n from public.events where parent_id = ${eventId}`.execute(db),
+  ]);
+  return {
+    links: Number(links.rows[0]?.n ?? 0),
+    drafts: Number(drafts.rows[0]?.n ?? 0),
+    children: Number(children.rows[0]?.n ?? 0),
+  };
+}
+
+/** 消してよい人か（管理者・Bot と、作った本人） */
+function mayDelete(actor: Actor, createdBy: string | null): boolean {
+  if (actor.kind === "service") return true;
+  return actor.role === "admin" || (createdBy !== null && createdBy === actor.userId);
 }
 
 /**
@@ -317,7 +350,71 @@ async function syncParticipants(
   }
 }
 
+/** 同じページを指す URL の書き方の違い（http/https・末尾の /・# 以降）をそろえて、候補を並べる */
+export function urlVariants(url: string): string[] {
+  const base = url.trim().replace(/#.*$/, "");
+  const out = new Set<string>();
+  for (const scheme of ["https://", "http://"]) {
+    const rest = base.replace(/^https?:\/\//i, "");
+    const withScheme = scheme + rest;
+    out.add(withScheme);
+    out.add(withScheme.endsWith("/") ? withScheme.slice(0, -1) : `${withScheme}/`);
+  }
+  return [...out];
+}
+
+const previewQuery = z.object({
+  url: z.url({ protocol: /^https?$/ }).max(2000),
+});
+
 export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
+  /**
+   * 出典の URL の見出し。取り込み済みの素材（保存済みの投稿、振り分け・承認待ちの下書き）から探す。
+   * 外のサイトには取りに行かない（設計書 決定記録 0030）
+   */
+  app.get("/events/source-preview", async (c) => {
+    const q = previewQuery.safeParse(c.req.query());
+    if (!q.success) badRequest("URL が正しくありません");
+    const variants = urlVariants(q.data.url);
+    const { rows: posts } = await sql<{
+      post_id: string;
+      title: string | null;
+      published_at: string | null;
+      published_date: string | null;
+      channel_name: string;
+    }>`
+      select p.id as post_id, p.title, p.published_at, p.published_date, ch.name as channel_name
+      from public.posts p
+      join public.channels ch on ch.id = p.channel_id
+      where p.url = any(${variants}::text[])
+      order by p.created_at
+      limit 1`.execute(db);
+    const post = posts[0];
+    if (post) return c.json({ found: true, state: "saved", intake_id: null, ...post });
+    const { rows: drafts } = await sql<{
+      intake_id: string;
+      state: string;
+      title: string | null;
+      published_at: string | null;
+      published_date: string | null;
+      channel_name: string;
+    }>`
+      select i.id as intake_id, i.state::text as state,
+        i.draft -> 'post' ->> 'title' as title,
+        i.draft -> 'post' ->> 'published_at' as published_at,
+        i.draft -> 'post' ->> 'published_date' as published_date,
+        ch.name as channel_name
+      from public.intake_items i
+      join public.channels ch on ch.id = i.channel_id
+      where i.state in ('triage', 'pending', 'on_hold')
+        and i.draft -> 'post' ->> 'url' = any(${variants}::text[])
+      order by i.captured_at
+      limit 1`.execute(db);
+    const draft = drafts[0];
+    if (draft) return c.json({ found: true, post_id: null, ...draft });
+    return c.json({ found: false });
+  });
+
   app.get("/events", async (c) => {
     const q = listQuery.safeParse(c.req.query());
     if (!q.success) badRequest("条件が正しくありません");
@@ -335,7 +432,11 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
         "e.date_precision",
         "e.classification",
         "w.canonical_name as work_name",
-        sql<boolean>`e.attributes ? 'sources'`.as("has_sources"),
+        // 出典は、手で入れた URL か、紐付いた素材（ニュースなど）のどちらか
+        sql<boolean>`(e.attributes ? 'sources' or exists (
+          select 1 from public.links l
+          where l.to_type = 'event' and l.to_id = e.id and l.review_state = 'accepted'
+        ))`.as("has_sources"),
         sql<string | null>`e.attributes ->> 'event_type'`.as("event_type"),
         // 蓄積対象の人物の出演の状態（最初の 1 件）
         sql<string | null>`(
@@ -406,7 +507,43 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       .where("parent_id", "=", id.data)
       .orderBy(sql`starts_on asc nulls last`)
       .execute();
-    return c.json({ event, participants, children });
+    // この出来事に紐付いた素材（ニュース・ブログなど）。投稿から、または投稿の中の素材から紐付いたもの
+    const { rows: materials } = await sql<{
+      post_id: string;
+      title: string | null;
+      url: string | null;
+      published_at: string | null;
+      published_date: string | null;
+      channel_name: string;
+      channel_kind: string;
+      role: string;
+    }>`
+      select distinct on (p.id)
+        p.id as post_id, p.title, p.url, p.published_at, p.published_date,
+        ch.name as channel_name, ch.kind as channel_kind, l.role
+      from public.links l
+      join public.posts p
+        on (l.from_type = 'post' and p.id = l.from_id)
+        or (l.from_type = 'asset' and p.id = (select a.post_id from public.assets a where a.id = l.from_id))
+      join public.channels ch on ch.id = p.channel_id
+      where l.to_type = 'event' and l.to_id = ${id.data} and l.review_state = 'accepted'
+      order by p.id
+    `.execute(db);
+    materials.sort((a, b) =>
+      String(a.published_at ?? a.published_date ?? "").localeCompare(
+        String(b.published_at ?? b.published_date ?? ""),
+      ),
+    );
+    const usage = await usageOf(db, id.data);
+    const deletable = usage.links === 0 && usage.drafts === 0 && usage.children === 0;
+    return c.json({
+      event,
+      participants,
+      children,
+      materials,
+      usage,
+      can_delete: deletable && mayDelete(c.get("actor"), event.created_by),
+    });
   });
 
   app.post("/events", async (c) => {
@@ -451,6 +588,41 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       await syncParticipants(trx, id.data, input, userId);
     });
     return c.json({ id: id.data });
+  });
+
+  app.post("/events/:id/delete", async (c) => {
+    const id = z.uuid().safeParse(c.req.param("id"));
+    if (!id.success) throw new HTTPException(404, { message: "見つかりません" });
+    const actor = c.get("actor");
+    await inTransaction(db, userIdOf(actor), async (trx) => {
+      const event = await trx
+        .selectFrom("events")
+        .select(["id", "created_by"])
+        .where("id", "=", id.data)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!event) throw new HTTPException(404, { message: "見つかりません" });
+      if (!mayDelete(actor, event.created_by)) {
+        throw new HTTPException(403, {
+          message: "消せるのは、管理者とこの出来事を作った人だけです",
+        });
+      }
+      const usage = await usageOf(trx, id.data);
+      if (usage.links > 0 || usage.drafts > 0) {
+        throw new HTTPException(409, {
+          message: `素材が ${usage.links + usage.drafts} 件紐付いているため消せません。先に紐付けを外してください`,
+        });
+      }
+      if (usage.children > 0) {
+        throw new HTTPException(409, {
+          message: `下の出来事が ${usage.children} 件あるため消せません`,
+        });
+      }
+      await trx.deleteFrom("event_participants").where("event_id", "=", id.data).execute();
+      await trx.deleteFrom("event_items").where("event_id", "=", id.data).execute();
+      await trx.deleteFrom("events").where("id", "=", id.data).execute();
+    });
+    return c.json({ ok: true });
   });
 
   app.post("/entities", async (c) => {

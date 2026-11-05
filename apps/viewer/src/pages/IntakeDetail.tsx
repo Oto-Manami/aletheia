@@ -291,7 +291,6 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
             onChange={setDraft}
             name={name}
             onLabel={(ref) => setLabels((prev) => new Map(prev).set(ref.id, ref.label))}
-            subject={photoSubject}
             readOnly={readOnly}
           />
           {decidable && (

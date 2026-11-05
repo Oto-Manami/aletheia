@@ -1,6 +1,6 @@
 // 出来事の一覧と、作る・直す画面（設計書 決定記録 0027）
 
-import { CalendarPlus, ChevronLeft, Plus, X } from "lucide-react";
+import { CalendarPlus, ChevronLeft, ExternalLink, Plus, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import {
   Link,
@@ -20,6 +20,7 @@ import {
   EVENT_TYPE_LABELS,
   eventDateLabel,
   formatInstant,
+  formatPublished,
   jstTime,
   PARTICIPANT_ROLE_LABELS,
   PARTICIPANT_STATUS_LABELS,
@@ -31,6 +32,7 @@ import type {
   EventSummary,
   ParticipantStatus,
   RefLabel,
+  SourcePreview,
 } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 import { useLayout } from "./Layout.tsx";
@@ -170,10 +172,20 @@ function EventRow({ event: e, to }: { event: EventSummary; to: string }) {
 }
 
 export function EventsEmpty() {
+  // 出来事を消したあとは、その知らせを出す
+  const location = useLocation();
+  const notice = (location.state as { notice?: string } | null)?.notice ?? null;
   return (
-    <div className="split-empty">
-      左の一覧から出来事を選ぶか、「作る」から新しく記録してください。
-    </div>
+    <>
+      {notice && (
+        <p className="notice event-notice" role="status">
+          {notice}
+        </p>
+      )}
+      <div className="split-empty">
+        左の一覧から出来事を選ぶか、「作る」から新しく記録してください。
+      </div>
+    </>
   );
 }
 
@@ -511,6 +523,11 @@ function EventForm({
               ` ・ ${detail.updatedByName ?? "取り込み"} が ${formatInstant(detail.updatedAt)} に直した`}
           </p>
         )}
+        {detail && detail.materials.length > 0 && (
+          <p className="event-material-count">
+            <a href={`#${formId}-materials`}>紐付いている素材 {detail.materials.length} 件</a>
+          </p>
+        )}
       </div>
 
       <fieldset className="editor" disabled={busy}>
@@ -806,33 +823,41 @@ function EventForm({
         </section>
 
         <section className="editor-section" aria-labelledby={`${formId}-sources`}>
-          <h2 id={`${formId}-sources`}>出典（任意）</h2>
-          <p className="field-hint">公式の告知・お知らせなどの URL。後から足してもかまいません。</p>
+          <h2 id={`${formId}-sources`}>出典</h2>
+          {detail && <EventMaterials id={`${formId}-materials`} detail={detail} />}
+          <p className="field-hint">
+            {detail && detail.materials.length > 0
+              ? "ほかに出典があれば URL を足せます（任意）。"
+              : "公式の告知・お知らせなどの URL（任意）。振り分け・承認でニュースや投稿を紐付けると、上に並びます。"}
+          </p>
           {f.sources.map((url, i) => (
-            <div key={i} className="source-row">
-              <label className="visually-hidden" htmlFor={`${formId}-source-${i}`}>
-                出典の URL {i + 1}
-              </label>
-              <input
-                id={`${formId}-source-${i}`}
-                type="url"
-                inputMode="url"
-                placeholder="https://"
-                value={url}
-                onChange={(e) =>
-                  set({ sources: f.sources.map((s, j) => (j === i ? e.target.value : s)) })
-                }
-              />
-              {f.sources.length > 1 && (
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label={`出典の URL ${i + 1} を外す`}
-                  onClick={() => set({ sources: f.sources.filter((_, j) => j !== i) })}
-                >
-                  <X size={16} aria-hidden="true" />
-                </button>
-              )}
+            <div key={i} className="source-item">
+              <div className="source-row">
+                <label className="visually-hidden" htmlFor={`${formId}-source-${i}`}>
+                  出典の URL {i + 1}
+                </label>
+                <input
+                  id={`${formId}-source-${i}`}
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://"
+                  value={url}
+                  onChange={(e) =>
+                    set({ sources: f.sources.map((s, j) => (j === i ? e.target.value : s)) })
+                  }
+                />
+                {f.sources.length > 1 && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`出典の URL ${i + 1} を外す`}
+                    onClick={() => set({ sources: f.sources.filter((_, j) => j !== i) })}
+                  >
+                    <X size={16} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+              <SourcePreviewLine url={url} />
             </div>
           ))}
           <button
@@ -861,6 +886,7 @@ function EventForm({
         </p>
       )}
       <div className="event-form-actions">
+        {detail && <DeleteEvent detail={detail} />}
         {!detail && (
           <Link to="/events" className="button">
             やめる
@@ -871,6 +897,164 @@ function EventForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * 出来事を消す（管理者と作った本人。素材が紐付いていないときだけ。設計書 決定記録 0030）。
+ * 押すとその場で確かめてから消す。消す前の状態は変更履歴に残る
+ */
+const PREVIEW_STATE: Record<SourcePreview["state"], string | null> = {
+  saved: null,
+  triage: "振り分け待ち",
+  pending: "承認待ち",
+  on_hold: "保留中",
+};
+
+/**
+ * 出典の URL の見出し。取り込み済みの素材（保存済み・振り分け待ち・承認待ち）から探し、外のサイトには
+ * 取りに行かない（設計書 決定記録 0030）
+ */
+function SourcePreviewLine({ url }: { url: string }) {
+  const { source } = useApp();
+  const target = /^https?:\/\/[^\s/]+\.[^\s]+$/i.test(url.trim()) ? url.trim() : "";
+  const found = useSearch<SourcePreview | null>(target, async (u) => [
+    await source.previewSource(u),
+  ]);
+  if (!target || !found) return null;
+  const p = found[0] ?? null;
+  if (!p) {
+    return (
+      <p className="quiet source-preview is-none">
+        取り込み済みの素材には見つかりません。URL はそのまま出典に残ります。
+      </p>
+    );
+  }
+  const title = p.title?.trim() || "（題名なし）";
+  const date = formatPublished(p);
+  const state = PREVIEW_STATE[p.state];
+  return (
+    <div className="source-preview" aria-label="出典の見出し">
+      <span className="event-material-channel">{p.channelName}</span>
+      {p.postId ? (
+        <Link to={`/posts/${p.postId}`} className="event-material-title">
+          {title}
+        </Link>
+      ) : (
+        <span className="event-material-title">{title}</span>
+      )}
+      {date && <span className="quiet event-material-date">{date}</span>}
+      {state && <span className="tag source-preview-state">{state}</span>}
+    </div>
+  );
+}
+
+/** 出来事に紐付いた素材（振り分け・承認で紐付けたニュース・ブログなど） */
+function EventMaterials({ id, detail }: { id: string; detail: EventDetail }) {
+  const { materials } = detail;
+  return (
+    <div className="event-materials" id={id}>
+      <h3>紐付いている素材（{materials.length} 件）</h3>
+      {materials.length === 0 ? (
+        <p className="quiet">まだありません。</p>
+      ) : (
+        <ul>
+          {materials.map((m, i) => {
+            const title = m.title?.trim() || "（題名なし）";
+            const date = formatPublished(m);
+            return (
+              <li key={m.postId ?? `${m.url ?? ""}-${i}`}>
+                <span className="event-material-channel">{m.channelName}</span>
+                {m.postId ? (
+                  <Link to={`/posts/${m.postId}`} className="event-material-title">
+                    {title}
+                  </Link>
+                ) : (
+                  <span className="event-material-title">{title}</span>
+                )}
+                {date && <span className="quiet event-material-date">{date}</span>}
+                {m.url && (
+                  <a
+                    href={m.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="icon-button event-material-open"
+                    aria-label={`「${title}」の元のページを開く`}
+                  >
+                    <ExternalLink size={14} aria-hidden="true" />
+                  </a>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function DeleteEvent({ detail }: { detail: EventDetail }) {
+  const { source } = useApp();
+  const layout = useLayout();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { links, drafts, children } = detail.usage;
+
+  if (!detail.canDelete) {
+    const reason =
+      links + drafts > 0
+        ? `素材が ${links + drafts} 件紐付いているため、消せません`
+        : children > 0
+          ? `下の出来事が ${children} 件あるため、消せません`
+          : "消せるのは、管理者とこの出来事を作った人だけです";
+    return <span className="event-delete-note">{reason}</span>;
+  }
+  if (!asking) {
+    return (
+      <button type="button" className="button danger event-delete" onClick={() => setAsking(true)}>
+        この出来事を消す
+      </button>
+    );
+  }
+  return (
+    <span className="event-delete-confirm" role="group" aria-label="出来事を消すかの確認">
+      <span>「{detail.title}」を消しますか？</span>
+      <button type="button" className="button" disabled={busy} onClick={() => setAsking(false)}>
+        やめる
+      </button>
+      <button
+        type="button"
+        className="button danger"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          setError(null);
+          source
+            .deleteEvent(detail.id)
+            .then(() => {
+              layout.changed();
+              void navigate(
+                { pathname: "/events", search: listSearch(params) },
+                { state: { notice: `「${detail.title}」を消しました` } },
+              );
+            })
+            .catch((e: unknown) => {
+              setBusy(false);
+              setError(e instanceof Error ? e.message : String(e));
+            });
+        }}
+      >
+        消す
+      </button>
+      {error && (
+        <span className="error" role="alert">
+          {error}
+        </span>
+      )}
+    </span>
   );
 }
 
