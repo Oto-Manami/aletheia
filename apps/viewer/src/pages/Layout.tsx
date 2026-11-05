@@ -1,4 +1,14 @@
-import { CalendarDays, Filter, Inbox, LogOut, Menu, Search, Settings, X } from "lucide-react";
+import {
+  CalendarDays,
+  Filter,
+  Images,
+  Inbox,
+  LogOut,
+  Menu,
+  Search,
+  Settings,
+  X,
+} from "lucide-react";
 import { useCallback, useState } from "react";
 import { NavLink, Outlet, useOutletContext } from "react-router";
 import { useApp } from "../context.tsx";
@@ -95,6 +105,12 @@ export function Layout() {
             <NavLink to="/events" className="nav-item" onClick={close}>
               <CalendarDays size={16} aria-hidden="true" />
               出来事
+            </NavLink>
+          )}
+          {viewer.isMember && (
+            <NavLink to="/assets" className="nav-item" onClick={close}>
+              <Images size={16} aria-hidden="true" />
+              アセット
             </NavLink>
           )}
           <NavLink to="/search" className="nav-item" onClick={close}>

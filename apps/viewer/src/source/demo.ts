@@ -22,6 +22,8 @@ import { DemoEvents } from "./demo-events.ts";
 import { bySignal, matchesMention, TRIAGE_FILTERS, triageItemOf } from "./triage.ts";
 import {
   type ArchiveSource,
+  type AssetCard,
+  type AssetFilter,
   type Decision,
   type EntityOption,
   type EventDetail,
@@ -287,6 +289,54 @@ export class DemoSource implements ArchiveSource {
       }
     }
     return hits;
+  }
+
+  async listAssets(
+    filter: AssetFilter,
+    page: { offset: number; limit: number },
+  ): Promise<{ items: AssetCard[]; hasMore: boolean }> {
+    await this.delay();
+    const type = filter.mediaType ?? "image";
+    // デモ版では、投稿の「写っている」紐付けで人を絞る（本番はアセットごとの紐付け）
+    const all = this.posts
+      .filter((p) => !filter.channelId || p.channelName === filter.channelId)
+      .filter(
+        (p) =>
+          !filter.personId ||
+          p.links.some((l) => l.role === "appears" && l.target.id === filter.personId),
+      )
+      .flatMap((p) =>
+        p.assets
+          .filter((a) => type === "all" || a.mediaType === type)
+          .map((a): AssetCard => ({
+            id: a.id,
+            postId: p.id,
+            postTitle: p.title,
+            channelName: p.channelName,
+            publishedAt: p.publishedAt,
+            publishedDate: p.publishedDate,
+            mediaType: a.mediaType,
+            title: a.title,
+            imageUrl: a.mediaType === "image" ? a.previewUrl : null,
+            openUrl: a.openUrl,
+          })),
+      )
+      .sort((a, b) =>
+        (b.publishedAt ?? b.publishedDate ?? "").localeCompare(
+          a.publishedAt ?? a.publishedDate ?? "",
+        ),
+      );
+    return {
+      items: all.slice(page.offset, page.offset + page.limit),
+      hasMore: all.length > page.offset + page.limit,
+    };
+  }
+
+  async listChannels(): Promise<{ id: string; name: string }[]> {
+    await this.delay();
+    // デモ版では、情報源の名前を ID の代わりにする
+    const names = [...new Set(this.posts.map((p) => p.channelName))].sort();
+    return names.map((name) => ({ id: name, name }));
   }
 
   async getPost(id: string): Promise<PostView> {
