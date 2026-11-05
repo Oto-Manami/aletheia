@@ -37,9 +37,13 @@ describe("出来事", () => {
     open();
     await screen.findByText("冬の試験公演 1 日目");
     expect(rows()[0]?.textContent).toContain("冬の試験公演（架空ホール）");
+    // 手で入れた URL も紐付いた素材も無いものは「出典なし」
+    const day1 = rows().find((r) => r.textContent?.includes("冬の試験公演 1 日目"))!;
+    expect(within(day1).getByText("出典なし")).toBeTruthy();
+    expect(within(day1).getByText("予定")).toBeTruthy();
+    // URL は無くても、素材が紐付いていれば出典あり
     const magazine = rows().find((r) => r.textContent?.includes("『月刊ミホン』12 月号"))!;
-    expect(within(magazine).getByText("出典なし")).toBeTruthy();
-    expect(within(magazine).getByText("予定")).toBeTruthy();
+    expect(within(magazine).queryByText("出典なし")).toBeNull();
 
     await user.type(screen.getByRole("searchbox", { name: "題名・作品名で探す" }), "仮の時間");
     await waitFor(() => expect(rows()).toHaveLength(1));
@@ -124,6 +128,11 @@ describe("出来事", () => {
     // 素材（デモの下書き）が紐付き、下の出来事もある出来事は消せない
     expect(screen.getByText(/件(紐付いている|ある)ため、消せません/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "この出来事を消す" })).toBeNull();
+    // 紐付いている素材が、出典のところに並ぶ
+    const materials = screen.getByRole("heading", { name: /紐付いている素材（\d+ 件）/ });
+    const list = within(materials.parentElement as HTMLElement).getAllByRole("listitem");
+    expect(list.length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: /紐付いている素材 \d+ 件/ })).toBeTruthy();
   });
 
   it("参加者として登録されていない人には、出来事の画面もメニューも出さない", async () => {

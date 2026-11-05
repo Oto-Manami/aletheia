@@ -313,6 +313,24 @@ describe("出来事を作る・直す", () => {
         [post[0]!.id, linked],
       );
       expect(await canDelete(linked, owner)).toBe(false);
+      // 紐付いた素材は、出来事の画面で見られるよう一緒に返す
+      const withMaterials = await json<{
+        materials: { post_id: string; channel_name: string; role: string }[];
+        usage: { links: number };
+      }>(ctx.call("GET", `/events/${linked}`, undefined, owner));
+      expect(withMaterials.materials).toEqual([
+        expect.objectContaining({
+          post_id: post[0]!.id,
+          channel_name: "試験のニュース",
+          role: "about",
+        }),
+      ]);
+      expect(withMaterials.usage.links).toBe(1);
+      // 一覧でも、URL が無くても素材が紐付いていれば出典ありにする
+      const list = await json<{ items: { id: string; has_sources: boolean }[] }>(
+        ctx.call("GET", "/events", undefined, owner),
+      );
+      expect(list.items.find((e) => e.id === linked)?.has_sources).toBe(true);
       const res = await ctx.call("POST", `/events/${linked}/delete`, {}, admin);
       expect(res.status).toBe(409);
       expect(((await res.json()) as { error: string }).error).toContain("素材が 1 件");

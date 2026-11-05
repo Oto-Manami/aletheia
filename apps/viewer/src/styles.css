@@ -2667,6 +2667,68 @@ details.more[open] > summary {
   align-items: baseline;
 }
 
+/* 出来事に紐付いた素材 */
+.event-material-count {
+  margin: 0;
+  font-size: 13px;
+}
+
+.event-materials {
+  display: grid;
+  gap: 6px;
+}
+
+.event-materials h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.event-materials ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.event-materials li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 8px 10px;
+}
+
+.event-materials li + li {
+  border-top: 1px solid var(--border);
+}
+
+.event-material-channel {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--subtle);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.event-material-title {
+  flex: 1 1 16em;
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.event-material-date {
+  font-size: 12px;
+}
+
+.event-material-open {
+  flex: none;
+}
+
 .event-add-child,
 .event-add-source {
   justify-self: start;

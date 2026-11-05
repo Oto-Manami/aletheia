@@ -3,7 +3,7 @@
 // | メソッド | パス          | 内容                                                       |
 // |----------|---------------|------------------------------------------------------------|
 // | GET      | /events       | 出来事の一覧（日付の新しい順。題名・作品名で探す、種類・期間で絞る） |
-// | GET      | /events/:id   | 出来事 1 件（出演・作品・会場・親子・作った人と直した人）  |
+// | GET      | /events/:id   | 出来事 1 件（出演・作品・会場・親子・紐付いた素材・作った人と直した人） |
 // | POST     | /events       | 出来事を作る                                               |
 // | POST     | /events/:id   | 出来事を直す（出演は送ったものに合わせる）                 |
 // | POST     | /events/:id/delete | 出来事を消す（管理者と作った本人。素材が紐付いていないときだけ） |
@@ -368,7 +368,11 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
         "e.date_precision",
         "e.classification",
         "w.canonical_name as work_name",
-        sql<boolean>`e.attributes ? 'sources'`.as("has_sources"),
+        // 出典は、手で入れた URL か、紐付いた素材（ニュースなど）のどちらか
+        sql<boolean>`(e.attributes ? 'sources' or exists (
+          select 1 from public.links l
+          where l.to_type = 'event' and l.to_id = e.id and l.review_state = 'accepted'
+        ))`.as("has_sources"),
         sql<string | null>`e.attributes ->> 'event_type'`.as("event_type"),
         // 蓄積対象の人物の出演の状態（最初の 1 件）
         sql<string | null>`(
@@ -439,12 +443,40 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       .where("parent_id", "=", id.data)
       .orderBy(sql`starts_on asc nulls last`)
       .execute();
+    // この出来事に紐付いた素材（ニュース・ブログなど）。投稿から、または投稿の中の素材から紐付いたもの
+    const { rows: materials } = await sql<{
+      post_id: string;
+      title: string | null;
+      url: string | null;
+      published_at: string | null;
+      published_date: string | null;
+      channel_name: string;
+      channel_kind: string;
+      role: string;
+    }>`
+      select distinct on (p.id)
+        p.id as post_id, p.title, p.url, p.published_at, p.published_date,
+        ch.name as channel_name, ch.kind as channel_kind, l.role
+      from public.links l
+      join public.posts p
+        on (l.from_type = 'post' and p.id = l.from_id)
+        or (l.from_type = 'asset' and p.id = (select a.post_id from public.assets a where a.id = l.from_id))
+      join public.channels ch on ch.id = p.channel_id
+      where l.to_type = 'event' and l.to_id = ${id.data} and l.review_state = 'accepted'
+      order by p.id
+    `.execute(db);
+    materials.sort((a, b) =>
+      String(a.published_at ?? a.published_date ?? "").localeCompare(
+        String(b.published_at ?? b.published_date ?? ""),
+      ),
+    );
     const usage = await usageOf(db, id.data);
     const deletable = usage.links === 0 && usage.drafts === 0 && usage.children === 0;
     return c.json({
       event,
       participants,
       children,
+      materials,
       usage,
       can_delete: deletable && mayDelete(c.get("actor"), event.created_by),
     });

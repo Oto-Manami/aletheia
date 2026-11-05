@@ -263,6 +263,22 @@ export interface EventDetail {
   canDelete: boolean;
   /** この出来事を指しているもの（素材の紐付け・取り込みの下書き・下の出来事）の数 */
   usage: { links: number; drafts: number; children: number };
+  /** この出来事に紐付いた素材（ニュース・ブログなど。出典として見せる） */
+  materials: EventMaterial[];
+}
+
+/** 出来事に紐付いた素材（投稿 1 件） */
+export interface EventMaterial {
+  /** 投稿の id。承認前の下書き（デモ版）は null */
+  postId: string | null;
+  title: string | null;
+  url: string | null;
+  publishedAt: string | null;
+  publishedDate: string | null;
+  channelName: string;
+  /** 情報源の種類（ニュースは web） */
+  channelKind: string;
+  role: string;
 }
 
 /** 出来事を作る・直すときに送るもの */

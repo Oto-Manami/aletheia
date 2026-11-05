@@ -424,15 +424,34 @@ export class DemoSource implements ArchiveSource {
 
   async listEvents(filter?: { query?: string; kind?: string; from?: string; to?: string }) {
     await this.delay();
-    return this.events.list(filter);
+    const linked = new Set(
+      this.intakes.flatMap((i) =>
+        (i.draft.links ?? []).filter((l) => l.to_type === "event").map((l) => l.to_id),
+      ),
+    );
+    return this.events.list(filter, linked);
   }
 
   async getEvent(id: string): Promise<EventDetail> {
     await this.delay();
-    const linked = this.intakes.filter((i) =>
-      (i.draft.links ?? []).some((l) => l.to_type === "event" && l.to_id === id),
-    ).length;
-    return this.events.get(id, linked);
+    // デモ版では、出来事に紐付けた下書き（承認待ち・承認済み）を、紐付いた素材として見せる
+    const materials = this.intakes.flatMap((i) => {
+      const link = (i.draft.links ?? []).find((l) => l.to_type === "event" && l.to_id === id);
+      if (!link) return [];
+      return [
+        {
+          postId: null,
+          title: i.draft.post.title ?? null,
+          url: i.draft.post.url ?? null,
+          publishedAt: i.draft.post.published_at ?? null,
+          publishedDate: i.draft.post.published_date ?? null,
+          channelName: i.channelName,
+          channelKind: i.channelKey.split(":")[0] ?? "other",
+          role: link.role,
+        },
+      ];
+    });
+    return this.events.get(id, materials);
   }
 
   async saveEvent(id: string | null, input: EventInput): Promise<string> {

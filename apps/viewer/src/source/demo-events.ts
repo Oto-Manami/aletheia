@@ -5,6 +5,7 @@
 import { EVENTS, PEOPLE } from "./demo-data.ts";
 import {
   type EntityOption,
+  type EventMaterial,
   type EventDetail,
   type EventInput,
   type EventSummary,
@@ -97,6 +98,7 @@ function event(
     updatedByName: "デモの運営者",
     canDelete: true,
     usage: { links: 0, drafts: 0, children: 0 },
+    materials: [],
     ...partial,
   };
 }
@@ -183,7 +185,7 @@ export class DemoEvents {
     return `${prefix}-0000-4000-8000-${String(this.seq).padStart(12, "0")}`;
   }
 
-  private summary(e: EventDetail): EventSummary {
+  private summary(e: EventDetail, linked: ReadonlySet<string>): EventSummary {
     const subject = e.participants.find((p) =>
       this.entities.some((x) => x.id === p.entityId && x.archiveSubject),
     );
@@ -197,13 +199,17 @@ export class DemoEvents {
       endsOn: e.endsOn,
       datePrecision: e.datePrecision,
       workName: e.workName,
-      hasSources: e.sources.length > 0,
+      // 出典は、手で入れた URL か、紐付いた素材のどちらか
+      hasSources: e.sources.length > 0 || linked.has(e.id),
       subjectStatus: subject?.status ?? null,
       classification: e.classification,
     };
   }
 
-  list(filter: { query?: string; kind?: string; from?: string; to?: string } = {}) {
+  list(
+    filter: { query?: string; kind?: string; from?: string; to?: string } = {},
+    linked: ReadonlySet<string> = new Set(),
+  ) {
     const q = filter.query?.trim() ?? "";
     const { from, to } = filter;
     const items = this.events
@@ -212,17 +218,19 @@ export class DemoEvents {
       .filter((e) => !from || (e.endsOn ?? e.startsOn ?? "") >= from)
       .filter((e) => !q || e.title.includes(q) || (e.workName ?? "").includes(q))
       .sort((a, b) => (b.startsOn ?? "").localeCompare(a.startsOn ?? ""))
-      .map((e) => this.summary(e));
+      .map((e) => this.summary(e, linked));
     return { items, total: this.events.length };
   }
 
-  get(id: string, linked = 0): EventDetail {
+  get(id: string, materials: EventMaterial[] = []): EventDetail {
+    const linked = materials.length;
     const e = this.events.find((x) => x.id === id);
     if (!e) throw new SourceError("見つかりません", 404);
     const children = this.events.filter((c) => c.parentId === id).length;
     return {
       ...e,
       usage: { links: linked, drafts: 0, children },
+      materials,
       // デモ版の閲覧者は運営者なので、何も紐付いていなければ消せる
       canDelete: linked === 0 && children === 0,
       children: this.events

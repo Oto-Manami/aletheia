@@ -1,6 +1,6 @@
 // 出来事の一覧と、作る・直す画面（設計書 決定記録 0027）
 
-import { CalendarPlus, ChevronLeft, Plus, X } from "lucide-react";
+import { CalendarPlus, ChevronLeft, ExternalLink, Plus, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import {
   Link,
@@ -20,6 +20,7 @@ import {
   EVENT_TYPE_LABELS,
   eventDateLabel,
   formatInstant,
+  formatPublished,
   jstTime,
   PARTICIPANT_ROLE_LABELS,
   PARTICIPANT_STATUS_LABELS,
@@ -521,6 +522,11 @@ function EventForm({
               ` ・ ${detail.updatedByName ?? "取り込み"} が ${formatInstant(detail.updatedAt)} に直した`}
           </p>
         )}
+        {detail && detail.materials.length > 0 && (
+          <p className="event-material-count">
+            <a href={`#${formId}-materials`}>紐付いている素材 {detail.materials.length} 件</a>
+          </p>
+        )}
       </div>
 
       <fieldset className="editor" disabled={busy}>
@@ -816,8 +822,13 @@ function EventForm({
         </section>
 
         <section className="editor-section" aria-labelledby={`${formId}-sources`}>
-          <h2 id={`${formId}-sources`}>出典（任意）</h2>
-          <p className="field-hint">公式の告知・お知らせなどの URL。後から足してもかまいません。</p>
+          <h2 id={`${formId}-sources`}>出典</h2>
+          {detail && <EventMaterials id={`${formId}-materials`} detail={detail} />}
+          <p className="field-hint">
+            {detail && detail.materials.length > 0
+              ? "ほかに出典があれば URL を足せます（任意）。"
+              : "公式の告知・お知らせなどの URL（任意）。振り分け・承認でニュースや投稿を紐付けると、上に並びます。"}
+          </p>
           {f.sources.map((url, i) => (
             <div key={i} className="source-row">
               <label className="visually-hidden" htmlFor={`${formId}-source-${i}`}>
@@ -889,6 +900,50 @@ function EventForm({
  * 出来事を消す（管理者と作った本人。素材が紐付いていないときだけ。設計書 決定記録 0030）。
  * 押すとその場で確かめてから消す。消す前の状態は変更履歴に残る
  */
+/** 出来事に紐付いた素材（振り分け・承認で紐付けたニュース・ブログなど） */
+function EventMaterials({ id, detail }: { id: string; detail: EventDetail }) {
+  const { materials } = detail;
+  return (
+    <div className="event-materials" id={id}>
+      <h3>紐付いている素材（{materials.length} 件）</h3>
+      {materials.length === 0 ? (
+        <p className="quiet">まだありません。</p>
+      ) : (
+        <ul>
+          {materials.map((m, i) => {
+            const title = m.title?.trim() || "（題名なし）";
+            const date = formatPublished(m);
+            return (
+              <li key={m.postId ?? `${m.url ?? ""}-${i}`}>
+                <span className="event-material-channel">{m.channelName}</span>
+                {m.postId ? (
+                  <Link to={`/posts/${m.postId}`} className="event-material-title">
+                    {title}
+                  </Link>
+                ) : (
+                  <span className="event-material-title">{title}</span>
+                )}
+                {date && <span className="quiet event-material-date">{date}</span>}
+                {m.url && (
+                  <a
+                    href={m.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="icon-button event-material-open"
+                    aria-label={`「${title}」の元のページを開く`}
+                  >
+                    <ExternalLink size={14} aria-hidden="true" />
+                  </a>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function DeleteEvent({ detail }: { detail: EventDetail }) {
   const { source } = useApp();
   const layout = useLayout();

@@ -578,6 +578,7 @@ export class LiveSource implements ArchiveSource {
       children,
       usage,
       can_delete,
+      materials,
     } = await this.api<EventDetailResponse>("GET", `/events/${encodeURIComponent(id)}`);
     const attributes = e.attributes ?? {};
     const sources = Array.isArray(attributes["sources"])
@@ -624,6 +625,16 @@ export class LiveSource implements ArchiveSource {
       updatedByName: e.updated_by_name,
       canDelete: can_delete,
       usage,
+      materials: materials.map((m) => ({
+        postId: m.post_id,
+        title: m.title,
+        url: m.url,
+        publishedAt: m.published_at,
+        publishedDate: m.published_date,
+        channelName: m.channel_name,
+        channelKind: m.channel_kind,
+        role: m.role,
+      })),
     };
   }
 
@@ -776,4 +787,14 @@ interface EventDetailResponse {
   }[];
   usage: { links: number; drafts: number; children: number };
   can_delete: boolean;
+  materials: {
+    post_id: string;
+    title: string | null;
+    url: string | null;
+    published_at: string | null;
+    published_date: string | null;
+    channel_name: string;
+    channel_kind: string;
+    role: string;
+  }[];
 }
