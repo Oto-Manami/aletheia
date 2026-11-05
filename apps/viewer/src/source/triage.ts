@@ -87,6 +87,18 @@ export function triageItemOf(
     }))
     // 本人への言及を先に見せる
     .sort((a, b) => (a.level === b.level ? 0 : a.level === "subject" ? -1 : 1));
+  // ほかのメンバーの名前（タグ付けの候補）。振り分けの判断の手がかりに見せる
+  const otherNames = links
+    .filter(
+      (l) =>
+        l.role === "mentioned" &&
+        l.from === "post" &&
+        l.accepted !== false &&
+        l.evidence?.["purpose"] === "tag",
+    )
+    .map((l) => String((l.evidence as MentionEvidence | undefined)?.subject ?? ""))
+    .filter(Boolean);
+  const category = draft.context?.["news_category"];
   const countOf = (level: "subject" | "group") =>
     mentions.filter((m) => m.level === level).reduce((n, m) => n + m.count, 0);
   const spansByText = new Map<
@@ -138,6 +150,8 @@ export function triageItemOf(
     mentionCount: mentions.reduce((n, m) => n + m.count, 0),
     subjectMentions: countOf("subject"),
     groupMentions: countOf("group"),
+    otherNames: [...new Set(otherNames)],
+    category: typeof category === "string" && category ? category : null,
     aliases: [...new Set(mentions.flatMap((m) => m.aliases))],
     mentions,
     snippets,
@@ -171,12 +185,21 @@ export function matchesMention(item: TriageItem, filter: TriageMentionFilter): b
   if (filter === "subject") return s;
   if (filter === "group_only") return !s && g;
   if (filter === "none") return !s && !g;
+  if (filter === "unnamed") return !s && !g && item.otherNames.length === 0;
+  if (filter === "others_only") return !s && !g && item.otherNames.length > 0;
   return true;
 }
 
-/** 言及の強い順（本人への言及の数 → 期への言及の数）。同じなら元の順（古い順）のまま */
+/**
+ * 言及の強い順（本人への言及の数 → 期への言及の数 → ほかのメンバーの名前が無いもの）。
+ * 同じなら元の順（古い順）のまま
+ */
 export function bySignal(a: TriageItem, b: TriageItem): number {
-  return b.subjectMentions - a.subjectMentions || b.groupMentions - a.groupMentions;
+  return (
+    b.subjectMentions - a.subjectMentions ||
+    b.groupMentions - a.groupMentions ||
+    Number(a.otherNames.length > 0) - Number(b.otherNames.length > 0)
+  );
 }
 
 export const TRIAGE_FILTERS: TriageMentionFilter[] = [
@@ -185,4 +208,6 @@ export const TRIAGE_FILTERS: TriageMentionFilter[] = [
   "subject",
   "group_only",
   "none",
+  "unnamed",
+  "others_only",
 ];

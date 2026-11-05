@@ -174,13 +174,23 @@ export interface TriageItem {
   subjectMentions: number;
   /** 期などへの言及の数 */
   groupMentions: number;
+  /** 本文に名前が出ている、ほかのメンバー（タグ付けの候補） */
+  otherNames: string[];
+  /** ニュースのカテゴリ（メディア・イベントなど） */
+  category: string | null;
   snippets: TriageSnippet[];
   images: TriageImage[];
   draft: DraftInput;
 }
 
-/** 振り分けの絞り込み: すべて・言及あり・本人への言及あり・期への言及だけ・言及なし */
-export type TriageMentionFilter = "all" | "any" | "subject" | "group_only" | "none";
+/**
+ * 振り分けの絞り込み: すべて・言及あり・本人への言及あり・期への言及だけ・言及なし・
+ * 言及なしのうちメンバーの名前も無い・言及なしのうちほかのメンバーの名前だけ
+ */
+export type TriageMentionFilter =
+  "all" | "any" | "subject" | "group_only" | "none" | "unnamed" | "others_only";
+/** 振り分けの情報源: すべて・メンバーのブログ・公式サイトのニュース */
+export type TriageSource = "all" | "blog" | "news";
 /** 振り分けの並び: 取り込んだ古い順・言及の強い順（本人への言及の数 → 期への言及の数） */
 export type TriageSort = "oldest" | "signal";
 export type TriageCounts = Record<TriageMentionFilter, number>;
@@ -314,7 +324,11 @@ export interface ArchiveSource {
   search(query: string): Promise<SearchHit[]>;
   getPost(id: string): Promise<PostView>;
   /** 振り分け待ちの記事（決定記録 0021）。条件に当てはまるものを上限 200 件。件数は本当の数 */
-  listTriage(options?: { mention?: TriageMentionFilter; sort?: TriageSort }): Promise<{
+  listTriage(options?: {
+    mention?: TriageMentionFilter;
+    sort?: TriageSort;
+    source?: TriageSource;
+  }): Promise<{
     items: TriageItem[];
     total: number;
     counts: TriageCounts;

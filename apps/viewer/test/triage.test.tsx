@@ -43,7 +43,7 @@ describe("振り分けの画面", () => {
     const user = userEvent.setup();
     const source = open();
     await screen.findByText("リハーサルの日");
-    expect(cards()).toHaveLength(6);
+    expect(cards()).toHaveLength(9);
     const first = cards()[0]!;
     expect(within(first).getByText("試験 花子 2")).toBeTruthy();
     expect(within(first).getByText("はなちゃん").tagName).toBe("MARK");
@@ -51,7 +51,7 @@ describe("振り分けの画面", () => {
     await user.click(within(first).getByRole("button", { name: "画像 2" }));
     expect(within(first).getByText("写っている 1 / 3 枚")).toBeTruthy();
     await user.click(within(first).getByRole("button", { name: "残す" }));
-    await waitFor(() => expect(cards()).toHaveLength(5));
+    await waitFor(() => expect(cards()).toHaveLength(8));
 
     const pending = await source.listIntake("pending");
     const kept = pending.find((i) => i.title === "リハーサルの日")!;
@@ -66,32 +66,32 @@ describe("振り分けの画面", () => {
     open();
     await screen.findByText("リハーサルの日");
     await user.click(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" }));
-    await user.click(screen.getByRole("button", { name: "選んだ 3 件を言及なしにする" }));
-    expect(await screen.findByText("3 件を言及なしにしました")).toBeTruthy();
-    expect(cards()).toHaveLength(3);
+    await user.click(screen.getByRole("button", { name: "選んだ 5 件を言及なしにする" }));
+    expect(await screen.findByText("5 件を言及なしにしました")).toBeTruthy();
+    expect(cards()).toHaveLength(4);
     expect(screen.getByRole("tab", { name: "言及なし 0" })).toBeTruthy();
   });
 
   it("本当の件数を出し、表示した分を終えたら続きを読み込める", async () => {
     const user = userEvent.setup();
     const source = new DemoSource(0);
-    // 振り分け待ちが表示の上限より多い場合（画面に出ているのは 6 件）
+    // 振り分け待ちが表示の上限より多い場合（画面に出ているのは 9 件）
     const original = source.listTriage.bind(source);
     const list = vi.spyOn(source, "listTriage").mockImplementation(async (options) => {
       const r = await original(options);
-      return { ...r, total: r.total + 1228, counts: { ...r.counts, all: r.counts.all + 1228 } };
+      return { ...r, total: r.total + 1225, counts: { ...r.counts, all: r.counts.all + 1225 } };
     });
     const count = vi.spyOn(source, "countIntake").mockResolvedValue(1234);
     open(admin, source);
     expect(
-      await screen.findByText("振り分け待ちは全 1,234 件です。古い順に 6 件を表示しています。"),
+      await screen.findByText("振り分け待ちは全 1,234 件です。古い順に 9 件を表示しています。"),
     ).toBeTruthy();
     const nav = screen.getByRole("navigation", { name: "画面" });
     expect(within(nav).getByLabelText("振り分け待ち 1234 件")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" }));
-    await user.click(screen.getByRole("button", { name: "選んだ 3 件を言及なしにする" }));
-    expect(await screen.findByText(/全 1,231 件です。古い順に 3 件/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "選んだ 5 件を言及なしにする" }));
+    expect(await screen.findByText(/全 1,229 件です。古い順に 4 件/)).toBeTruthy();
 
     list.mockRestore();
     count.mockRestore();
@@ -106,13 +106,13 @@ describe("振り分けの画面", () => {
     const user = userEvent.setup();
     open();
     await screen.findByText("リハーサルの日");
-    await user.click(screen.getByRole("tab", { name: "言及あり 3" }));
-    await waitFor(() => expect(cards()).toHaveLength(3));
+    await user.click(screen.getByRole("tab", { name: "言及あり 4" }));
+    await waitFor(() => expect(cards()).toHaveLength(4));
 
     const target = screen.getByLabelText("言及の対象");
     await user.selectOptions(target, "subject");
-    await waitFor(() => expect(cards()).toHaveLength(2));
-    expect(screen.getByText(/このうち「本人への言及」は 2 件。/)).toBeTruthy();
+    await waitFor(() => expect(cards()).toHaveLength(3));
+    expect(screen.getByText(/このうち「本人への言及」は 3 件。/)).toBeTruthy();
 
     await user.selectOptions(screen.getByLabelText("言及の対象"), "group_only");
     await waitFor(() => expect(cards()).toHaveLength(1));
@@ -120,11 +120,31 @@ describe("振り分けの画面", () => {
     expect(within(group).getByText("後輩たちへ")).toBeTruthy();
     expect(within(group).getByText("試験 2 期生 2").className).toContain("is-group");
 
-    await user.click(screen.getByRole("tab", { name: "すべて 6" }));
+    await user.click(screen.getByRole("tab", { name: "すべて 9" }));
     await user.selectOptions(screen.getByLabelText("並び"), "signal");
     await waitFor(() => expect(cards()[0]?.textContent).toContain("リハーサルの日"));
     expect(cards()[1]?.textContent).toContain("ラジオありがとうございました");
-    expect(cards()[2]?.textContent).toContain("後輩たちへ");
+    expect(cards()[2]?.textContent).toContain("ラジオ「仮の時間」に試験 花子が出演");
+    expect(cards()[3]?.textContent).toContain("後輩たちへ");
+    // 言及の無いものは、メンバーの名前の無いものを先に、ほかのメンバーの名前だけのものを最後に
+    expect(cards().at(-1)?.textContent).toContain("見本 さくらが出演");
+  });
+
+  it("ニュースに絞り、言及なしの中をメンバーの名前の無いもの・ほかのメンバーの名前だけのものに分けられる", async () => {
+    const user = userEvent.setup();
+    open();
+    await screen.findByText("リハーサルの日");
+    await user.selectOptions(screen.getByLabelText("情報源"), "news");
+    await waitFor(() => expect(cards()).toHaveLength(3));
+    expect(within(cards()[0]!).getByText("メディア")).toBeTruthy();
+
+    await user.click(screen.getByRole("tab", { name: "言及なし 2" }));
+    await user.selectOptions(screen.getByLabelText("名前の出方"), "others_only");
+    await waitFor(() => expect(cards()).toHaveLength(1));
+    const other = cards()[0]!;
+    expect(within(other).getByText("見本 さくら")).toBeTruthy();
+    await user.selectOptions(screen.getByLabelText("名前の出方"), "unnamed");
+    await waitFor(() => expect(cards()[0]?.textContent).toContain("新しいシングルの発売が決定"));
   });
 
   it("参加者は残せるが、言及なしは運営者だけが選べる", async () => {

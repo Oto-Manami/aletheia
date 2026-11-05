@@ -12,7 +12,13 @@ import { Snippet } from "../components/Snippet.tsx";
 import { useApp } from "../context.tsx";
 import { formatInstant } from "../format.ts";
 import { matchesMention, TRIAGE_FILTERS, withAppears } from "../source/triage.ts";
-import type { TriageCounts, TriageItem, TriageMentionFilter, TriageSort } from "../source/types.ts";
+import type {
+  TriageCounts,
+  TriageItem,
+  TriageMentionFilter,
+  TriageSort,
+  TriageSource,
+} from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 import { useLayout } from "./Layout.tsx";
 
@@ -22,7 +28,15 @@ const FILTER_LABELS: Record<TriageMentionFilter, string> = {
   subject: "本人への言及",
   group_only: "期への言及だけ",
   none: "言及なし",
+  unnamed: "メンバーの名前なし",
+  others_only: "ほかのメンバーの名前だけ",
 };
+
+const SOURCES: { key: TriageSource; label: string }[] = [
+  { key: "all", label: "すべての情報源" },
+  { key: "blog", label: "メンバーのブログ" },
+  { key: "news", label: "公式サイトのニュース" },
+];
 
 function hasSignal(item: TriageItem, appears: Record<string, boolean>): boolean {
   return item.mentionCount > 0 || item.images.some((img) => appears[img.ref] ?? img.appears);
@@ -74,8 +88,17 @@ function TriageCard({
         />
         <div className="triage-title">
           <span className="triage-source">
+            {item.category && <span className="tag triage-category">{item.category}</span>}
             {item.channelName}
-            {item.publishedAt && <> ・ {formatInstant(item.publishedAt)}</>}
+            {item.publishedAt && (
+              <>
+                {" "}
+                ・{" "}
+                {item.publishedAt.length > 10
+                  ? formatInstant(item.publishedAt)
+                  : item.publishedAt.replaceAll("-", "/")}
+              </>
+            )}
           </span>
           <span className="triage-name">
             {item.title ?? "（題名なし）"}
@@ -105,7 +128,15 @@ function TriageCard({
             ))}
           </span>
         ) : (
-          <span className="tag triage-none">言及なし</span>
+          <span className="triage-mentions">
+            <span className="tag triage-none">言及なし</span>
+            {item.otherNames.length > 0 && (
+              <span className="triage-others" title="本文に名前が出ている、ほかのメンバー">
+                {item.otherNames.slice(0, 3).join("・")}
+                {item.otherNames.length > 3 && ` ほか ${item.otherNames.length - 3} 人`}
+              </span>
+            )}
+          </span>
         )}
       </div>
 
@@ -177,9 +208,10 @@ export function TriagePage() {
   const [params, setParams] = useSearchParams();
   const mention = TRIAGE_FILTERS.find((f) => f === params.get("mention")) ?? "all";
   const sort: TriageSort = params.get("sort") === "signal" ? "signal" : "oldest";
+  const from: TriageSource = SOURCES.find((x) => x.key === params.get("source"))?.key ?? "all";
   const [list, reload] = useLoad(
-    () => source.listTriage({ mention, sort }),
-    [source, mention, sort],
+    () => source.listTriage({ mention, sort, source: from }),
+    [source, mention, sort, from],
   );
   const [appears, setAppears] = useState<Record<string, Record<string, boolean>>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -213,14 +245,21 @@ export function TriagePage() {
   const more = total !== null && total > items.length;
   const appearsOf = (id: string) => appears[id] ?? {};
 
-  const setView = (patch: { mention?: TriageMentionFilter; sort?: TriageSort }) => {
+  const setView = (patch: {
+    mention?: TriageMentionFilter;
+    sort?: TriageSort;
+    source?: TriageSource;
+  }) => {
     const next = new URLSearchParams(params);
     const m = patch.mention ?? mention;
     const so = patch.sort ?? sort;
+    const src = patch.source ?? from;
     if (m === "all") next.delete("mention");
     else next.set("mention", m);
     if (so === "oldest") next.delete("sort");
     else next.set("sort", so);
+    if (src === "all") next.delete("source");
+    else next.set("source", src);
     setSelected(new Set());
     setParams(next);
   };
@@ -242,10 +281,12 @@ export function TriagePage() {
 
   // 言及ありの中は、本人への言及・期への言及だけ、をさらに選べる
   const mentionTab = mention === "any" || mention === "subject" || mention === "group_only";
+  // 言及なしの中は、メンバーの名前の無いもの・ほかのメンバーの名前だけのもの、をさらに選べる
+  const noneTab = mention === "none" || mention === "unnamed" || mention === "others_only";
   const tabs: { key: TriageMentionFilter; label: string; selected: boolean }[] = [
     { key: "all", label: "すべて", selected: mention === "all" },
     { key: "any", label: "言及あり", selected: mentionTab },
-    { key: "none", label: "言及なし", selected: mention === "none" },
+    { key: "none", label: "言及なし", selected: noneTab },
   ];
   const count = (f: TriageMentionFilter) => (counts ? ` ${counts[f].toLocaleString("ja-JP")}` : "");
 
@@ -254,7 +295,7 @@ export function TriagePage() {
       <div className="page-head">
         <h1 className="page-title">振り分け</h1>
         <p className="page-sub">
-          メンバーのブログです。言及があるもの・本人が写っているものを残し、それ以外は運営者が「言及なし」として確認済みにします（本文と画像は残しません）。
+          メンバーのブログと公式サイトのニュースです。言及があるもの・本人が写っているもの・本人に関係する告知を残し、それ以外は運営者が「言及なし」として確認済みにします（本文と画像は残しません）。
         </p>
       </div>
 
@@ -289,6 +330,34 @@ export function TriagePage() {
               </select>
             </span>
           )}
+          {noneTab && (
+            <span className="triage-select">
+              <label htmlFor="triage-none">名前の出方</label>
+              <select
+                id="triage-none"
+                value={mention}
+                onChange={(e) => setView({ mention: e.target.value as TriageMentionFilter })}
+              >
+                <option value="none">すべて{count("none")}</option>
+                <option value="unnamed">メンバーの名前なし{count("unnamed")}</option>
+                <option value="others_only">ほかのメンバーの名前だけ{count("others_only")}</option>
+              </select>
+            </span>
+          )}
+          <span className="triage-select">
+            <label htmlFor="triage-source">情報源</label>
+            <select
+              id="triage-source"
+              value={from}
+              onChange={(e) => setView({ source: e.target.value as TriageSource })}
+            >
+              {SOURCES.map((x) => (
+                <option key={x.key} value={x.key}>
+                  {x.label}
+                </option>
+              ))}
+            </select>
+          </span>
           <span className="triage-select">
             <label htmlFor="triage-sort">並び</label>
             <select
@@ -343,7 +412,8 @@ export function TriagePage() {
             `このうち「${FILTER_LABELS[mention]}」は ${total.toLocaleString("ja-JP")} 件。`}
           {more &&
             `${sort === "signal" ? "言及の強い順" : "古い順"}に ${items.length.toLocaleString("ja-JP")} 件を表示しています。`}
-          {sort === "signal" && "本人への言及の多いもの、期への言及の多いもの、の順です。"}
+          {sort === "signal" &&
+            "本人への言及の多いもの、期への言及の多いもの、メンバーの名前の無いもの、ほかのメンバーの名前だけのもの、の順です。"}
         </p>
       )}
       {message && (

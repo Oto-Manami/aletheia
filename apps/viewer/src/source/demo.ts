@@ -4,6 +4,7 @@ import { type DraftInput, draftSchema } from "@aletheia/intake/draft";
 import {
   DEMO_GENERATION,
   DEMO_SUBJECT,
+  DEMO_TAGS,
   type DemoIntake,
   type DemoTriage,
   demoIntakes,
@@ -40,6 +41,7 @@ import {
   type TriageCounts,
   type TriageMentionFilter,
   type TriageSort,
+  type TriageSource,
 } from "./types.ts";
 
 function escapeHtml(s: string): string {
@@ -84,7 +86,10 @@ export class DemoSource implements ArchiveSource {
   private triage: DemoTriage[] = demoTriage().map((t) => ({
     ...t,
     // 取り込みのときと同じ規則で、言及と画像の確認の候補を付ける
-    draft: proposeSubjectLinks(proposeSubjectLinks(t.draft, DEMO_SUBJECT), DEMO_GENERATION),
+    draft: DEMO_TAGS.reduce(
+      (d, tag) => proposeSubjectLinks(d, tag, { purpose: "tag" }),
+      proposeSubjectLinks(proposeSubjectLinks(t.draft, DEMO_SUBJECT), DEMO_GENERATION),
+    ),
   }));
   private members: MemberView[] = [
     {
@@ -356,10 +361,16 @@ export class DemoSource implements ArchiveSource {
     if (this.members.length === before) throw new SourceError("外せる閲覧者がいません");
   }
 
-  async listTriage(options: { mention?: TriageMentionFilter; sort?: TriageSort } = {}) {
+  async listTriage(
+    options: { mention?: TriageMentionFilter; sort?: TriageSort; source?: TriageSource } = {},
+  ) {
     await this.delay();
     const subjects = new Set([DEMO_SUBJECT.id]);
-    const all = this.triage.map((t) =>
+    const source = options.source ?? "all";
+    const inSource = this.triage.filter(
+      (t) => source === "all" || (source === "news") === (t.channelKind === "web"),
+    );
+    const all = inSource.map((t) =>
       triageItemOf(
         {
           id: t.id,
