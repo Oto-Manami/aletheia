@@ -11,6 +11,7 @@ import {
   type AssetView,
   type Classification,
   type Decision,
+  type DiscardedItem,
   type EntityOption,
   type EventDetail,
   type EventInput,
@@ -533,6 +534,31 @@ export class LiveSource implements ArchiveSource {
 
   async keepTriage(id: string, draft: DraftInput): Promise<void> {
     await this.api("POST", `/intake/${encodeURIComponent(id)}/keep`, { draft });
+  }
+
+  async listDiscarded(): Promise<DiscardedItem[]> {
+    const { items } = await this.api<{
+      items: {
+        id: string;
+        channel_name: string;
+        title: string | null;
+        url: string | null;
+        reviewed_at: string | null;
+        reviewed_by_name: string | null;
+      }[];
+    }>("GET", "/intake/discarded");
+    return items.map((i) => ({
+      id: i.id,
+      channelName: i.channel_name,
+      title: i.title,
+      url: i.url,
+      discardedAt: i.reviewed_at,
+      discardedByName: i.reviewed_by_name,
+    }));
+  }
+
+  async restoreDiscarded(id: string): Promise<void> {
+    await this.api("POST", `/intake/${encodeURIComponent(id)}/restore`, {});
   }
 
   discardTriage(ids: string[]) {

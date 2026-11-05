@@ -120,13 +120,14 @@ describe("表ごとの JSON Lines", () => {
     }));
 });
 
-describe("振り分け待ちの下書き", () => {
+describe("振り分け待ち・言及なしの置き場の下書き", () => {
   const BODY = "架空のメンバーのブログ本文（振り分け待ち）";
 
   it("書き出さない。ダンプに足す insert 文で、書き出した下書きを元に戻せる", () =>
     withSeed("owner", async (c, d) => {
       for (const [id, state] of [
         ["t1", "triage"],
+        ["x1", "discarded"],
         ["p1", "pending"],
       ] as const) {
         await c.query(
@@ -136,14 +137,14 @@ describe("振り分け待ちの下書き", () => {
             d.freeChannel,
             id,
             state,
-            JSON.stringify({ body: state === "triage" ? BODY : "残す下書き" }),
+            JSON.stringify({ body: state === "pending" ? "残す下書き" : BODY }),
           ],
         );
       }
       const result = await exportDatabase(c, dir, { ownTransaction: false });
       const intake = result.tables.find((t) => t.table === "public.intake_items")!;
       const rows = await readLines(join(dir, intake.file));
-      expect(rows.map((r) => r["external_id"])).toContain("p1");
+      expect(rows.map((r) => r["external_id"])).toEqual(["p1"]);
       expect(JSON.stringify(rows)).not.toContain(BODY);
 
       // insert 文を作り、消した下書きを元に戻せることを確かめる
@@ -153,7 +154,7 @@ describe("振り分け待ちの下書き", () => {
       );
       const sqlText = gunzipSync(await readFile(dump)).toString("utf8");
       expect(sqlText).not.toContain(BODY);
-      await c.query("delete from public.intake_items where state <> 'triage'");
+      await c.query("delete from public.intake_items where state not in ('triage', 'discarded')");
       await c.query(sqlText);
       const { rows: restored } = await c.query<{ external_id: string; draft: unknown }>(
         "select external_id, draft from public.intake_items where external_id = 'p1'",

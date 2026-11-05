@@ -81,17 +81,21 @@ describe("振り分け", () => {
       expect(list.total).toBe(3);
     }));
 
-  it("言及なしにすると下書きと仮置きのファイルが消え、同じ記事は取り込み直されない", () =>
+  it("言及なしにすると置き場に移り、同じ記事は取り込み直されない。戻すと振り分け待ちに戻る", () =>
     withApi(async (ctx) => {
       const d = await seed(ctx.c);
       const { id, staged } = await triageDraft(ctx, d, "202");
-      expect(ctx.files.files.has(staged.storage_key)).toBe(true);
 
       const res = await ctx.call("POST", `/intake/${id}/no-mention`, {});
       expect(res.status).toBe(200);
-      expect(await res.json()).toMatchObject({ files: { failed: [] } });
-      expect(ctx.files.files.has(staged.storage_key)).toBe(false);
-      expect((await ctx.call("GET", `/intake/${id}`)).status).toBe(404);
+      // 置き場にある間は、仮置きのファイルを消さない（決定記録 0031）
+      expect(ctx.files.files.has(staged.storage_key)).toBe(true);
+      const held = (await (await ctx.call("GET", "/intake/discarded")).json()) as {
+        items: { id: string; url: string | null }[];
+      };
+      expect(held.items).toEqual([
+        expect.objectContaining({ id, url: "https://example.com/blog/member/202" }),
+      ]);
 
       const again = await ctx.call("POST", "/intake", {
         channel_key: "sns:test_account",
@@ -103,6 +107,31 @@ describe("振り分け", () => {
       });
       expect(again.status).toBe(409);
       expect(await again.json()).toMatchObject({ code: "checked_no_mention" });
+
+      expect((await ctx.call("POST", `/intake/${id}/restore`, {})).status).toBe(200);
+      const list = (await (await ctx.call("GET", "/intake?state=triage")).json()) as {
+        items: { id: string }[];
+      };
+      expect(list.items.map((i) => i.id)).toContain(id);
+      expect((await ctx.call("POST", `/intake/${id}/restore`, {})).status).toBe(409);
+    }));
+
+  it("置き場から押し出された下書きは、仮置きのファイルを後から消す", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const drafts: Awaited<ReturnType<typeof triageDraft>>[] = [];
+      for (let n = 0; n < 11; n++) drafts.push(await triageDraft(ctx, d, String(400 + n)));
+      const res = await ctx.call("POST", "/intake/no-mention", { ids: drafts.map((x) => x.id) });
+      expect(((await res.json()) as { done: string[] }).done).toHaveLength(11);
+      await vi.waitFor(() =>
+        expect(ctx.files.files.has(drafts[0]!.staged.storage_key)).toBe(false),
+      );
+      expect(ctx.files.files.has(drafts[1]!.staged.storage_key)).toBe(true);
+      expect((await ctx.call("GET", `/intake/${drafts[0]!.id}`)).status).toBe(404);
+      const held = (await (await ctx.call("GET", "/intake/discarded")).json()) as {
+        items: unknown[];
+      };
+      expect(held.items).toHaveLength(10);
     }));
 
   it("まとめて言及なしにでき、振り分け待ちでないものは失敗として返す", () =>
@@ -115,9 +144,6 @@ describe("振り分け", () => {
       const body = (await res.json()) as { done: string[]; failed: { id: string }[] };
       expect(body.done).toEqual([a.id]);
       expect(body.failed.map((f) => f.id)).toEqual([b.id]);
-      // 仮置きのファイルは、返した後で消す（問い合わせを長くしない）
-      await vi.waitFor(() => expect(ctx.files.files.has(a.staged.storage_key)).toBe(false));
-      expect((await ctx.call("GET", `/intake/${a.id}`)).status).toBe(404);
     }));
 
   it("参加者は残すことと承認ができ、言及なしは管理者だけができる。判断した人の名前が一覧に出る", () =>
@@ -143,6 +169,15 @@ describe("振り分け", () => {
         (await ctx.call("POST", `/intake/${other.id}/no-mention`, {}, await tokenFor(admin)))
           .status,
       ).toBe(200);
+      // 言及なしの置き場を見る・戻すのも管理者だけ
+      expect((await ctx.call("GET", "/intake/discarded", undefined, asViewer)).status).toBe(403);
+      expect((await ctx.call("POST", `/intake/${other.id}/restore`, {}, asViewer)).status).toBe(
+        403,
+      );
+      const held = (await (
+        await ctx.call("GET", "/intake/discarded", undefined, await tokenFor(admin))
+      ).json()) as { items: { id: string; reviewed_by_name: string | null }[] };
+      expect(held.items[0]).toMatchObject({ id: other.id });
 
       expect((await ctx.call("POST", `/intake/${kept.id}/keep`, {}, asViewer)).status).toBe(200);
       expect((await ctx.call("POST", `/intake/${kept.id}/approve`, {}, asViewer)).status).toBe(200);

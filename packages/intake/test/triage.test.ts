@@ -5,10 +5,12 @@ import { describe, expect, it } from "vitest";
 import {
   approveIntakeIn,
   articleFacts,
+  DISCARD_KEEP,
   discardTriageIn,
   IntakeError,
   isCheckedNoMention,
   keepTriageIn,
+  restoreDiscarded,
 } from "../src/index.ts";
 import { expectFailure, withTrx } from "./helpers.ts";
 
@@ -97,23 +99,60 @@ describe("振り分け", () => {
       expect(approved.counts.links).toBe(1);
     }));
 
-  it("言及なしにすると、確認済みの記録だけを残して下書きを消し、仮置きのファイルを返す", () =>
+  it("言及なしにすると、確認済みの記録を残して下書きを置き場に移す。戻すと振り分け待ちに戻る", () =>
     withTrx(async (trx, c) => {
       const d = await seed(c);
       const id = await triage(c, d);
       const { stagedFiles } = await discardTriageIn(trx, id);
-      expect(stagedFiles).toEqual([{ storage_key: "staged-1" }]);
-      const { rows } = await c.query("select 1 from public.intake_items where id = $1", [id]);
-      expect(rows).toEqual([]);
+      // 置き場にある間は、仮置きのファイルを消さない
+      expect(stagedFiles).toEqual([]);
+      const { rows } = await c.query<{ state: string }>(
+        "select state from public.intake_items where id = $1",
+        [id],
+      );
+      expect(rows).toEqual([{ state: "discarded" }]);
       expect(await checks(c, d)).toEqual([
         expect.objectContaining({ external_id: "101", result: "no_mention" }),
       ]);
       expect(await isCheckedNoMention(trx, d.freeChannel, "101")).toBe(true);
-      // 本文はどこにも残らない（変更履歴も含む）
-      const { rows: history } = await c.query<{ old_row: unknown }>(
-        "select old_row from app.history where table_name = 'intake_items' and row_id = $1",
+
+      await restoreDiscarded(trx, id);
+      const { rows: back } = await c.query<{ state: string }>(
+        "select state from public.intake_items where id = $1",
         [id],
       );
+      expect(back).toEqual([{ state: "triage" }]);
+      expect(await checks(c, d)).toEqual([]);
+      // 置き場に無いものは戻せない
+      const error = await expectFailure(c, () => restoreDiscarded(trx, id));
+      expect((error as IntakeError).code).toBe("already_decided");
+    }));
+
+  it("置き場は直近 10 件までで、古いものから下書きを消して仮置きのファイルを返す。本文は履歴にも残らない", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const ids: string[] = [];
+      for (let n = 0; n < DISCARD_KEEP + 1; n++) {
+        const id = await triage(c, d, String(200 + n));
+        ids.push(id);
+        const { stagedFiles } = await discardTriageIn(trx, id);
+        // 11 件目で、最初の 1 件が押し出される
+        expect(stagedFiles).toEqual(n < DISCARD_KEEP ? [] : [{ storage_key: "staged-1" }]);
+      }
+      const { rows } = await c.query<{ id: string }>(
+        "select id from public.intake_items where state = 'discarded'",
+      );
+      expect(rows).toHaveLength(DISCARD_KEEP);
+      expect(rows.map((r) => r.id)).not.toContain(ids[0]);
+      // 消したものも、確認済みの記録は残る
+      expect(await isCheckedNoMention(trx, d.freeChannel, "200")).toBe(true);
+      const error = await expectFailure(c, () => restoreDiscarded(trx, ids[0]!));
+      expect((error as IntakeError).code).toBe("not_found");
+      const { rows: history } = await c.query<{ old_row: unknown }>(
+        "select old_row from app.history where table_name = 'intake_items' and row_id = any($1)",
+        [ids],
+      );
+      expect(history.length).toBeGreaterThan(0);
       expect(JSON.stringify(history)).not.toContain(BODY);
     }));
 

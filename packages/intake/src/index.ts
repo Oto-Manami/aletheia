@@ -29,11 +29,13 @@ export {
 } from "./mentions.ts";
 export {
   articleFacts,
+  DISCARD_KEEP,
   discardTriage,
   discardTriageIn,
   isCheckedNoMention,
   keepTriage,
   keepTriageIn,
   MENTION_LENS,
+  restoreDiscarded,
   type TriageOptions,
 } from "./triage.ts";
