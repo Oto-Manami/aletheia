@@ -33,6 +33,7 @@ export {
   discardTriage,
   discardTriageIn,
   isCheckedNoMention,
+  keepAndApprove,
   keepTriage,
   keepTriageIn,
   MENTION_LENS,

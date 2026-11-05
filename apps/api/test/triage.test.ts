@@ -286,4 +286,37 @@ describe("振り分け", () => {
       expect(onlyNews.counts).toMatchObject({ all: 1, subject: 1 });
       expect((await list("source=blog")).items).toEqual([]);
     }));
+
+  it("残すと承認を 1 回で行える。同じ画像が既にあっても承認でき、ファイルは二重に保存しない", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const first = await triageDraft(ctx, d, "301");
+      const second = await triageDraft(ctx, d, "302");
+      // 2 本目の画像を、1 本目と同じファイル（SHA-256 が同じ）にした下書き
+      const draftOf = (externalId: string, sha: string) => ({
+        version: 1,
+        post: {
+          url: `https://example.com/blog/member/${externalId}`,
+          classification: "public",
+        },
+        assets: [{ ref: "photo-1", media_type: "image", sha256: sha }],
+      });
+      const a = { sha: first.staged.sha256 };
+      const res1 = await ctx.call("POST", `/intake/${first.id}/keep`, {
+        draft: draftOf("301", a.sha),
+        approve: true,
+      });
+      expect(res1.status).toBe(200);
+      const b = { draft: draftOf("302", a.sha) };
+      const res2 = await ctx.call("POST", `/intake/${second.id}/keep`, {
+        draft: b.draft,
+        approve: true,
+      });
+      expect(res2.status).toBe(200);
+      const { rows: assets } = await ctx.c.query<{ file_policy: string }>(
+        "select file_policy from public.assets where sha256 = $1 order by created_at",
+        [a.sha],
+      );
+      expect(assets.map((r) => r.file_policy)).toEqual(["stored", "reference_only"]);
+    }));
 });

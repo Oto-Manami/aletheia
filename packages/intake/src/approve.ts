@@ -103,6 +103,43 @@ function isSameAsset(known: KnownAsset, a: Draft["assets"][number]): boolean {
   return false;
 }
 
+/** 同じファイル（SHA-256 が一致）を既に保存しているアセット（別の投稿、または同じ下書きの前の素材） */
+async function storedTwin(trx: Trx, sha256: string) {
+  return trx
+    .selectFrom("assets")
+    .select(["id", "content_group_id", "classification"])
+    .where("sha256", "=", sha256)
+    .where("file_policy", "=", "stored")
+    .executeTakeFirst();
+}
+
+/**
+ * 同じファイルの再掲載のまとまり（repost）。保存しているアセットを代表にする。代表が既にまとまりに
+ * 入っていればそれを使う（設計書 データモデル「保存の方針: 代表だけを保存する」）
+ */
+async function repostGroupOf(
+  trx: Trx,
+  twin: { id: string; content_group_id: string | null; classification: "public" | "private" },
+): Promise<string> {
+  if (twin.content_group_id) return twin.content_group_id;
+  const group = await trx
+    .insertInto("content_groups")
+    .values({
+      kind: "repost",
+      representative_asset_id: twin.id,
+      note: "同じファイル（SHA-256 が一致）",
+      classification: twin.classification,
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  await trx
+    .updateTable("assets")
+    .set({ content_group_id: group.id })
+    .where("id", "=", twin.id)
+    .execute();
+  return group.id;
+}
+
 async function hasSameStatement(
   trx: Trx,
   s: Omit<
@@ -214,6 +251,12 @@ export async function approveIntakeIn(
       continue;
     }
     const classification = a.classification ?? inherit;
+    // 同じファイルを別の素材が既に保存していれば、ファイルはそちらに任せ、この素材は記録だけにする
+    // （同じ画像が別のニュース・ブログにも載っていた場合など。二重に保存しない）
+    const twin =
+      a.sha256 && (a.file_policy ?? "stored") === "stored"
+        ? await storedTwin(trx, a.sha256)
+        : undefined;
     const { id } = await trx
       .insertInto("assets")
       .values({
@@ -225,7 +268,11 @@ export async function approveIntakeIn(
         content_date: a.content_date ?? null,
         content_date_precision: a.content_date_precision ?? null,
         content_at: a.content_at ?? null,
-        ...(a.file_policy ? { file_policy: a.file_policy } : {}),
+        ...(twin
+          ? { file_policy: "reference_only", content_group_id: await repostGroupOf(trx, twin) }
+          : a.file_policy
+            ? { file_policy: a.file_policy }
+            : {}),
         sha256: a.sha256 ?? null,
         phash: a.phash ?? null,
         mime_type: a.mime_type ?? null,
@@ -249,7 +296,7 @@ export async function approveIntakeIn(
         .execute();
       counts.texts++;
     }
-    for (const f of a.files) {
+    for (const f of twin ? [] : a.files) {
       await trx
         .insertInto("asset_files")
         .values({

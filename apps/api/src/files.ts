@@ -118,6 +118,8 @@ export async function finalizeApprovedFiles(
         .as("has_original"),
     ])
     .where("a.post_id", "=", postId)
+    // 記録だけの素材（同じファイルを別の素材が保存している）には、ファイルを置かない
+    .where("a.file_policy", "=", "stored")
     .where(
       "a.sha256",
       "in",

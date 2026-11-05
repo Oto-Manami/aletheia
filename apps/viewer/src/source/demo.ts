@@ -397,6 +397,14 @@ export class DemoSource implements ArchiveSource {
     return { items, total: counts[mention], counts };
   }
 
+  async keepAndApprove(id: string, draft: DraftInput): Promise<void> {
+    // 承認できない下書きなら、振り分け待ちのまま残す
+    const issues = issuesOf(draft);
+    if (issues.length > 0) throw new SourceError("下書きに直すところがあります", 422, issues);
+    await this.keepTriage(id, draft);
+    await this.decide(id, "approve", { draft });
+  }
+
   async keepTriage(id: string, draft: DraftInput): Promise<void> {
     await this.delay();
     const item = this.triage.find((t) => t.id === id);

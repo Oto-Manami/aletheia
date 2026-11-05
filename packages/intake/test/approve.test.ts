@@ -500,6 +500,79 @@ describe("別の経路からの補完", () => {
     }));
 });
 
+describe("同じファイルの再掲載", () => {
+  /** 別の投稿（お知らせなど）に、同じ画像が載っている下書き。架空のデータ */
+  function repostDraft(sha: string, extra = 0): DraftInput {
+    return {
+      version: 1,
+      post: { title: "試験のお知らせ", classification: "public" },
+      assets: [
+        { ref: "image-1", media_type: "image", sha256: sha },
+        ...Array.from({ length: extra }, (_, i) => ({
+          ref: `image-${i + 2}`,
+          media_type: "image" as const,
+          sha256: sha,
+        })),
+      ],
+    };
+  }
+
+  it("同じファイルが別の投稿で保存済みなら、記録だけの素材にして再掲載のまとまりに束ねる", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const first = await approveIntakeIn(trx, await intake(c, d, blogDraft(d)));
+      const photo = first.assetIds["photo-1"]!;
+      const second = await approveIntakeIn(
+        trx,
+        await intake(c, d, repostDraft("b".repeat(64)), { externalId: "9002" }),
+      );
+      const shared = second.assetIds["image-1"]!;
+      const { rows } = await c.query<{
+        id: string;
+        file_policy: string;
+        content_group_id: string | null;
+      }>("select id, file_policy, content_group_id from public.assets where id = any($1)", [
+        [photo, shared],
+      ]);
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      expect(byId.get(photo)?.file_policy).toBe("stored");
+      expect(byId.get(shared)?.file_policy).toBe("reference_only");
+      const group = byId.get(photo)?.content_group_id;
+      expect(group).toBeTruthy();
+      expect(byId.get(shared)?.content_group_id).toBe(group);
+      const { rows: groups } = await c.query<{ kind: string; representative_asset_id: string }>(
+        "select kind, representative_asset_id from public.content_groups where id = $1",
+        [group],
+      );
+      expect(groups[0]).toEqual({ kind: "repost", representative_asset_id: photo });
+
+      // 3 本目も同じまとまりに入る。同じ下書きの中に同じ画像が 2 つあっても承認できる
+      const third = await approveIntakeIn(
+        trx,
+        await intake(c, d, repostDraft("b".repeat(64), 1), { externalId: "9003" }),
+      );
+      expect(
+        await count(
+          c,
+          "select count(*) as n from public.assets where content_group_id = $1 and file_policy = 'reference_only'",
+          [group],
+        ),
+      ).toBe(3);
+      expect(Object.keys(third.assetIds)).toEqual(["image-1", "image-2"]);
+    }));
+
+  it("同じ下書きの中で同じ画像が 2 回出てきたら、2 つ目を記録だけにする", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const result = await approveIntakeIn(trx, await intake(c, d, repostDraft("f".repeat(64), 1)));
+      const { rows } = await c.query<{ file_policy: string }>(
+        "select file_policy from public.assets where id = any($1) order by position",
+        [[result.assetIds["image-1"], result.assetIds["image-2"]]],
+      );
+      expect(rows.map((r) => r.file_policy)).toEqual(["stored", "reference_only"]);
+    }));
+});
+
 describe("却下・保留", () => {
   it("却下すると、事実の層には何も入らず、却下の記録が残る", () =>
     withTrx(async (trx, c) => {
