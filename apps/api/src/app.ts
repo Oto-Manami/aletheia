@@ -532,19 +532,39 @@ export function createApp(
     return files ? removeStagedFiles(files, stagedFiles) : null;
   }
 
+  /**
+   * まとめて言及なし。データベース（記録と下書きの削除）を先に済ませて返し、仮置きのファイルは後から消す。
+   * ファイルの削除を待つと問い合わせが長くなり、途中で切れると画面とデータベースが食い違うため。
+   * 消せなかったファイルはログに残す（仮置きの場所に残るだけで、記録には影響しない）
+   */
   app.post("/intake/no-mention", async (c) => {
     assertAdmin(c.get("actor"));
     const body = await parseBody(c.req.raw, bulkNoMentionBody);
     const reviewerId = reviewerOf(c.get("actor"), body);
     const done: string[] = [];
     const failed: { id: string; error: string }[] = [];
+    const staged: unknown[] = [];
     for (const id of body.ids) {
       try {
-        await noMention(id, { ...(reviewerId ? { reviewerId } : {}) });
+        const { stagedFiles } = await discardTriage(db, id, {
+          ...(reviewerId ? { reviewerId } : {}),
+        });
+        staged.push(stagedFiles);
         done.push(id);
       } catch (e) {
         failed.push({ id, error: e instanceof Error ? e.message : String(e) });
       }
+    }
+    if (files && staged.length > 0) {
+      const store = files;
+      void (async () => {
+        for (const s of staged) {
+          const report = await removeStagedFiles(store, s);
+          for (const f of report.failed) {
+            console.error(`仮置きのファイルを消せませんでした: ${f.storage_key}: ${f.error}`);
+          }
+        }
+      })();
     }
     return c.json({ done, failed });
   });

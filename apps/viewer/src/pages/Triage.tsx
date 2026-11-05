@@ -310,6 +310,9 @@ function NewsEvents({
   );
 }
 
+/** まとめて言及なしにするとき、1 回に送る件数 */
+const BULK_CHUNK = 20;
+
 export function TriagePage() {
   const { source, viewer } = useApp();
   const layout = useLayout();
@@ -325,7 +328,8 @@ export function TriagePage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [gone, setGone] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
 
   if (!viewer.isMember) {
     return (
@@ -352,6 +356,9 @@ export function TriagePage() {
   const total = counts ? Math.max(counts[mention], items.length) : null;
   const more = total !== null && total > items.length;
   const appearsOf = (id: string) => appears[id] ?? {};
+  // 選んだもののうち、いま一覧に出ているものだけを数える（処理済み・読み直しで消えたものは除く）
+  const shown = new Set(items.map((i) => i.id));
+  const picked = [...selected].filter((id) => shown.has(id));
 
   const setView = (patch: {
     mention?: TriageMentionFilter;
@@ -378,13 +385,41 @@ export function TriagePage() {
     layout.changed();
   };
 
+  /**
+   * 言及なしにする。たくさん選んだときは少しずつ送り、終わった分から一覧から消して進み具合を見せる
+   * （1 回の問い合わせが長くなると、途中で切れて画面とデータベースが食い違うため）。
+   * 失敗したときは一覧を読み直し、画面をデータベースに合わせる
+   */
   const discard = async (ids: string[]) => {
-    const result = await source.discardTriage(ids);
-    finish(result.done);
-    if (result.failed.length > 0) {
-      throw new Error(`${result.failed.length} 件を言及なしにできませんでした`);
+    let done = 0;
+    const failed: string[] = [];
+    if (ids.length > 1) setProgress({ done: 0, total: ids.length });
+    try {
+      for (let i = 0; i < ids.length; i += BULK_CHUNK) {
+        const chunk = ids.slice(i, i + BULK_CHUNK);
+        const result = await source.discardTriage(chunk);
+        finish(result.done);
+        done += result.done.length;
+        failed.push(...result.failed.map((f) => f.error));
+        if (ids.length > 1) setProgress({ done: i + chunk.length, total: ids.length });
+      }
+    } catch (e) {
+      reload();
+      const reason = e instanceof Error ? e.message : String(e);
+      throw new Error(
+        `途中で止まりました（${reason}）。${done} 件は言及なしにしました。一覧を読み直しました`,
+        { cause: e },
+      );
+    } finally {
+      setProgress(null);
     }
-    return result.done.length;
+    if (failed.length > 0) {
+      reload();
+      throw new Error(
+        `${done} 件を言及なしにしました。${failed.length} 件はできませんでした（${failed[0]}）。一覧を読み直しました`,
+      );
+    }
+    return done;
   };
 
   // 言及ありの中は、本人への言及・期への言及だけ、をさらに選べる
@@ -494,17 +529,21 @@ export function TriagePage() {
             <button
               type="button"
               className="button danger"
-              disabled={selected.size === 0 || bulkBusy}
+              disabled={picked.length === 0 || bulkBusy}
               onClick={() => {
                 setBulkBusy(true);
                 setMessage(null);
-                discard([...selected])
-                  .then((n) => setMessage(`${n} 件を言及なしにしました`))
-                  .catch((e: unknown) => setMessage(e instanceof Error ? e.message : String(e)))
+                discard(picked)
+                  .then((n) => setMessage({ text: `${n} 件を言及なしにしました`, error: false }))
+                  .catch((e: unknown) =>
+                    setMessage({ text: e instanceof Error ? e.message : String(e), error: true }),
+                  )
                   .finally(() => setBulkBusy(false));
               }}
             >
-              選んだ {selected.size} 件を言及なしにする
+              {progress
+                ? `言及なしにしています（${progress.done} / ${progress.total} 件）`
+                : `選んだ ${picked.length} 件を言及なしにする`}
             </button>
           </div>
         ) : (
@@ -525,8 +564,8 @@ export function TriagePage() {
         </p>
       )}
       {message && (
-        <p className="quiet" role="status">
-          {message}
+        <p className={message.error ? "error" : "quiet"} role={message.error ? "alert" : "status"}>
+          {message.text}
         </p>
       )}
 

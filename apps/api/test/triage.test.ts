@@ -1,6 +1,6 @@
 // 振り分けの API（設計書 決定記録 0021）。データはすべて架空
 import { seed } from "@aletheia/db/testing/fixtures";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { StagedFile } from "../src/files.ts";
 import { type Ctx, discordUser, tokenFor, withApi } from "./helpers.ts";
 
@@ -115,6 +115,9 @@ describe("振り分け", () => {
       const body = (await res.json()) as { done: string[]; failed: { id: string }[] };
       expect(body.done).toEqual([a.id]);
       expect(body.failed.map((f) => f.id)).toEqual([b.id]);
+      // 仮置きのファイルは、返した後で消す（問い合わせを長くしない）
+      await vi.waitFor(() => expect(ctx.files.files.has(a.staged.storage_key)).toBe(false));
+      expect((await ctx.call("GET", `/intake/${a.id}`)).status).toBe(404);
     }));
 
   it("参加者は残すことと承認ができ、言及なしは管理者だけができる。判断した人の名前が一覧に出る", () =>
