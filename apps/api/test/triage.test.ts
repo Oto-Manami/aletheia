@@ -180,9 +180,18 @@ describe("振り分け", () => {
         confidence: 0.6,
         evidence: { rule: "alias_match", count, ...(purpose ? { purpose } : {}) },
       });
-      const make = async (externalId: string, day: number, links: unknown[]) => {
+      await ctx.c.query(
+        `insert into public.channels (key, name, kind, availability, item_unit, classification)
+         values ('web:test_news', '試験のニュース', 'web', 'free', 'post', 'public')`,
+      );
+      const make = async (
+        externalId: string,
+        day: number,
+        links: unknown[],
+        channel = "sns:test_account",
+      ) => {
         const res = await ctx.call("POST", "/intake", {
-          channel_key: "sns:test_account",
+          channel_key: channel,
           external_id: externalId,
           route: "fetch",
           state: "triage",
@@ -209,7 +218,15 @@ describe("振り分け", () => {
 
       const all = await list("sort=signal");
       expect(all.items.map((i) => i.id)).toEqual([dd, a, b, c, e]);
-      expect(all.counts).toEqual({ all: 5, any: 3, subject: 2, group_only: 1, none: 2 });
+      expect(all.counts).toEqual({
+        all: 5,
+        any: 3,
+        subject: 2,
+        group_only: 1,
+        none: 2,
+        unnamed: 1,
+        others_only: 1,
+      });
       expect(all.items[0]).toMatchObject({ subject_mentions: 2, group_mentions: 1 });
       expect((all as List & { subject_ids: string[] }).subject_ids).toEqual([person]);
 
@@ -219,6 +236,16 @@ describe("振り分け", () => {
       expect((await list("mention=group_only")).items.map((i) => i.id)).toEqual([b]);
       expect((await list("mention=none")).items.map((i) => i.id)).toEqual([c, e]);
       expect((await list("mention=any&sort=signal")).items.map((i) => i.id)).toEqual([dd, a, b]);
+      // 言及なしのうち、メンバーの名前の無いものと、ほかのメンバーの名前だけのものを分けられる
+      expect((await list("mention=unnamed")).items.map((i) => i.id)).toEqual([c]);
+      expect((await list("mention=others_only")).items.map((i) => i.id)).toEqual([e]);
       expect((await ctx.call("GET", "/intake?state=triage&mention=wrong")).status).toBe(400);
+
+      // 情報源の種類で絞れる（件数もその中で数える）
+      const news = await make("501", 6, [mention(person, 1)], "web:test_news");
+      const onlyNews = await list("source=news");
+      expect(onlyNews.items.map((i) => i.id)).toEqual([news]);
+      expect(onlyNews.counts).toMatchObject({ all: 1, subject: 1 });
+      expect((await list("source=blog")).items).toEqual([]);
     }));
 });

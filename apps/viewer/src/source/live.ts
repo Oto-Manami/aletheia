@@ -33,6 +33,7 @@ import {
   type TriageItem,
   type TriageMentionFilter,
   type TriageSort,
+  type TriageSource,
   type Viewer,
 } from "./types.ts";
 import { INVITE_ERRORS } from "../invite.ts";
@@ -495,8 +496,11 @@ export class LiveSource implements ArchiveSource {
     rpcRows(await this.supabase.rpc("remove_member", { member_discord_user_id: discordUserId }));
   }
 
-  async listTriage(options: { mention?: TriageMentionFilter; sort?: TriageSort } = {}) {
+  async listTriage(
+    options: { mention?: TriageMentionFilter; sort?: TriageSort; source?: TriageSource } = {},
+  ) {
     const params = new URLSearchParams({ state: "triage", limit: "200" });
+    if (options.source && options.source !== "all") params.set("source", options.source);
     if (options.mention && options.mention !== "all") params.set("mention", options.mention);
     if (options.sort && options.sort !== "oldest") params.set("sort", options.sort);
     const { items, total, counts, subject_ids } = await this.api<{

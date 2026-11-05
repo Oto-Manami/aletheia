@@ -1337,9 +1337,17 @@ export const DEMO_GENERATION = {
   checkImages: false,
 };
 
+/** 登場するメンバーのタグ付けの候補（蓄積対象の人物以外） */
+export const DEMO_TAGS = [
+  { id: PEOPLE.sakura, name: "見本 さくら", aliases: ["さくら"], checkImages: false },
+  { id: PEOPLE.yui, name: "仮名 ゆい", aliases: ["ゆい"], checkImages: false },
+];
+
 export interface DemoTriage {
   id: string;
   channelName: string;
+  /** 情報源の種類（ニュースは web） */
+  channelKind?: "blog" | "web";
   capturedAt: string;
   draft: DraftInput;
   /** 画像の ref → 色相（デモの画像を作る） */
@@ -1358,6 +1366,7 @@ function memberBlog(
   return {
     id: `f1000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
     channelName: `${member}のブログ（架空）`,
+    channelKind: "blog",
     capturedAt: `${date}T23:40:00+09:00`,
     draft: {
       version: 1,
@@ -1373,6 +1382,36 @@ function memberBlog(
       ],
     },
     photos: Object.fromEntries(refs.map((r, i) => [r, photos[i]!])),
+  };
+}
+
+function news(
+  n: number,
+  date: string,
+  category: string,
+  code: string,
+  title: string,
+  text: string,
+): DemoTriage {
+  return {
+    id: `f1000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+    channelName: "公式サイト ニュース（架空）",
+    channelKind: "web",
+    capturedAt: `${date}T23:50:00+09:00`,
+    draft: {
+      version: 1,
+      post: {
+        title,
+        published_date: date,
+        published_date_precision: "day",
+        url: `https://example.com/news/${n}`,
+        classification: "public",
+        availability: "free",
+      },
+      assets: [{ ref: "body", media_type: "text", texts: [{ text_type: "body", content: text }] }],
+      context: { collector: "demo_news", news_category: category, news_category_code: code },
+    },
+    photos: {},
   };
 }
 
@@ -1425,6 +1464,30 @@ export function demoTriage(): DemoTriage[] {
       "後輩たちへ",
       "今日は2期生のみんなとごはんに行きました。2期生はみんな元気で、こちらまで元気をもらいました。",
       [60],
+    ),
+    news(
+      7,
+      "2026-10-26",
+      "メディア",
+      "media",
+      "10月30日(金)ラジオ「仮の時間」に試験 花子が出演！",
+      "10月30日(金)21:00〜ラジオ「仮の時間」に試験花子が出演いたします！ ぜひお聴きください。",
+    ),
+    news(
+      8,
+      "2026-10-27",
+      "メディア",
+      "media",
+      "11月2日(月)「ミホンの番組」に見本 さくらが出演！",
+      "11月2日(月)19:00〜「ミホンの番組」に見本さくらが出演いたします！",
+    ),
+    news(
+      9,
+      "2026-10-28",
+      "リリース",
+      "release",
+      "新しいシングルの発売が決定！",
+      "新しいシングルを12月に発売することが決定しました。詳しくは後日お知らせします。",
     ),
   ];
 }
