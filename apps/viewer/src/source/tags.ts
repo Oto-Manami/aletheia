@@ -128,3 +128,43 @@ export function confirmPeopleTags(draft: DraftInput): DraftInput {
     }),
   };
 }
+
+/** 投稿を紐付けた出来事（about）。外したものは含めない */
+export function eventsOf(draft: DraftInput): string[] {
+  return (draft.links ?? [])
+    .filter(
+      (l) => isPostLink(l) && l.to_type === "event" && l.role === "about" && l.accepted !== false,
+    )
+    .map((l) => l.to_id);
+}
+
+/** 投稿を出来事に紐付ける（about）・外す。人が足したものを外すときは取り除き、規則の候補は外したと記録する */
+export function setEventLink(draft: DraftInput, eventId: string, on: boolean): DraftInput {
+  const links = [...(draft.links ?? [])];
+  const index = links.findIndex(
+    (l) => isPostLink(l) && l.to_type === "event" && l.to_id === eventId && l.role === "about",
+  );
+  const existing = index >= 0 ? links[index] : undefined;
+  if (!existing) {
+    if (on) {
+      links.push({
+        from: "post",
+        to_type: "event",
+        to_id: eventId,
+        role: "about",
+        origin: "human",
+        confidence: 1,
+      });
+    }
+  } else if (existing.origin === "human" && !on) {
+    links.splice(index, 1);
+  } else {
+    links[index] = {
+      ...existing,
+      accepted: on,
+      ...(on ? { origin: "human" as const, confidence: 1 } : {}),
+      evidence: { ...existing.evidence, reviewed: true },
+    };
+  }
+  return { ...draft, links };
+}

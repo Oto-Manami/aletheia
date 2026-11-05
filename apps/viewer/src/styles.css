@@ -2965,3 +2965,70 @@ details.more[open] > summary {
     box-shadow: 0 -4px 12px rgb(15 23 42 / 0.06);
   }
 }
+
+/* 承認の画面の「出来事」 */
+.event-links {
+  display: grid;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.record-heading {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.record-heading .quiet {
+  margin-left: 2px;
+}
+
+.event-candidates {
+  display: grid;
+  gap: 4px;
+}
+
+.event-candidate {
+  appearance: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0 6px;
+  padding: 6px 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.event-candidate:hover {
+  background: var(--subtle);
+  border-style: solid;
+}
+
+.event-candidate .quiet {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.event-candidate-title {
+  overflow-wrap: anywhere;
+}
+
+.event-create-open {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.event-links .picker-create {
+  gap: 10px;
+}

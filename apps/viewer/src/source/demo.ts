@@ -410,7 +410,7 @@ export class DemoSource implements ArchiveSource {
     };
   }
 
-  async listEvents(filter?: { query?: string; kind?: string }) {
+  async listEvents(filter?: { query?: string; kind?: string; from?: string; to?: string }) {
     await this.delay();
     return this.events.list(filter);
   }
