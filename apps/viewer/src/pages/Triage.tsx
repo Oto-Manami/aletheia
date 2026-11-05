@@ -6,13 +6,18 @@
 // - 言及も写っている画像も無い記事は、まとめて「言及なし」にできる
 
 import { Check, ExternalLink } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import type { DraftInput } from "@aletheia/intake/draft";
 import { useSearchParams } from "react-router";
+import { EventLinks } from "../components/EventLinks.tsx";
 import { Snippet } from "../components/Snippet.tsx";
 import { useApp } from "../context.tsx";
 import { formatInstant } from "../format.ts";
+import { newsPrefill } from "../source/news-prefill.ts";
+import { confirmPeopleTags, eventsOf } from "../source/tags.ts";
 import { matchesMention, TRIAGE_FILTERS, withAppears } from "../source/triage.ts";
 import type {
+  RefLabel,
   TriageCounts,
   TriageItem,
   TriageMentionFilter,
@@ -50,6 +55,8 @@ function TriageCard({
   onToggleImage,
   onKeep,
   onDiscard,
+  onToEvents,
+  subject,
 }: {
   item: TriageItem;
   selected: boolean;
@@ -59,8 +66,15 @@ function TriageCard({
   onKeep: () => Promise<void>;
   /** 言及なしにする（管理者だけ。参加者には出さない） */
   onDiscard: (() => Promise<void>) | null;
+  /** ニュースを出来事にして保存する（出来事への紐付けを足した下書き） */
+  onToEvents: (draft: DraftInput) => Promise<void>;
+  /** 写真の印・出来事の出演を付ける人（蓄積対象の人物） */
+  subject: RefLabel | null;
 }) {
   const [busy, setBusy] = useState(false);
+  // 公式サイトのニュースは、残す代わりに出来事にする（設計書 決定記録 0029）
+  const news = item.channelKind === "web";
+  const [toEvents, setToEvents] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = (fn: () => Promise<void>) => {
     setBusy(true);
@@ -173,32 +187,141 @@ function TriageCard({
         </div>
       )}
 
+      {toEvents && (
+        <NewsEvents
+          item={item}
+          subject={subject}
+          onCancel={() => setToEvents(false)}
+          onSave={(draft) => onToEvents(draft)}
+        />
+      )}
+
+      {!toEvents && (
+        <div className="triage-actions">
+          {error && (
+            <span className="error" role="alert">
+              {error}
+            </span>
+          )}
+          {item.images.length > 0 && !news && (
+            <span className="quiet triage-picked">
+              写っている {picked} / {item.images.length} 枚
+            </span>
+          )}
+          {onDiscard && (
+            <button type="button" className="button" disabled={busy} onClick={() => run(onDiscard)}>
+              {news ? "関係なし" : "言及なし"}
+            </button>
+          )}
+          {news ? (
+            <button type="button" className="button primary" onClick={() => setToEvents(true)}>
+              出来事にする
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="button primary"
+              disabled={busy}
+              onClick={() => run(onKeep)}
+            >
+              残す
+            </button>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function bodyOf(draft: DraftInput): string {
+  return (draft.assets ?? [])
+    .flatMap((a) => a.texts ?? [])
+    .filter((t) => t.text_type === "body")
+    .map((t) => t.content)
+    .join("\n");
+}
+
+/**
+ * ニュースから出来事を作る・選ぶ。初めの値はニュースから規則で入れる。保存すると、ニュースを出典として
+ * 出来事に紐付け、素材として残す（承認の一覧には回らない。設計書 決定記録 0029）
+ */
+function NewsEvents({
+  item,
+  subject,
+  onCancel,
+  onSave,
+}: {
+  item: TriageItem;
+  subject: RefLabel | null;
+  onCancel: () => void;
+  onSave: (draft: DraftInput) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<DraftInput>(item.draft);
+  const [labels, setLabels] = useState(new Map<string, string>());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const prefill = useMemo(() => {
+    const p = newsPrefill({
+      title: item.title ?? "",
+      body: bodyOf(item.draft),
+      publishedDate: item.publishedAt?.slice(0, 10) ?? null,
+      category: item.category,
+      categoryCode:
+        typeof item.draft.context?.["news_category_code"] === "string"
+          ? item.draft.context["news_category_code"]
+          : null,
+    });
+    return {
+      ...p,
+      sources: item.url ? [item.url] : [],
+      withSubject: item.subjectMentions > 0,
+    };
+  }, [item]);
+  const linked = eventsOf(draft);
+
+  return (
+    <div className="news-events" role="group" aria-label="このニュースを出来事にする">
+      <EventLinks
+        draft={draft}
+        onChange={setDraft}
+        name={(id) => labels.get(id) ?? "（出来事）"}
+        onLabel={(ref) => setLabels((prev) => new Map(prev).set(ref.id, ref.label))}
+        subject={subject}
+        readOnly={busy}
+        prefill={prefill}
+        title="このニュースから作る出来事"
+      />
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
       <div className="triage-actions">
-        {error && (
-          <span className="error" role="alert">
-            {error}
-          </span>
-        )}
-        {item.images.length > 0 && (
-          <span className="quiet triage-picked">
-            写っている {picked} / {item.images.length} 枚
-          </span>
-        )}
-        {onDiscard && (
-          <button type="button" className="button" disabled={busy} onClick={() => run(onDiscard)}>
-            言及なし
-          </button>
-        )}
+        <span className="quiet triage-picked">
+          {linked.length > 0
+            ? `出来事 ${linked.length} 件に、このニュースを出典として紐付けます`
+            : "出来事を作るか選ぶと、保存できます"}
+        </span>
+        <button type="button" className="button" disabled={busy} onClick={onCancel}>
+          やめる
+        </button>
         <button
           type="button"
           className="button primary"
-          disabled={busy}
-          onClick={() => run(onKeep)}
+          disabled={busy || linked.length === 0}
+          onClick={() => {
+            setBusy(true);
+            setError(null);
+            onSave(confirmPeopleTags(draft)).catch((e: unknown) => {
+              setBusy(false);
+              setError(e instanceof Error ? e.message : String(e));
+            });
+          }}
         >
-          残す
+          出来事にして保存
         </button>
       </div>
-    </li>
+    </div>
   );
 }
 
@@ -213,6 +336,8 @@ export function TriagePage() {
     () => source.listTriage({ mention, sort, source: from }),
     [source, mention, sort, from],
   );
+  const [subjects] = useLoad(() => source.listArchiveSubjects(), [source]);
+  const subject = subjects.status === "ready" ? (subjects.data[0] ?? null) : null;
   const [appears, setAppears] = useState<Record<string, Record<string, boolean>>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [gone, setGone] = useState<Set<string>>(new Set());
@@ -471,6 +596,13 @@ export function TriagePage() {
                 .then(() => finish([item.id]))
             }
             onDiscard={viewer.isAdmin ? () => discard([item.id]).then(() => undefined) : null}
+            subject={subject}
+            onToEvents={async (draft) => {
+              // 残してから、そのまま承認する（ニュースは承認の一覧に回さない）
+              await source.keepTriage(item.id, draft);
+              await source.decide(item.id, "approve", { draft });
+              finish([item.id]);
+            }}
           />
         ))}
       </ul>

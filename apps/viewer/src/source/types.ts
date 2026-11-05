@@ -178,6 +178,8 @@ export interface TriageItem {
   otherNames: string[];
   /** ニュースのカテゴリ（メディア・イベントなど） */
   category: string | null;
+  /** 情報源の種類（blog・web など）。web（公式サイトのニュース）は振り分けの画面から出来事にする */
+  channelKind: string | null;
   snippets: TriageSnippet[];
   images: TriageImage[];
   draft: DraftInput;

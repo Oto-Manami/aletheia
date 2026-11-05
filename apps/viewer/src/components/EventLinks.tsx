@@ -9,9 +9,9 @@ import { useId, useState } from "react";
 import { useApp } from "../context.tsx";
 import { EVENT_KIND_LABELS, EVENT_KIND_SHORT, eventDateLabel } from "../format.ts";
 import { eventsOf, setEventLink } from "../source/tags.ts";
-import type { Classification, EventSummary, RefLabel } from "../source/types.ts";
+import type { EventSummary, RefLabel } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
-import { ClassificationChoice, useSearch } from "./EntityPicker.tsx";
+import { useSearch } from "./EntityPicker.tsx";
 
 /** 候補に出す、投稿日の前後の日数 */
 const AROUND_DAYS = 7;
@@ -54,6 +54,8 @@ export function EventLinks({
   onLabel,
   subject,
   readOnly,
+  prefill,
+  title = "出来事",
 }: {
   draft: DraftInput;
   onChange: (d: DraftInput) => void;
@@ -62,10 +64,14 @@ export function EventLinks({
   /** その場で作るとき、出演の行を置く人（蓄積対象の人物） */
   subject: RefLabel | null;
   readOnly: boolean;
+  /** その場で作るときの初めの値（ニュースから作るとき。設計書 決定記録 0029） */
+  prefill?: QuickPrefill;
+  title?: string;
 }) {
   const { source } = useApp();
   const id = useId();
-  const date = postDate(draft);
+  // 候補は、作る出来事の日付（ニュースの本文の日付）があればその前後、無ければ投稿日の前後
+  const date = prefill?.date ?? postDate(draft);
   const linked = eventsOf(draft);
   const [version, setVersion] = useState(0);
   const [around] = useLoad(
@@ -80,7 +86,7 @@ export function EventLinks({
     query,
     async (q) => (await source.listEvents({ query: q })).items,
   );
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(prefill !== undefined);
 
   const add = (e: { id: string; title: string }) => {
     onLabel({ id: e.id, type: "event", label: e.title });
@@ -94,7 +100,8 @@ export function EventLinks({
   return (
     <section className="event-links" aria-labelledby={`${id}-title`}>
       <h3 id={`${id}-title`} className="record-heading">
-        出来事<span className="quiet">（任意）</span>
+        {title}
+        {!prefill && <span className="quiet">（任意）</span>}
       </h3>
       {linked.length > 0 && (
         <div className="record-people" role="group" aria-label="紐付けた出来事">
@@ -118,7 +125,9 @@ export function EventLinks({
         <>
           {candidates.length > 0 && (
             <div className="event-candidates" role="group" aria-label="投稿日の前後の出来事">
-              <span className="field-hint">投稿日の前後 {AROUND_DAYS} 日の出来事</span>
+              <span className="field-hint">
+                {prefill?.date ? "この日付" : "投稿日"}の前後 {AROUND_DAYS} 日の出来事
+              </span>
               {candidates.slice(0, 8).map((e) => (
                 <EventChip key={e.id} event={e} onAdd={() => add(e)} />
               ))}
@@ -155,8 +164,10 @@ export function EventLinks({
           )}
           {creating ? (
             <QuickEvent
-              initialTitle={query.trim()}
-              date={date}
+              key={version}
+              prefill={
+                prefill ?? { kind: "episode", title: query.trim(), date, time: null, dates: [] }
+              }
               subject={subject}
               onCancel={() => setCreating(false)}
               onCreated={(e) => {
@@ -171,7 +182,8 @@ export function EventLinks({
               className="link-button event-create-open"
               onClick={() => setCreating(true)}
             >
-              <Plus size={12} aria-hidden="true" /> 出来事をその場で作る
+              <Plus size={12} aria-hidden="true" />{" "}
+              {prefill && linked.length > 0 ? "もう 1 つ作る" : "出来事をその場で作る"}
             </button>
           )}
         </>
@@ -180,33 +192,48 @@ export function EventLinks({
   );
 }
 
-/** その場で作る（種類・題名・日付・公開区分だけ） */
+export interface QuickPrefill {
+  kind: string;
+  title: string;
+  date: string | null;
+  time: string | null;
+  /** 選べる日付の候補（ニュースの本文に出てくる日付） */
+  dates: string[];
+  /** 出典の URL */
+  sources?: string[];
+  /** 出演の行を最初から付けるか（既定は付ける） */
+  withSubject?: boolean;
+}
+
+/**
+ * その場で作る（種類・題名・日付・時刻だけ）。出来事は仕事と公式の発表だけなので、すべて公開
+ * （設計書 決定記録 0029）
+ */
 function QuickEvent({
-  initialTitle,
-  date,
+  prefill,
   subject,
   onCancel,
   onCreated,
 }: {
-  initialTitle: string;
-  date: string | null;
+  prefill: QuickPrefill;
   subject: RefLabel | null;
   onCancel: () => void;
   onCreated: (e: { id: string; title: string }) => void;
 }) {
   const { source } = useApp();
   const id = useId();
-  const [kind, setKind] = useState("episode");
-  const [title, setTitle] = useState(initialTitle);
-  const [startsOn, setStartsOn] = useState(date ?? "");
-  const [classification, setClassification] = useState<Classification | null>(null);
+  const [kind, setKind] = useState(prefill.kind);
+  const [title, setTitle] = useState(prefill.title);
+  const [startsOn, setStartsOn] = useState(prefill.date ?? "");
+  const [time, setTime] = useState(prefill.time ?? "");
+  const [withSubject, setWithSubject] = useState(prefill.withSubject ?? true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const today = jstDate(new Date());
+  const sources = prefill.sources ?? [];
 
   const create = () => {
     if (!title.trim()) return setError("題名を入れてください");
-    if (!classification) return setError("公開区分を選んでください");
     setBusy(true);
     setError(null);
     const role = kind === "announcement" ? "announced" : "performer";
@@ -222,20 +249,21 @@ function QuickEvent({
         startsOn: startsOn || null,
         endsOn: null,
         datePrecision: startsOn ? "day" : null,
-        startsAt: null,
+        startsAt: startsOn && time ? `${startsOn}T${time}:00+09:00` : null,
         endsAt: null,
-        sources: [],
-        classification,
-        participants: subject
-          ? [
-              {
-                entityId: subject.id,
-                role,
-                status: startsOn && startsOn < today ? "appeared" : "scheduled",
-                characterName: null,
-              },
-            ]
-          : [],
+        sources: sources.map((url) => ({ url })),
+        classification: "public",
+        participants:
+          subject && withSubject
+            ? [
+                {
+                  entityId: subject.id,
+                  role,
+                  status: startsOn && startsOn < today ? "appeared" : "scheduled",
+                  characterName: null,
+                },
+              ]
+            : [],
       })
       .then((eventId) => onCreated({ id: eventId, title: title.trim() }))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
@@ -259,23 +287,56 @@ function QuickEvent({
         <label htmlFor={`${id}-title`}>題名</label>
         <input id={`${id}-title`} value={title} onChange={(e) => setTitle(e.target.value)} />
       </div>
-      <div className="field">
-        <label htmlFor={`${id}-date`}>日付</label>
-        <input
-          id={`${id}-date`}
-          type="date"
-          value={startsOn}
-          onChange={(e) => setStartsOn(e.target.value)}
-        />
+      <div className="field-row">
+        <div className="field">
+          <label htmlFor={`${id}-date`}>日付</label>
+          <input
+            id={`${id}-date`}
+            type="date"
+            value={startsOn}
+            onChange={(e) => setStartsOn(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor={`${id}-time`}>時刻（任意）</label>
+          <input
+            id={`${id}-time`}
+            type="time"
+            value={time}
+            disabled={!startsOn}
+            onChange={(e) => setTime(e.target.value)}
+          />
+        </div>
       </div>
-      <ClassificationChoice
-        name={`${id}-classification`}
-        value={classification}
-        onChange={setClassification}
-      />
+      {prefill.dates.length > 1 && (
+        <div className="quick-dates" role="group" aria-label="本文に出てくる日付">
+          <span className="field-hint">本文に出てくる日付:</span>
+          {prefill.dates.map((d) => (
+            <button
+              key={d}
+              type="button"
+              className={`person-chip ${d === startsOn ? "is-on" : ""}`}
+              aria-pressed={d === startsOn}
+              onClick={() => setStartsOn(d)}
+            >
+              {d.slice(5).replace("-", "/")}
+            </button>
+          ))}
+        </div>
+      )}
+      {subject && (
+        <label className="quick-subject">
+          <input
+            type="checkbox"
+            checked={withSubject}
+            onChange={(e) => setWithSubject(e.target.checked)}
+          />
+          {subject.label} の出演を付ける
+        </label>
+      )}
       <p className="field-hint">
-        {subject ? `${subject.label} の出演を付けて作ります。` : ""}
-        作品・会場・出典などは、あとで出来事の画面で直せます。
+        公開の出来事として作ります{sources.length > 0 ? "。このニュースを出典にします" : ""}。
+        作品・会場などは、あとで出来事の画面で直せます。
       </p>
       {error && (
         <p className="error" role="alert">

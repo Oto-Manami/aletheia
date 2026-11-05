@@ -222,9 +222,6 @@ describe("承認の画面のタグ付け", () => {
     const quick = within(events).getByRole("group", { name: "出来事をその場で作る" });
     await user.type(within(quick).getByLabelText("題名"), "試験のツアー 最終日");
     await user.click(within(quick).getByRole("button", { name: "作って紐付ける" }));
-    expect(await within(quick).findByText("公開区分を選んでください")).toBeTruthy();
-    await user.click(within(quick).getByRole("radio", { name: "公開" }));
-    await user.click(within(quick).getByRole("button", { name: "作って紐付ける" }));
     expect(
       await within(events).findByRole("button", { name: "試験のツアー 最終日 の紐付けを外す" }),
     ).toBeTruthy();
@@ -235,6 +232,11 @@ describe("承認の画面のタグ付け", () => {
     const about = (approved.draft.links ?? []).filter((l) => l.role === "about");
     expect(about).toHaveLength(2);
     const created = await source.listEvents({ query: "試験のツアー 最終日" });
-    expect(created.items[0]).toMatchObject({ startsOn: "2026-10-16", subjectStatus: "appeared" });
+    // 出来事はすべて公開（設計書 決定記録 0029）
+    expect(created.items[0]).toMatchObject({
+      startsOn: "2026-10-16",
+      subjectStatus: "appeared",
+      classification: "public",
+    });
   });
 });

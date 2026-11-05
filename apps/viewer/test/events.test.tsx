@@ -46,7 +46,7 @@ describe("出来事", () => {
     expect(rows()[0]?.textContent).toContain("ラジオ「仮の時間」第 12 回");
   });
 
-  it("参加者が作品をその場で作り、出演者を足して出来事を作れる。公開区分は選ばないと作れない", async () => {
+  it("参加者が作品をその場で作り、出演者を足して出来事を作れる。出来事はすべて公開", async () => {
     const user = userEvent.setup();
     const { source } = open("/events/new");
     await screen.findByRole("heading", { name: "出来事を作る" });
@@ -72,11 +72,8 @@ describe("出来事", () => {
     await user.click(await screen.findByRole("button", { name: /見本 さくら/ }));
     await user.selectOptions(screen.getByLabelText("見本 さくら の役割"), "cover");
 
-    await user.click(screen.getByRole("button", { name: "作る" }));
-    expect(await screen.findByText("公開区分を選んでください")).toBeTruthy();
-
-    const radios = screen.getAllByRole("radio", { name: "公開" });
-    await user.click(radios[radios.length - 1]!);
+    // 出来事の公開区分は選ばない（作品をその場で作るときだけ選ぶ）
+    expect(screen.queryAllByRole("radio", { name: "公開" })).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "作る" }));
     expect(await screen.findByRole("heading", { name: "出来事を直す" })).toBeTruthy();
     expect(screen.getByText("作りました")).toBeTruthy();
