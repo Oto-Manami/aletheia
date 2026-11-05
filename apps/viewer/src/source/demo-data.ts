@@ -3,6 +3,7 @@
 // 人物・情報源・発言はすべて架空のもの。実在の人物・媒体とは関係ない。
 
 import type { DraftInput } from "@aletheia/intake/draft";
+import { proposeSubjectLinks } from "@aletheia/intake/mentions";
 import type { IntakeState, PostView, RefLabel } from "./types.ts";
 
 /** 画像の代わりの絵（色の面と、ページなどの文字だけ） */
@@ -94,8 +95,96 @@ export interface DemoIntake {
 
 const body = (content: string) => [{ text_type: "body" as const, content }];
 
+/**
+ * 自動の取得で取り込んだメンバーのブログ（振り分けを経たもの・本人のもの）。言及の印は取り込みと同じ規則で付ける
+ */
+function collectedBlog(
+  n: number,
+  author: { id: string; name: string },
+  title: string,
+  text: string,
+  photos: number,
+  appearsOn: number[],
+): DemoIntake {
+  const refs = Array.from({ length: photos }, (_, i) => `photo-${i + 1}`);
+  let draft: DraftInput = {
+    version: 1,
+    post: {
+      title,
+      published_at: `2026-10-${String(15 + n).padStart(2, "0")}T21:00:00+09:00`,
+      url: `https://example.com/blog/${n}`,
+      classification: "public",
+      availability: "free",
+    },
+    assets: [
+      { ref: "page", media_type: "webpage", byte_size: 420_000, texts: [] },
+      { ref: "body", media_type: "text", texts: body(text) },
+      ...refs.map((ref) => ({ ref, media_type: "image" as const, texts: [] })),
+    ],
+    links: [
+      {
+        from: "post",
+        to_type: "entity",
+        to_id: author.id,
+        role: "author",
+        origin: "rule",
+        confidence: 1,
+        accepted: true,
+        evidence: { rule: "channel_owner" },
+      },
+    ],
+  };
+  if (author.id !== DEMO_SUBJECT.id) draft = proposeSubjectLinks(draft, DEMO_SUBJECT);
+  draft = proposeSubjectLinks(draft, { ...DEMO_GENERATION });
+  for (const tag of [
+    { id: PEOPLE.sakura, name: "見本 さくら", aliases: ["さくら"] },
+    { id: PEOPLE.yui, name: "仮名 ゆい", aliases: ["ゆい"] },
+  ]) {
+    if (tag.id === author.id) continue;
+    draft = proposeSubjectLinks(draft, { ...tag, checkImages: false }, { purpose: "tag" });
+  }
+  // 振り分けで「本人が写っている」と選んだ写真
+  draft = {
+    ...draft,
+    links: (draft.links ?? []).map((l) =>
+      l.role === "appears" &&
+      typeof l.from === "object" &&
+      appearsOn.includes(Number(l.from.asset.replace("photo-", "")))
+        ? { ...l, accepted: true, origin: "human" as const, confidence: 1 }
+        : l,
+    ),
+  };
+  return {
+    id: `d2000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+    channelKey: `blog:demo-${n}`,
+    channelName: `${author.name} 公式ブログ`,
+    externalId: String(70000 + n),
+    route: "fetch",
+    capturedAt: `2026-10-${String(15 + n).padStart(2, "0")}T23:40:00+09:00`,
+    state: "pending",
+    reviewNote: null,
+    draft,
+  };
+}
+
 export function demoIntakes(): DemoIntake[] {
   return [
+    collectedBlog(
+      1,
+      { id: PEOPLE.hanako, name: "試験 花子" },
+      "ツアーの思い出",
+      "こんにちは、試験花子です。\n\nツアーが終わりました！ 最終日はさくらちゃんと楽屋でたくさん写真を撮りました。\n\n2期生のみんな、本当にお疲れさまでした。\n\n次は年末のライブです。",
+      6,
+      [],
+    ),
+    collectedBlog(
+      2,
+      { id: PEOPLE.sakura, name: "見本 さくら" },
+      "楽屋にて",
+      "見本さくらです。\n\n今日のリハーサルの休憩中、はなちゃんがお菓子を分けてくれました。はなちゃんはいつも周りをよく見ていて、すごいなと思います。\n\nゆいちゃんとも久しぶりにゆっくり話せました。",
+      4,
+      [2],
+    ),
     {
       id: "d1000000-0000-4000-8000-000000000001",
       channelKey: "blog:official",

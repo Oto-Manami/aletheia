@@ -39,6 +39,17 @@ export function isLowConfidence(p: Proposal): boolean {
   return (p.origin ?? "human") !== "human" && (p.confidence ?? 1) < LOW_CONFIDENCE;
 }
 
+type Link = NonNullable<DraftInput["links"]>[number];
+
+/** 写真に写っている人（appears）・投稿に登場する人（mentioned）の紐付けか */
+export function isPeopleTag(l: Link): boolean {
+  return (
+    l.to_type === "entity" &&
+    ((l.role === "mentioned" && l.from === "post") ||
+      (l.role === "appears" && typeof l.from === "object"))
+  );
+}
+
 export function isReviewed(p: Proposal): boolean {
   return p.evidence?.["reviewed"] === true;
 }
@@ -72,6 +83,8 @@ export function reviewItems(draft: DraftInput, initial: DraftInput = draft): Rev
   ];
   for (const { p, index, kind } of proposals) {
     if (!isLowConfidence(p)) continue;
+    // 登場する人・写っている人の候補は、承認の画面のタグ付けでその場で決める（確認の項目にしない）
+    if (kind === "low_link" && isPeopleTag(p)) continue;
     const declined = p.accepted === false;
     const confirmed = !declined && isReviewed(p);
     items.push({

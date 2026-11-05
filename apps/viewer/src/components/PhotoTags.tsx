@@ -1,11 +1,11 @@
-// 承認の画面の写真の一覧。写真ごとに、写っている人を付け外しする
+// 承認の画面の写真。写真を押すと、蓄積対象の人物（本人）が写っている印を付け外しする。
+// 一緒に写っている人は、写真の下のプルダウンから選ぶ。
 //
-// 振り分けで「本人が写っている」と選んだ写真には、最初から本人が付いている。ここでは一緒に写っている人を
-// 足す。人が写っている写真を先に並べる（番号は元の並び）。
+// 写真は元の並びのまま出す（押したときに並びが変わらないように）。
 
 import type { DraftInput } from "@aletheia/intake/draft";
-import { X } from "lucide-react";
-import { appearsOf, authorsOf, imageRefsOf, setAppears, setAppearsAll } from "../source/tags.ts";
+import { Check, X } from "lucide-react";
+import { appearsOf, imageRefsOf, setAppears, setAppearsAll } from "../source/tags.ts";
 import type { RefLabel } from "../source/types.ts";
 import { PersonSelect } from "./PersonSelect.tsx";
 
@@ -17,6 +17,7 @@ function previewOf(draft: DraftInput, ref: string, previews: Record<string, stri
 export function PhotoTags({
   draft,
   onChange,
+  subject,
   candidates,
   name,
   previews,
@@ -24,6 +25,8 @@ export function PhotoTags({
 }: {
   draft: DraftInput;
   onChange: (d: DraftInput) => void;
+  /** 写真を押して印を付ける人（蓄積対象の人物）。読み込み中は null */
+  subject: RefLabel | null;
   candidates: RefLabel[];
   name: (id: string) => string;
   previews: Record<string, string>;
@@ -31,55 +34,86 @@ export function PhotoTags({
 }) {
   const refs = imageRefsOf(draft);
   if (refs.length === 0) return null;
-  const numbered = refs.map((ref, i) => ({ ref, n: i + 1, people: appearsOf(draft, ref) }));
-  // 人が写っている写真を先に（元の並びは保つ）
-  const ordered = [
-    ...numbered.filter((p) => p.people.length > 0),
-    ...numbered.filter((p) => p.people.length === 0),
-  ];
-  const authors = authorsOf(draft);
-  const tagged = numbered.filter((p) => p.people.length > 0).length;
+  const marked = subject ? refs.filter((ref) => appearsOf(draft, ref).includes(subject.id)) : [];
+  const all = subject !== null && marked.length === refs.length;
+  const others = candidates.filter((c) => c.id !== subject?.id);
 
   return (
     <section className="panel panel-pad photos" aria-labelledby="photos-title">
       <header className="photos-head">
-        <h3 id="photos-title" className="column-title">
-          写真 {refs.length} 枚<span className="quiet">人が写っている {tagged} 枚</span>
-        </h3>
-        {authors.map((a) => {
-          const all = refs.every((ref) => appearsOf(draft, ref).includes(a));
-          return (
+        <div className="photos-title">
+          <h3 id="photos-title" className="column-title">
+            写真 {refs.length} 枚
+          </h3>
+          <p className="photos-lead">
+            {subject ? (
+              <>
+                <strong>{subject.label}</strong> が写っている写真を押して印を付けます。
+                一緒に写っている人は、写真の下から選びます。
+              </>
+            ) : (
+              "読み込んでいます"
+            )}
+          </p>
+        </div>
+        {subject && (
+          <div className="photos-count">
+            <span className="photos-count-number" aria-live="polite">
+              {marked.length} / {refs.length} 枚
+            </span>
             <button
-              key={a}
               type="button"
-              className="button"
+              className="link-button"
               disabled={readOnly}
-              onClick={() => onChange(setAppearsAll(draft, a, !all))}
+              onClick={() => onChange(setAppearsAll(draft, subject.id, !all))}
             >
-              {all ? `すべての写真から ${name(a)} を外す` : `すべての写真に ${name(a)} を付ける`}
+              {all ? "すべて外す" : "すべてに付ける"}
             </button>
-          );
-        })}
+          </div>
+        )}
       </header>
-      <ul className="photo-tags">
-        {ordered.map(({ ref, n, people }) => {
+      <ul className={`photo-tags ${marked.length > 0 ? "has-marks" : ""}`}>
+        {refs.map((ref, i) => {
+          const n = i + 1;
+          const people = appearsOf(draft, ref);
+          const on = subject !== null && people.includes(subject.id);
+          const rest = people.filter((p) => p !== subject?.id);
           const preview = previewOf(draft, ref, previews);
           return (
-            <li key={ref} className={`photo-tag ${people.length > 0 ? "has-people" : ""}`}>
-              <div className="photo-tag-image">
+            <li key={ref} className={`photo-tag ${on ? "is-on" : ""}`}>
+              <button
+                type="button"
+                className="photo-tag-image"
+                aria-pressed={on}
+                aria-label={
+                  subject
+                    ? `写真 ${n}${on ? `（${subject.label} の印あり。押すと外す）` : `（押すと ${subject.label} の印を付ける）`}`
+                    : `写真 ${n}`
+                }
+                disabled={readOnly || !subject}
+                onClick={() => subject && onChange(setAppears(draft, ref, subject.id, !on))}
+              >
                 {preview ? (
-                  <img src={preview} alt={`写真 ${n}`} loading="lazy" />
+                  <img src={preview} alt="" loading="lazy" />
                 ) : (
                   <span className="triage-image-empty">写真 {n}</span>
                 )}
-                <span className="photo-tag-number">{n}</span>
-              </div>
+                {on && subject && (
+                  <span className="photo-tag-mark" aria-hidden="true">
+                    <Check size={12} />
+                    {subject.label}
+                  </span>
+                )}
+                <span className="photo-tag-number" aria-hidden="true">
+                  {n}
+                </span>
+              </button>
               <div
                 className="photo-tag-people"
                 role="group"
-                aria-label={`写真 ${n} に写っている人`}
+                aria-label={`写真 ${n} に一緒に写っている人`}
               >
-                {people.map((p) => (
+                {rest.map((p) => (
                   <button
                     key={p}
                     type="button"
@@ -93,9 +127,9 @@ export function PhotoTags({
                   </button>
                 ))}
                 <PersonSelect
-                  candidates={candidates}
+                  candidates={others}
                   exclude={people}
-                  label={`写真 ${n} に写っている人を足す`}
+                  label={`写真 ${n} に一緒に写っている人を足す`}
                   disabled={readOnly}
                   onPick={(id) => onChange(setAppears(draft, ref, id, true))}
                 />

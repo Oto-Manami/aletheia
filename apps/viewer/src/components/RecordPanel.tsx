@@ -1,11 +1,11 @@
-// 承認の画面の右側: この記事で記録すること（書いた人・登場する人・公開）
+// 承認の画面の右側: この記事で記録すること（書いた人・写っている人・本文に出てくる人・公開）
 //
 // 無料の情報源（公式ブログなど）の投稿は、公開・無料が決まっているので選ばせない。変えたいときは
-// 「詳しく直す」から変える。
+// 「詳しく見る・直す」から変える。
 
 import type { DraftInput } from "@aletheia/intake/draft";
 import { Check, X } from "lucide-react";
-import { authorsOf, mentionsOf, setMention } from "../source/tags.ts";
+import { appearsOf, authorsOf, imageRefsOf, mentionsOf, setMention } from "../source/tags.ts";
 import type { RefLabel } from "../source/types.ts";
 import { PersonSelect } from "./PersonSelect.tsx";
 
@@ -26,13 +26,19 @@ export function RecordPanel({
 }) {
   const authors = authorsOf(draft);
   const mentions = mentionsOf(draft);
+  const photos = imageRefsOf(draft);
+  // 写っている人ごとの枚数
+  const appears = new Map<string, number>();
+  for (const ref of photos) {
+    for (const p of appearsOf(draft, ref)) appears.set(p, (appears.get(p) ?? 0) + 1);
+  }
   const fixedPublic =
     channelAvailability === "free" &&
     draft.post.classification === "public" &&
     (draft.post.availability ?? "free") === "free";
 
   return (
-    <section className="panel panel-pad record" aria-labelledby="record-title">
+    <section className="record" aria-labelledby="record-title">
       <h3 id="record-title" className="column-title">
         この記事で記録すること
       </h3>
@@ -41,10 +47,29 @@ export function RecordPanel({
         <dt>書いた人</dt>
         <dd>{authors.length > 0 ? authors.map(name).join("・") : "（なし）"}</dd>
 
-        <dt>登場する人</dt>
+        {photos.length > 0 && (
+          <>
+            <dt>写っている人</dt>
+            <dd>
+              {appears.size === 0 ? (
+                <span className="quiet">まだ印がありません（写真を押して付けます）</span>
+              ) : (
+                <span className="record-appears">
+                  {[...appears].map(([p, n]) => (
+                    <span key={p}>
+                      {name(p)} <span className="quiet">{n} 枚</span>
+                    </span>
+                  ))}
+                </span>
+              )}
+            </dd>
+          </>
+        )}
+
+        <dt>本文に出てくる人</dt>
         <dd>
-          <div className="record-people" role="group" aria-label="投稿に登場する人">
-            {mentions.length === 0 && <span className="quiet">まだいません</span>}
+          <div className="record-people" role="group" aria-label="本文に出てくる人">
+            {mentions.length === 0 && <span className="quiet">いません</span>}
             {mentions.map((m) => (
               <button
                 key={m.id}
@@ -52,11 +77,7 @@ export function RecordPanel({
                 className={`person-chip ${m.on ? "is-on" : "is-off"}`}
                 aria-pressed={m.on}
                 disabled={readOnly}
-                title={
-                  m.on
-                    ? "押すと外します"
-                    : "外しました（本文から見つけた候補として記録に残ります）。押すと戻します"
-                }
+                title={m.on ? "押すと外します" : "外しました。押すと戻します"}
                 onClick={() => onChange(setMention(draft, m.id, !m.on))}
               >
                 {m.on ? <Check size={12} aria-hidden="true" /> : <X size={12} aria-hidden="true" />}
@@ -66,7 +87,7 @@ export function RecordPanel({
             <PersonSelect
               candidates={candidates}
               exclude={mentions.filter((m) => m.on).map((m) => m.id)}
-              label="登場する人を足す"
+              label="本文に出てくる人を足す"
               disabled={readOnly}
               onPick={(id) => onChange(setMention(draft, id, true))}
             />
@@ -76,13 +97,12 @@ export function RecordPanel({
         <dt>公開</dt>
         <dd>
           {fixedPublic ? (
-            <span>公開・無料（無料の情報源）</span>
+            "公開・無料"
           ) : (
-            <span>
+            <>
               {draft.post.classification === "public" ? "公開" : "非公開"}
               {draft.post.availability === "paid" && "・有料"}
-              <span className="quiet">（変えるときは「詳しく直す」から）</span>
-            </span>
+            </>
           )}
         </dd>
       </dl>

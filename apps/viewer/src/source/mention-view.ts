@@ -35,10 +35,15 @@ export function paragraphsOf(text: string): { from: number; to: number }[] {
 }
 
 /** 言及（mentioned）の根拠にある一致の位置から、言及のある段落を本文の順に返す */
-export function mentionParagraphs(draft: DraftInput): MentionParagraph[] {
+export function mentionParagraphs(
+  draft: DraftInput,
+  /** 言及のうち、どれを見せるか（既定はすべて） */
+  include: (link: NonNullable<DraftInput["links"]>[number]) => boolean = () => true,
+): MentionParagraph[] {
   const byText = new Map<string, { spans: [number, number][]; names: Map<number, string> }>();
   for (const link of draft.links ?? []) {
     if (link.role !== "mentioned" || link.from !== "post" || link.accepted === false) continue;
+    if (!include(link)) continue;
     const evidence = (link.evidence ?? {}) as Evidence;
     for (const m of evidence.matches ?? []) {
       const key = `${m.asset}\u0000${m.text_type}`;
