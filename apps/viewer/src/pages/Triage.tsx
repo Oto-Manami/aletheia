@@ -159,7 +159,10 @@ function TriageCard({
 export function TriagePage() {
   const { source, viewer } = useApp();
   const layout = useLayout();
-  const [list, reload] = useLoad(() => source.listTriage(), [source]);
+  const [list, reload] = useLoad(
+    () => Promise.all([source.listTriage(), source.countIntake("triage")]),
+    [source],
+  );
   const [filter, setFilter] = useState<Filter>("all");
   const [appears, setAppears] = useState<Record<string, Record<string, boolean>>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -176,7 +179,13 @@ export function TriagePage() {
     );
   }
 
-  const items = list.status === "ready" ? list.data.filter((i) => !gone.has(i.id)) : [];
+  const items = list.status === "ready" ? list.data[0].filter((i) => !gone.has(i.id)) : [];
+  // 振り分け待ちの本当の件数（画面に出すのは古い順に上限まで）。処理した分を引く
+  const total =
+    list.status === "ready"
+      ? Math.max(list.data[1] - list.data[0].filter((i) => gone.has(i.id)).length, items.length)
+      : null;
+  const more = total !== null && total > items.length;
   const appearsOf = (id: string) => appears[id] ?? {};
   const counts = {
     all: items.length,
@@ -267,6 +276,12 @@ export function TriagePage() {
           </p>
         )}
       </div>
+      {total !== null && (
+        <p className="quiet triage-total">
+          振り分け待ちは全 {total.toLocaleString("ja-JP")} 件です。
+          {more && `古い順に ${items.length.toLocaleString("ja-JP")} 件を表示しています。`}
+        </p>
+      )}
       {message && (
         <p className="quiet" role="status">
           {message}
@@ -282,8 +297,16 @@ export function TriagePage() {
           </button>
         </p>
       )}
-      {list.status === "ready" && shown.length === 0 && (
+      {list.status === "ready" && shown.length === 0 && !more && (
         <p className="quiet">振り分け待ちの記事はありません。</p>
+      )}
+      {list.status === "ready" && items.length === 0 && more && (
+        <p className="quiet">
+          表示した記事は終わりました。{" "}
+          <button type="button" className="link-button" onClick={reload}>
+            続きを読み込む
+          </button>
+        </p>
       )}
 
       <ul className="triage-list" aria-label="振り分け待ちの記事">

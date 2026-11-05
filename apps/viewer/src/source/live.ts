@@ -201,6 +201,14 @@ export class LiveSource implements ArchiveSource {
     return items.map(summarize);
   }
 
+  async countIntake(state: IntakeState): Promise<number> {
+    const { total } = await this.api<{ total: number }>(
+      "GET",
+      `/intake?${new URLSearchParams({ state, limit: "1" }).toString()}`,
+    );
+    return total;
+  }
+
   async getIntake(id: string): Promise<IntakeDetail> {
     const { item, draft_valid, issues } = await this.api<{
       item: IntakeDetailRow;

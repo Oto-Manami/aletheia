@@ -179,7 +179,10 @@ export interface ArchiveSource {
   /** デモ版かどうか（画面に表示する） */
   readonly demo: boolean;
   viewer(): Promise<Viewer>;
+  /** 一覧（古い順。上限 200 件。承認済み・却下は判断の新しい順） */
   listIntake(state: IntakeState): Promise<IntakeSummary[]>;
+  /** その状態の本当の件数（一覧の上限に関わらない） */
+  countIntake(state: IntakeState): Promise<number>;
   getIntake(id: string): Promise<IntakeDetail>;
   /** 承認・却下・保留。承認では、直した下書きを一緒に送れる */
   decide(
@@ -194,7 +197,7 @@ export interface ArchiveSource {
   listTagCandidates(): Promise<RefLabel[]>;
   search(query: string): Promise<SearchHit[]>;
   getPost(id: string): Promise<PostView>;
-  /** 振り分け待ちの記事（決定記録 0021） */
+  /** 振り分け待ちの記事（決定記録 0021）。古い順に上限 200 件 */
   listTriage(): Promise<TriageItem[]>;
   /** 残す。写っている画像の選択などを直した下書きを送り、承認待ちへ進める */
   keepTriage(id: string, draft: DraftInput): Promise<void>;

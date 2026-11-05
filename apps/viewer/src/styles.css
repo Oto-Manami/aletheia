@@ -1486,6 +1486,10 @@ select:disabled {
 
 /* ---------------------------------------------------------------- 振り分け */
 
+.triage-total {
+  margin: -4px 0 16px;
+}
+
 .triage-toolbar {
   display: flex;
   flex-wrap: wrap;
