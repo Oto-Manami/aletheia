@@ -11,6 +11,12 @@ import {
   type AssetView,
   type Classification,
   type Decision,
+  type EntityOption,
+  type EventDetail,
+  type EventInput,
+  type EventSummary,
+  type NewEntity,
+  type ParticipantStatus,
   type IntakeDetail,
   type IntakeIssue,
   type IntakeState,
@@ -199,6 +205,14 @@ export class LiveSource implements ArchiveSource {
       `/intake?${new URLSearchParams({ state, limit: "200" }).toString()}`,
     );
     return items.map(summarize);
+  }
+
+  async countIntake(state: IntakeState): Promise<number> {
+    const { total } = await this.api<{ total: number }>(
+      "GET",
+      `/intake?${new URLSearchParams({ state, limit: "1" }).toString()}`,
+    );
+    return total;
   }
 
   async getIntake(id: string): Promise<IntakeDetail> {
@@ -504,4 +518,227 @@ export class LiveSource implements ArchiveSource {
       { ids },
     );
   }
+
+  async listEvents(filter: { query?: string; kind?: string } = {}) {
+    const params = new URLSearchParams({ limit: "200" });
+    if (filter.query?.trim()) params.set("q", filter.query.trim());
+    if (filter.kind) params.set("kind", filter.kind);
+    const { items, total } = await this.api<{ items: EventRow[]; total: number }>(
+      "GET",
+      `/events?${params.toString()}`,
+    );
+    return {
+      total,
+      items: items.map((r): EventSummary => ({
+        id: r.id,
+        kind: r.kind,
+        eventType: r.event_type,
+        title: r.title ?? "（題名なし）",
+        parentId: r.parent_id,
+        startsOn: r.starts_on,
+        endsOn: r.ends_on,
+        datePrecision: r.date_precision,
+        workName: r.work_name,
+        hasSources: r.has_sources,
+        subjectStatus: r.subject_status,
+        classification: r.classification,
+      })),
+    };
+  }
+
+  async getEvent(id: string): Promise<EventDetail> {
+    const {
+      event: e,
+      participants,
+      children,
+    } = await this.api<EventDetailResponse>("GET", `/events/${encodeURIComponent(id)}`);
+    const attributes = e.attributes ?? {};
+    const sources = Array.isArray(attributes["sources"])
+      ? (attributes["sources"] as { url?: unknown }[])
+          .filter((x): x is { url: string } => typeof x.url === "string")
+          .map((x) => ({ url: x.url }))
+      : [];
+    return {
+      id: e.id,
+      kind: e.kind,
+      eventType: typeof attributes["event_type"] === "string" ? attributes["event_type"] : null,
+      title: e.title ?? "",
+      parentId: e.parent_id,
+      parentTitle: e.parent_title,
+      workId: e.work_id,
+      workName: e.work_name,
+      venueId: e.venue_id,
+      venueName: e.venue_name,
+      episodeNumber: e.episode_number,
+      startsOn: e.starts_on,
+      endsOn: e.ends_on,
+      datePrecision: e.date_precision,
+      startsAt: e.starts_at,
+      endsAt: e.ends_at,
+      sources,
+      classification: e.classification,
+      participants: participants.map((p) => ({
+        entityId: p.entity_id,
+        entityName: p.entity_name,
+        role: p.role,
+        status: p.status,
+        characterName: p.character_name,
+      })),
+      children: children.map((c) => ({
+        id: c.id,
+        kind: c.kind,
+        title: c.title ?? "（題名なし）",
+        startsOn: c.starts_on,
+        datePrecision: c.date_precision,
+      })),
+      createdAt: e.created_at,
+      updatedAt: e.updated_at,
+      createdByName: e.created_by_name,
+      updatedByName: e.updated_by_name,
+    };
+  }
+
+  async saveEvent(id: string | null, input: EventInput): Promise<string> {
+    const body = {
+      kind: input.kind,
+      event_type: input.eventType,
+      title: input.title,
+      parent_id: input.parentId,
+      work_id: input.workId,
+      venue_id: input.venueId,
+      episode_number: input.episodeNumber,
+      starts_on: input.startsOn,
+      ends_on: input.endsOn,
+      date_precision: input.datePrecision,
+      starts_at: input.startsAt,
+      ends_at: input.endsAt,
+      sources: input.sources,
+      classification: input.classification,
+      participants: input.participants.map((p) => ({
+        entity_id: p.entityId,
+        role: p.role,
+        status: p.status,
+        character_name: p.characterName,
+      })),
+    };
+    const path = id ? `/events/${encodeURIComponent(id)}` : "/events";
+    const result = await this.api<{ id: string }>("POST", path, body);
+    return result.id;
+  }
+
+  async findEntities(query: string, types: readonly string[]): Promise<EntityOption[]> {
+    // 読みでも探す（or の条件の書き方を壊す文字は除く）
+    const q = query.replace(/[,()"\\]/g, " ").trim();
+    if (!q) return [];
+    const pattern = `%${q.replace(/[%_]/g, (ch) => `\\${ch}`)}%`;
+    const rows = rowsOf<{
+      id: string;
+      type: string;
+      subtype: string | null;
+      canonical_name: string;
+    }>(
+      await this.supabase
+        .from("entities")
+        .select("id, type, subtype, canonical_name")
+        .in("type", [...types])
+        .is("merged_into", null)
+        .or(`canonical_name.ilike.${pattern},reading.ilike.${pattern}`)
+        .order("canonical_name")
+        .limit(20),
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      type: r.type,
+      subtype: r.subtype,
+      label: r.canonical_name,
+    }));
+  }
+
+  async createEntity(entity: NewEntity) {
+    const result = await this.api<{ id: string; name: string; created: boolean }>(
+      "POST",
+      "/entities",
+      {
+        type: entity.type,
+        subtype: entity.subtype,
+        canonical_name: entity.name,
+        classification: entity.classification,
+      },
+    );
+    return {
+      id: result.id,
+      type: entity.type,
+      subtype: entity.subtype,
+      label: result.name,
+      created: result.created,
+    };
+  }
+
+  async listArchiveSubjects(): Promise<RefLabel[]> {
+    const rows = rowsOf<{ id: string; canonical_name: string }>(
+      await this.supabase
+        .from("entities")
+        .select("id, canonical_name")
+        .eq("type", "person")
+        .is("merged_into", null)
+        .contains("attributes", { archive_subject: true })
+        .order("canonical_name"),
+    );
+    return rows.map((r) => ({ id: r.id, type: "entity" as const, label: r.canonical_name }));
+  }
+}
+
+interface EventRow {
+  id: string;
+  kind: string;
+  event_type: string | null;
+  title: string | null;
+  parent_id: string | null;
+  starts_on: string | null;
+  ends_on: string | null;
+  date_precision: string | null;
+  work_name: string | null;
+  has_sources: boolean;
+  subject_status: ParticipantStatus | null;
+  classification: Classification;
+}
+
+interface EventDetailResponse {
+  event: {
+    id: string;
+    kind: string;
+    title: string | null;
+    parent_id: string | null;
+    parent_title: string | null;
+    work_id: string | null;
+    work_name: string | null;
+    venue_id: string | null;
+    venue_name: string | null;
+    episode_number: number | null;
+    starts_on: string | null;
+    ends_on: string | null;
+    date_precision: string | null;
+    starts_at: string | null;
+    ends_at: string | null;
+    attributes: Record<string, unknown> | null;
+    classification: Classification;
+    created_at: string;
+    updated_at: string;
+    created_by_name: string | null;
+    updated_by_name: string | null;
+  };
+  participants: {
+    entity_id: string;
+    entity_name: string;
+    role: string;
+    status: ParticipantStatus;
+    character_name: string | null;
+  }[];
+  children: {
+    id: string;
+    kind: string;
+    title: string | null;
+    starts_on: string | null;
+    date_precision: string | null;
+  }[];
 }

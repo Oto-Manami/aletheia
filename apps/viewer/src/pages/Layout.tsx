@@ -1,4 +1,4 @@
-import { Filter, Inbox, LogOut, Menu, Search, Settings, X } from "lucide-react";
+import { CalendarDays, Filter, Inbox, LogOut, Menu, Search, Settings, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { NavLink, Outlet, useOutletContext } from "react-router";
 import { useApp } from "../context.tsx";
@@ -33,16 +33,17 @@ export function Layout() {
   const [version, setVersion] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const changed = useCallback(() => setVersion((v) => v + 1), []);
+  // 件数だけを数える（一覧の上限に関わらない本当の件数）
   const [pending] = useLoad(
-    () => (viewer.isMember ? source.listIntake("pending") : Promise.resolve([])),
+    () => (viewer.isMember ? source.countIntake("pending") : Promise.resolve(0)),
     [source, viewer.isMember, version],
   );
-  const pendingCount = pending.status === "ready" ? pending.data.length : null;
+  const pendingCount = pending.status === "ready" ? pending.data : null;
   const [triage] = useLoad(
-    () => (viewer.isMember ? source.listTriage() : Promise.resolve([])),
+    () => (viewer.isMember ? source.countIntake("triage") : Promise.resolve(0)),
     [source, viewer.isMember, version],
   );
-  const triageCount = triage.status === "ready" ? triage.data.length : null;
+  const triageCount = triage.status === "ready" ? triage.data : null;
   const close = () => setMenuOpen(false);
 
   return (
@@ -88,6 +89,12 @@ export function Layout() {
                   {triageCount}
                 </span>
               )}
+            </NavLink>
+          )}
+          {viewer.isMember && (
+            <NavLink to="/events" className="nav-item" onClick={close}>
+              <CalendarDays size={16} aria-hidden="true" />
+              出来事
             </NavLink>
           )}
           <NavLink to="/search" className="nav-item" onClick={close}>

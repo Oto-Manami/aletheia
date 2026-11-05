@@ -16,6 +16,7 @@
 // | POST     | /intake/no-mention        | 振り分け: まとめて言及なし         |
 // | POST     | /resolve                  | URL から情報源と外部 ID を判定する |
 // | POST     | /files/staging            | ファイルを承認待ちの場所に保存する |
+// | GET/POST | /events・/entities        | 出来事と作品・相手を作る・直す（events.ts） |
 
 import type { Database } from "@aletheia/db/client";
 import {
@@ -39,6 +40,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { FileStore } from "@aletheia/storage";
 import { type Actor, assertAdmin, type AuthEnv, type AuthOptions, requireMember } from "./auth.ts";
+import { registerEventRoutes } from "./events.ts";
 import { finalizeApprovedFiles, moveRejectedFiles, removeStagedFiles, stageFile } from "./files.ts";
 
 const uuid = z.uuid();
@@ -198,6 +200,10 @@ export function createApp(
   app.use("/intake", requireMember(db, auth));
   app.use("/resolve", requireMember(db, auth));
   app.use("/files/*", requireMember(db, auth));
+  app.use("/events", requireMember(db, auth));
+  app.use("/events/*", requireMember(db, auth));
+  app.use("/entities", requireMember(db, auth));
+  registerEventRoutes(app, db);
 
   app.post("/files/staging", async (c) => {
     if (!files) throw new HTTPException(503, { message: "ファイルの保存先が設定されていません" });
@@ -261,7 +267,13 @@ export function createApp(
       .orderBy(decided ? "i.reviewed_at" : "i.captured_at", decided ? "desc" : "asc")
       .limit(q.data.limit)
       .execute();
-    return c.json({ items });
+    // 一覧は上限までしか返さないので、その状態の本当の件数も返す（画面の件数の表示）
+    const { total } = await db
+      .selectFrom("intake_items")
+      .select((eb) => eb.fn.countAll<string>().as("total"))
+      .where("state", "=", q.data.state)
+      .executeTakeFirstOrThrow();
+    return c.json({ items, total: Number(total) });
   });
 
   app.get("/intake/:id", async (c) => {

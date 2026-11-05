@@ -2,7 +2,7 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Ctx } from "../src/context.tsx";
 import { routes } from "../src/routes.tsx";
 import { DemoSource } from "../src/source/demo.ts";
@@ -13,8 +13,7 @@ afterEach(cleanup);
 
 const admin: Viewer = { name: "試験 運営者", isMember: true, isAdmin: true, discordUserId: null };
 
-function open(viewer: Viewer = admin) {
-  const source = new DemoSource(0);
+function open(viewer: Viewer = admin, source = new DemoSource(0)) {
   const router = createMemoryRouter(routes, { initialEntries: ["/triage"] });
   render(
     <Ctx.Provider value={{ source, viewer }}>
@@ -71,6 +70,30 @@ describe("振り分けの画面", () => {
     expect(await screen.findByText("3 件を言及なしにしました")).toBeTruthy();
     expect(cards()).toHaveLength(2);
     expect(screen.getByRole("tab", { name: "言及なし 0" })).toBeTruthy();
+  });
+
+  it("本当の件数を出し、表示した分を終えたら続きを読み込める", async () => {
+    const user = userEvent.setup();
+    const source = new DemoSource(0);
+    // 振り分け待ちが表示の上限より多い場合（画面に出ているのは 5 件）
+    const count = vi.spyOn(source, "countIntake").mockResolvedValue(1234);
+    open(admin, source);
+    expect(
+      await screen.findByText("振り分け待ちは全 1,234 件です。古い順に 5 件を表示しています。"),
+    ).toBeTruthy();
+    const nav = screen.getByRole("navigation", { name: "画面" });
+    expect(within(nav).getByLabelText("振り分け待ち 1234 件")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" }));
+    await user.click(screen.getByRole("button", { name: "選んだ 3 件を言及なしにする" }));
+    expect(await screen.findByText(/全 1,231 件です。古い順に 2 件/)).toBeTruthy();
+
+    count.mockRestore();
+    for (const card of cards()) {
+      await user.click(within(card).getByRole("button", { name: "残す" }));
+    }
+    await user.click(await screen.findByRole("button", { name: "続きを読み込む" }));
+    expect(await screen.findByText("振り分け待ちの記事はありません。")).toBeTruthy();
   });
 
   it("参加者は残せるが、言及なしは運営者だけが選べる", async () => {
