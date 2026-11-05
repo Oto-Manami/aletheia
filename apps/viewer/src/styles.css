@@ -2282,22 +2282,46 @@ details.more[open] > summary {
 .photos-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 8px 16px;
+  margin-bottom: 14px;
+}
+
+.photos-title {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 280px;
 }
 
 .photos-head .column-title {
   margin: 0;
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
 }
 
-.photos-head .quiet {
+.photos-lead {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.photos-lead strong {
+  color: var(--ink);
+}
+
+.photos-count {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+
+.photos-count-number {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.photos-count .link-button {
   font-size: 12px;
-  font-weight: normal;
 }
 
 .record-list {
@@ -2368,8 +2392,8 @@ details.more[open] > summary {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: 14px 12px;
 }
 
 .photo-tag {
@@ -2379,13 +2403,28 @@ details.more[open] > summary {
 }
 
 .photo-tag-image {
+  appearance: none;
   position: relative;
   aspect-ratio: 3 / 4;
+  width: 100%;
+  padding: 0;
+  border: 0;
   border-radius: var(--radius);
   background: var(--subtle);
   overflow: hidden;
   display: grid;
   place-items: center;
+  cursor: pointer;
+  font: inherit;
+}
+
+.photo-tag-image:disabled {
+  cursor: default;
+}
+
+.photo-tag-image:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .photo-tag-image img {
@@ -2393,6 +2432,43 @@ details.more[open] > summary {
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: opacity 120ms;
+}
+
+/* 印を付けていない写真は少し沈め、付けた写真を浮かせる */
+.photo-tags.has-marks .photo-tag:not(.is-on) .photo-tag-image img {
+  opacity: 0.72;
+}
+
+.photo-tag.is-on .photo-tag-image {
+  box-shadow:
+    0 0 0 3px var(--surface),
+    0 0 0 5px var(--count-ink);
+}
+
+.photo-tag-image:hover:not(:disabled) img {
+  opacity: 1;
+}
+
+.photo-tag-mark {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+  max-width: calc(100% - 12px);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--count-ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .photo-tag-people {
@@ -2402,16 +2478,10 @@ details.more[open] > summary {
   align-items: center;
 }
 
-.photo-tag-people .link-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-size: 13px;
-}
-
-.photo-tag.has-people .photo-tag-image {
-  outline: 2px solid var(--count-ink);
-  outline-offset: -2px;
+.photo-tag-people select {
+  height: 28px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .photo-tag-number {
@@ -2815,5 +2885,83 @@ details.more[open] > summary {
   .participant-remove {
     grid-row: 1;
     grid-column: 2;
+  }
+}
+
+/* 承認の画面の右側（記録すること・判断） */
+.approval-side {
+  display: grid;
+  gap: 16px;
+}
+
+.record-appears {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+}
+
+.decision {
+  display: grid;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.decision-summary {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.decision-blocked {
+  font-size: 12px;
+  color: var(--warn-ink);
+}
+
+.decision-secondary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.decision-note summary {
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.decision-note input {
+  margin-top: 8px;
+}
+
+.decision .error {
+  font-size: 13px;
+}
+
+.article-more summary {
+  margin-top: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.article-more[open] summary {
+  margin-bottom: 12px;
+}
+
+@media (max-width: 960px) {
+  /* 狭い画面では右側を下に回し、判断のボタンを画面の下に留める */
+  .approval-side {
+    order: 0;
+  }
+
+  .decision {
+    position: sticky;
+    bottom: 0;
+    margin: 0 -20px -20px;
+    padding: 12px 20px;
+    background: var(--surface);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    box-shadow: 0 -4px 12px rgb(15 23 42 / 0.06);
   }
 }

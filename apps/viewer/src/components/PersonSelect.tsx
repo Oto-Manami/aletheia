@@ -8,12 +8,14 @@ export function PersonSelect({
   label,
   onPick,
   disabled,
+  placeholder = "＋ 人を足す",
 }: {
   candidates: RefLabel[];
   exclude: string[];
   label: string;
   onPick: (id: string) => void;
   disabled: boolean;
+  placeholder?: string;
 }) {
   const id = useId();
   const options = candidates.filter((c) => !exclude.includes(c.id));
@@ -30,7 +32,7 @@ export function PersonSelect({
           if (e.target.value) onPick(e.target.value);
         }}
       >
-        <option value="">＋ 人を足す</option>
+        <option value="">{placeholder}</option>
         {options.map((c) => (
           <option key={c.id} value={c.id}>
             {c.label}

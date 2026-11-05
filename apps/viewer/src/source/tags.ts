@@ -104,3 +104,27 @@ export function setAppears(
 export function setAppearsAll(draft: DraftInput, entityId: string, on: boolean): DraftInput {
   return imageRefsOf(draft).reduce((d, ref) => setAppears(d, ref, entityId, on), draft);
 }
+
+/**
+ * 承認するときに、画面で見せたタグ付け（写っている人・登場する人）を人の判断として記録する。
+ * 規則の候補のうち、付けたままのものは人が確かめたものに、外したものは外したと確かめたものにする
+ */
+export function confirmPeopleTags(draft: DraftInput): DraftInput {
+  return {
+    ...draft,
+    links: (draft.links ?? []).map((l) => {
+      const people =
+        l.to_type === "entity" &&
+        ((l.role === "mentioned" && isPostLink(l)) ||
+          (l.role === "appears" && typeof l.from === "object"));
+      if (!people || l.origin === "human" || l.evidence?.["reviewed"] === true) return l;
+      const on = l.accepted !== false;
+      return {
+        ...l,
+        accepted: on,
+        ...(on ? { origin: "human" as const, confidence: 1 } : {}),
+        evidence: { ...l.evidence, reviewed: true },
+      };
+    }),
+  };
+}

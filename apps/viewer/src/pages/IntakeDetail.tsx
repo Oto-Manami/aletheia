@@ -1,17 +1,17 @@
 import { type DraftInput, draftSchema } from "@aletheia/intake/draft";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, ExternalLink } from "lucide-react";
 import { DraftEditor } from "../components/DraftEditor.tsx";
 import { MentionView } from "../components/MentionView.tsx";
 import { PhotoTags } from "../components/PhotoTags.tsx";
 import { RecordPanel } from "../components/RecordPanel.tsx";
 import { ReviewChecklist } from "../components/ReviewChecklist.tsx";
 import { SourcePreview } from "../components/SourcePreview.tsx";
-import { Tags } from "../components/Tags.tsx";
 import { useApp } from "../context.tsx";
-import { formatInstant, routeLabel } from "../format.ts";
+import { formatInstant } from "../format.ts";
 import { draftWarnings, reviewItems } from "../source/summarize.ts";
+import { authorsOf, confirmPeopleTags } from "../source/tags.ts";
 import {
   type Decision,
   type IntakeDetail,
@@ -46,32 +46,20 @@ function issuesOf(draft: DraftInput): IntakeIssue[] {
       }));
 }
 
-/** 承認すると何が起きるかを、ふだんの言葉で */
-function approvalSentence(draft: DraftInput, name: (id: string) => string): string {
+/** 承認すると何を保存するかを、ふだんの言葉で（紐付ける人は右側の一覧に出ている） */
+function approvalSentence(draft: DraftInput): string {
   const assets = draft.assets ?? [];
   const photos = assets.filter((a) => a.media_type === "image").length;
   const kept = [
-    assets.some((a) => a.media_type === "webpage") ? "記事のページ" : null,
     assets.some((a) => (a.texts ?? []).length > 0) ? "本文" : null,
     photos > 0 ? `写真 ${photos} 枚` : null,
-    assets.length - photos > 0 &&
-    !assets.some((a) => a.media_type === "webpage" || (a.texts ?? []).length > 0)
-      ? `素材 ${assets.length - photos} 件`
-      : null,
+    assets.some((a) => a.media_type === "webpage") ? "記事のページ" : null,
   ].filter(Boolean);
-  const people = [
-    ...new Set(
-      (draft.links ?? [])
-        .filter((l) => l.to_type === "entity" && l.accepted !== false)
-        .map((l) => l.to_id),
-    ),
-  ].map(name);
-  const who =
-    people.length === 0
-      ? ""
-      : `、${people.slice(0, 4).join("・")}${people.length > 4 ? ` ほか ${people.length - 4} 人` : ""}に紐付けます`;
-  const visibility = draft.post.classification === "public" ? "公開" : "非公開";
-  return `承認すると、${kept.join("・") || "投稿"}を保存し${who ? who : "ます"}。${visibility}の記録になります。`;
+  const other = assets.filter(
+    (a) => a.media_type !== "image" && a.media_type !== "webpage" && (a.texts ?? []).length === 0,
+  ).length;
+  if (other > 0) kept.push(`素材 ${other} 件`);
+  return `承認すると、${kept.join("・") || "投稿"}を保存します。`;
 }
 
 function refsOf(draft: DraftInput): { id: string; type: RefLabel["type"] }[] {
@@ -116,6 +104,12 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
   const [labels, setLabels] = useState(new Map<string, string>());
   const [candidates] = useLoad(() => source.listTagCandidates(), [source]);
   const candidateList = candidates.status === "ready" ? candidates.data : [];
+  // 写真を押して印を付ける人（蓄積対象の人物）
+  const [subjects] = useLoad(() => source.listArchiveSubjects(), [source]);
+  const subjectList = subjects.status === "ready" ? subjects.data : [];
+  const ownPost = authorsOf(draft).some((a) => subjectList.some((s) => s.id === a));
+  const photoSubject =
+    subjectList.find((s) => authorsOf(draft).includes(s.id)) ?? subjectList[0] ?? null;
   const name = (id: string) =>
     labels.get(id) ?? candidateList.find((c) => c.id === id)?.label ?? "（読み込み中）";
 
@@ -138,10 +132,8 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
     () => reviewItems(draft, detail.draft).filter((i) => !i.resolved).length,
     [draft, detail.draft],
   );
-  const dirty = JSON.stringify(draft) !== JSON.stringify(detail.draft);
   const decidable = detail.state === "pending" || detail.state === "on_hold";
   const readOnly = !decidable || busy !== null;
-  const hasText = (draft.assets ?? []).some((a) => (a.texts ?? []).length > 0);
 
   const decide = async (decision: Decision) => {
     setBusy(decision);
@@ -150,7 +142,8 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
       // 次の承認待ちへ進むため、判断の前に一覧を読んでおく
       const pending = await source.listIntake("pending");
       await source.decide(detail.id, decision, {
-        ...(decision === "approve" && dirty ? { draft } : {}),
+        // 画面で見せたタグ付け（写っている人・本文に出てくる人）は、人が確かめたものとして記録する
+        ...(decision === "approve" ? { draft: confirmPeopleTags(draft) } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
       });
       const label = DONE_LABELS[decision];
@@ -171,6 +164,14 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
     }
   };
 
+  const blocked =
+    issues.length > 0
+      ? "直すところがあるため承認できません（下の「詳しく見る・直す」）"
+      : remaining > 0
+        ? `上の「確認すること」があと ${remaining} 件あります`
+        : null;
+  const published = draft.post.published_at ?? draft.post.published_date ?? null;
+
   return (
     <article className="intake">
       <header className="intake-header">
@@ -178,19 +179,33 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
           <ChevronLeft size={16} aria-hidden="true" />
           一覧に戻る
         </Link>
-        <p className="badges">
-          <span className={`badge state-${detail.state}`}>{STATE_LABELS[detail.state]}</span>
-          <Tags classification={draft.post.classification} availability={draft.post.availability} />
-        </p>
+        {detail.state !== "pending" && (
+          <p className="badges">
+            <span className={`badge state-${detail.state}`}>{STATE_LABELS[detail.state]}</span>
+          </p>
+        )}
         <h2 className="intake-heading">{draft.post.title ?? detail.title ?? "（題名なし）"}</h2>
         <p className="intake-meta">
           {detail.channelName}
-          <span className="sep" aria-hidden="true" />
-          取り込み {formatInstant(detail.capturedAt)}
-          <span className="sep" aria-hidden="true" />
-          {routeLabel(detail.route)}
-          <span className="sep" aria-hidden="true" />
-          外部 ID {detail.externalId}
+          {published && (
+            <>
+              <span className="sep" aria-hidden="true" />
+              {published.length > 10 ? formatInstant(published) : published}
+            </>
+          )}
+          {draft.post.url && (
+            <>
+              <span className="sep" aria-hidden="true" />
+              <a
+                href={draft.post.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="ext-link"
+              >
+                元の記事 <ExternalLink size={12} aria-hidden="true" />
+              </a>
+            </>
+          )}
         </p>
         {typeof draft.context?.["memo"] === "string" && (
           <p className="memo">
@@ -233,26 +248,22 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
 
       <div className="approval-layout">
         <div className="approval-main">
-          {hasText && <MentionView draft={draft} />}
           <PhotoTags
             draft={draft}
             onChange={setDraft}
+            subject={photoSubject}
             candidates={candidateList}
             name={name}
             previews={detail.previews}
             readOnly={readOnly}
           />
-          <details className="panel panel-pad more" open={!hasText}>
-            <summary className="column-title">元の投稿と保存の状況</summary>
-            <SourcePreview draft={draft} previews={detail.previews} pageHtml={detail.pageHtml} />
-          </details>
-          <details className="panel panel-pad more" aria-label="下書き">
+          <MentionView draft={draft} ownPost={ownPost} />
+          <details className="panel panel-pad more">
             <summary className="column-title">
-              詳しく直す（すべての項目）
-              <span className="dirty">
-                {dirty ? "直した内容は承認のときに送ります" : "日付・URL・公開区分などを直すとき"}
-              </span>
+              詳しく見る・直す
+              <span className="dirty">元の投稿・保存の状況、日付・URL・公開区分など</span>
             </summary>
+            <SourcePreview draft={draft} previews={detail.previews} pageHtml={detail.pageHtml} />
             <DraftEditor
               draft={draft}
               onChange={setDraft}
@@ -265,7 +276,7 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
             />
           </details>
         </div>
-        <aside className="approval-side">
+        <aside className="approval-side panel panel-pad">
           <RecordPanel
             draft={draft}
             onChange={setDraft}
@@ -274,78 +285,66 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
             channelAvailability={detail.channelAvailability}
             readOnly={readOnly}
           />
-        </aside>
-      </div>
-
-      {decidable && (
-        <footer className="actions">
-          <p className="actions-summary">{approvalSentence(draft, name)}</p>
-          <div className="actions-note">
-            <label htmlFor="decision-note" className="visually-hidden">
-              判断のメモ
-            </label>
-            <input
-              id="decision-note"
-              placeholder="判断のメモ（任意）"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </div>
-          <div className="actions-buttons">
-            <button
-              type="button"
-              className="button danger"
-              disabled={busy !== null}
-              onClick={() => void decide("reject")}
-            >
-              {busy === "reject" ? "却下しています" : "却下"}
-            </button>
-            <button
-              type="button"
-              className="button"
-              disabled={busy !== null || detail.state === "on_hold"}
-              onClick={() => void decide("hold")}
-            >
-              {busy === "hold" ? "保留にしています" : "保留"}
-            </button>
-            <button
-              type="button"
-              className="button primary"
-              disabled={busy !== null || issues.length > 0 || remaining > 0}
-              title={
-                issues.length > 0
-                  ? "直すところがあるため承認できません"
-                  : remaining > 0
-                    ? "確認することが残っています"
-                    : undefined
-              }
-              onClick={() => void decide("approve")}
-            >
-              {busy === "approve"
-                ? "承認しています"
-                : remaining > 0
-                  ? `あと ${remaining} 件の確認`
-                  : dirty
-                    ? "直して承認"
-                    : "承認"}
-            </button>
-          </div>
-          {failure && (
-            <div className="error" role="alert">
-              <p>{failure.message}</p>
-              {failure.issues.length > 0 && (
-                <ul>
-                  {failure.issues.map((i, n) => (
-                    <li key={n}>
-                      <code>{i.path.join(" › ")}</code> {i.message}
-                    </li>
-                  ))}
-                </ul>
+          {decidable && (
+            <div className="decision">
+              <p className="decision-summary">{approvalSentence(draft)}</p>
+              <button
+                type="button"
+                className="button primary block"
+                disabled={busy !== null || blocked !== null}
+                onClick={() => void decide("approve")}
+              >
+                {busy === "approve" ? "承認しています" : "承認する"}
+              </button>
+              {blocked && <p className="decision-blocked">{blocked}</p>}
+              <div className="decision-secondary">
+                <button
+                  type="button"
+                  className="button"
+                  disabled={busy !== null || detail.state === "on_hold"}
+                  onClick={() => void decide("hold")}
+                >
+                  {busy === "hold" ? "保留にしています" : "保留"}
+                </button>
+                <button
+                  type="button"
+                  className="button danger"
+                  disabled={busy !== null}
+                  onClick={() => void decide("reject")}
+                >
+                  {busy === "reject" ? "却下しています" : "却下"}
+                </button>
+              </div>
+              <details className="decision-note">
+                <summary className="link-button">判断のメモを付ける</summary>
+                <label htmlFor="decision-note" className="visually-hidden">
+                  判断のメモ
+                </label>
+                <input
+                  id="decision-note"
+                  placeholder="判断のメモ（任意）"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                />
+              </details>
+              {failure && (
+                <div className="error" role="alert">
+                  <p>{failure.message}</p>
+                  {failure.issues.length > 0 && (
+                    <ul>
+                      {failure.issues.map((i, n) => (
+                        <li key={n}>
+                          <code>{i.path.join(" › ")}</code> {i.message}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </div>
           )}
-        </footer>
-      )}
+        </aside>
+      </div>
     </article>
   );
 }

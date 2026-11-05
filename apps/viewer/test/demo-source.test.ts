@@ -94,15 +94,24 @@ describe("下書きの要確認", () => {
     ]);
   });
 
-  it("人が確かめた提案は、確認することから外れる", () => {
-    const link = {
+  it("人が確かめた提案は、確認することから外れる。登場する人・写っている人の候補は確認することにしない", () => {
+    const author = {
       from: "post" as const,
       to_type: "entity" as const,
       to_id: "a1000000-0000-4000-8000-000000000001",
-      role: "mentioned",
+      role: "author",
+      origin: "rule" as const,
+      confidence: 1,
+    };
+    const about = {
+      from: "post" as const,
+      to_type: "event" as const,
+      to_id: "e1000000-0000-4000-8000-000000000003",
+      role: "about",
       origin: "rule" as const,
       confidence: 0.5,
     };
+    const mention = { ...author, role: "mentioned", confidence: 0.5 };
     const draft = {
       version: 1 as const,
       post: {
@@ -111,10 +120,12 @@ describe("下書きの要確認", () => {
         published_date_precision: "day" as const,
       },
     };
-    expect(reviewReasons({ ...draft, links: [link] })).toEqual(["提案 1 件"]);
-    expect(reviewReasons({ ...draft, links: [{ ...link, evidence: { reviewed: true } }] })).toEqual(
-      [],
-    );
-    expect(reviewReasons({ ...draft, links: [{ ...link, accepted: false }] })).toEqual(["人物"]);
+    expect(reviewReasons({ ...draft, links: [author, about] })).toEqual(["提案 1 件"]);
+    expect(
+      reviewReasons({ ...draft, links: [author, { ...about, evidence: { reviewed: true } }] }),
+    ).toEqual([]);
+    // 承認の画面のタグ付けで、その場で付け外しする
+    expect(reviewReasons({ ...draft, links: [mention] })).toEqual([]);
+    expect(reviewReasons({ ...draft, links: [{ ...mention, accepted: false }] })).toEqual(["人物"]);
   });
 });
