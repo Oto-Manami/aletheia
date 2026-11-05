@@ -8,7 +8,7 @@
 import type { Database } from "@aletheia/db/client";
 import type { DB } from "@aletheia/db/database";
 import { sql, type Transaction } from "kysely";
-import { IntakeError } from "./approve.ts";
+import { type ApproveResult, approveIntakeIn, IntakeError } from "./approve.ts";
 
 type Trx = Transaction<DB>;
 
@@ -95,6 +95,24 @@ export async function keepTriageIn(trx: Trx, intakeId: string, options: TriageOp
 /** 残す: 承認待ちに進める */
 export function keepTriage(db: Database, intakeId: string, options: TriageOptions = {}) {
   return inTransaction(db, (trx) => keepTriageIn(trx, intakeId, options));
+}
+
+/**
+ * 残して、そのまま承認する（公式サイトのニュースを出来事に紐付けるとき。設計書 決定記録 0029・0030）。
+ * 1 つのトランザクションで行い、承認に失敗したら振り分け待ちのまま残す（承認の一覧に紛れ込ませない）
+ */
+export function keepAndApprove(
+  db: Database,
+  intakeId: string,
+  options: TriageOptions = {},
+): Promise<ApproveResult> {
+  return inTransaction(db, async (trx) => {
+    await keepTriageIn(trx, intakeId, options);
+    return approveIntakeIn(trx, intakeId, {
+      ...(options.reviewerId ? { reviewerId: options.reviewerId } : {}),
+      ...(options.draft !== undefined ? { draft: options.draft } : {}),
+    });
+  });
 }
 
 /**
