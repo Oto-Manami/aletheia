@@ -208,35 +208,33 @@ describe("承認の画面のタグ付け", () => {
     expect(within(article).getByText("本文をすべて読む")).toBeTruthy();
   });
 
-  it("投稿日の前後の出来事を押して紐付けられ、無ければその場で作って紐付けられる", async () => {
+  it("日付の近い出来事を押すか、題名で探して紐付ける。出来事はここでは作らない", async () => {
     const user = userEvent.setup();
     const { source } = open("/intake/d2000000-0000-4000-8000-000000000001");
     const events = await screen.findByRole("region", { name: /出来事/ });
-    const around = await within(events).findByRole("group", { name: "投稿日の前後の出来事" });
+    const around = await within(events).findByRole("group", { name: "日付の近い出来事" });
     await user.click(within(around).getByRole("button", { name: /ラジオ「仮の時間」第 12 回/ }));
     expect(
       within(events).getByRole("button", { name: "ラジオ「仮の時間」第 12 回 の紐付けを外す" }),
     ).toBeTruthy();
 
-    await user.click(within(events).getByRole("button", { name: "出来事をその場で作る" }));
-    const quick = within(events).getByRole("group", { name: "出来事をその場で作る" });
-    await user.type(within(quick).getByLabelText("題名"), "試験のツアー 最終日");
-    await user.click(within(quick).getByRole("button", { name: "作って紐付ける" }));
+    await user.type(within(events).getByRole("searchbox", { name: "出来事を題名で探す" }), "冬の");
+    await user.click(await within(events).findByRole("button", { name: /冬の試験公演 1 日目/ }));
     expect(
-      await within(events).findByRole("button", { name: "試験のツアー 最終日 の紐付けを外す" }),
+      within(events).getByRole("button", { name: "冬の試験公演 1 日目 の紐付けを外す" }),
     ).toBeTruthy();
+    // 出来事は出来事の画面で作る（設計書 決定記録 0030）
+    expect(within(events).queryByRole("group", { name: "出来事をその場で作る" })).toBeNull();
+    expect(
+      within(events)
+        .getByRole("link", { name: /出来事の画面で作って/ })
+        .getAttribute("href"),
+    ).toBe("#/events/new");
 
     await user.click(screen.getByRole("button", { name: "承認する" }));
     await screen.findByText("前の下書きを承認しました");
     const approved = await source.getIntake("d2000000-0000-4000-8000-000000000001");
     const about = (approved.draft.links ?? []).filter((l) => l.role === "about");
     expect(about).toHaveLength(2);
-    const created = await source.listEvents({ query: "試験のツアー 最終日" });
-    // 出来事はすべて公開（設計書 決定記録 0029）
-    expect(created.items[0]).toMatchObject({
-      startsOn: "2026-10-16",
-      subjectStatus: "appeared",
-      classification: "public",
-    });
   });
 });

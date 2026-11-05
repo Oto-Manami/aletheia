@@ -32,6 +32,7 @@ import type {
   EventSummary,
   ParticipantStatus,
   RefLabel,
+  SourcePreview,
 } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 import { useLayout } from "./Layout.tsx";
@@ -830,30 +831,33 @@ function EventForm({
               : "公式の告知・お知らせなどの URL（任意）。振り分け・承認でニュースや投稿を紐付けると、上に並びます。"}
           </p>
           {f.sources.map((url, i) => (
-            <div key={i} className="source-row">
-              <label className="visually-hidden" htmlFor={`${formId}-source-${i}`}>
-                出典の URL {i + 1}
-              </label>
-              <input
-                id={`${formId}-source-${i}`}
-                type="url"
-                inputMode="url"
-                placeholder="https://"
-                value={url}
-                onChange={(e) =>
-                  set({ sources: f.sources.map((s, j) => (j === i ? e.target.value : s)) })
-                }
-              />
-              {f.sources.length > 1 && (
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label={`出典の URL ${i + 1} を外す`}
-                  onClick={() => set({ sources: f.sources.filter((_, j) => j !== i) })}
-                >
-                  <X size={16} aria-hidden="true" />
-                </button>
-              )}
+            <div key={i} className="source-item">
+              <div className="source-row">
+                <label className="visually-hidden" htmlFor={`${formId}-source-${i}`}>
+                  出典の URL {i + 1}
+                </label>
+                <input
+                  id={`${formId}-source-${i}`}
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://"
+                  value={url}
+                  onChange={(e) =>
+                    set({ sources: f.sources.map((s, j) => (j === i ? e.target.value : s)) })
+                  }
+                />
+                {f.sources.length > 1 && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`出典の URL ${i + 1} を外す`}
+                    onClick={() => set({ sources: f.sources.filter((_, j) => j !== i) })}
+                  >
+                    <X size={16} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+              <SourcePreviewLine url={url} />
             </div>
           ))}
           <button
@@ -900,6 +904,51 @@ function EventForm({
  * 出来事を消す（管理者と作った本人。素材が紐付いていないときだけ。設計書 決定記録 0030）。
  * 押すとその場で確かめてから消す。消す前の状態は変更履歴に残る
  */
+const PREVIEW_STATE: Record<SourcePreview["state"], string | null> = {
+  saved: null,
+  triage: "振り分け待ち",
+  pending: "承認待ち",
+  on_hold: "保留中",
+};
+
+/**
+ * 出典の URL の見出し。取り込み済みの素材（保存済み・振り分け待ち・承認待ち）から探し、外のサイトには
+ * 取りに行かない（設計書 決定記録 0030）
+ */
+function SourcePreviewLine({ url }: { url: string }) {
+  const { source } = useApp();
+  const target = /^https?:\/\/[^\s/]+\.[^\s]+$/i.test(url.trim()) ? url.trim() : "";
+  const found = useSearch<SourcePreview | null>(target, async (u) => [
+    await source.previewSource(u),
+  ]);
+  if (!target || !found) return null;
+  const p = found[0] ?? null;
+  if (!p) {
+    return (
+      <p className="quiet source-preview is-none">
+        取り込み済みの素材には見つかりません。URL はそのまま出典に残ります。
+      </p>
+    );
+  }
+  const title = p.title?.trim() || "（題名なし）";
+  const date = formatPublished(p);
+  const state = PREVIEW_STATE[p.state];
+  return (
+    <div className="source-preview" aria-label="出典の見出し">
+      <span className="event-material-channel">{p.channelName}</span>
+      {p.postId ? (
+        <Link to={`/posts/${p.postId}`} className="event-material-title">
+          {title}
+        </Link>
+      ) : (
+        <span className="event-material-title">{title}</span>
+      )}
+      {date && <span className="quiet event-material-date">{date}</span>}
+      {state && <span className="tag source-preview-state">{state}</span>}
+    </div>
+  );
+}
+
 /** 出来事に紐付いた素材（振り分け・承認で紐付けたニュース・ブログなど） */
 function EventMaterials({ id, detail }: { id: string; detail: EventDetail }) {
   const { materials } = detail;

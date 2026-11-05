@@ -178,7 +178,7 @@ export interface TriageItem {
   otherNames: string[];
   /** ニュースのカテゴリ（メディア・イベントなど） */
   category: string | null;
-  /** 情報源の種類（blog・web など）。web（公式サイトのニュース）は振り分けの画面から出来事にする */
+  /** 情報源の種類（blog・web など）。web（公式サイトのニュース）は振り分けの画面で既にある出来事に紐付ける */
   channelKind: string | null;
   snippets: TriageSnippet[];
   images: TriageImage[];
@@ -265,6 +265,18 @@ export interface EventDetail {
   usage: { links: number; drafts: number; children: number };
   /** この出来事に紐付いた素材（ニュース・ブログなど。出典として見せる） */
   materials: EventMaterial[];
+}
+
+/** 出典の URL に当たる、取り込み済みの素材 */
+export interface SourcePreview {
+  /** saved 保存済みの投稿 / triage 振り分け待ち / pending・on_hold 承認待ち */
+  state: "saved" | "triage" | "pending" | "on_hold";
+  postId: string | null;
+  intakeId: string | null;
+  title: string | null;
+  channelName: string;
+  publishedAt: string | null;
+  publishedDate: string | null;
 }
 
 /** 出来事に紐付いた素材（投稿 1 件） */
@@ -380,6 +392,8 @@ export interface ArchiveSource {
   saveEvent(id: string | null, input: EventInput): Promise<string>;
   /** 出来事を消す（管理者と作った本人。素材が紐付いていないときだけ） */
   deleteEvent(id: string): Promise<void>;
+  /** 出典の URL の見出し（取り込み済みの素材だけから探す。無ければ null） */
+  previewSource(url: string): Promise<SourcePreview | null>;
   /** 作品・相手を名前で探す */
   findEntities(query: string, types: readonly string[]): Promise<EntityOption[]>;
   /** 作品・相手を作る。同じ種類・同じ名前があれば、それを返す */

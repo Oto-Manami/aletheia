@@ -16,6 +16,7 @@ import {
   type EventInput,
   type EventSummary,
   type NewEntity,
+  type SourcePreview,
   type ParticipantStatus,
   type IntakeDetail,
   type IntakeIssue,
@@ -668,6 +669,32 @@ export class LiveSource implements ArchiveSource {
 
   async deleteEvent(id: string): Promise<void> {
     await this.api("POST", `/events/${encodeURIComponent(id)}/delete`, {});
+  }
+
+  async previewSource(url: string): Promise<SourcePreview | null> {
+    const r = await this.api<
+      | { found: false }
+      | {
+          found: true;
+          state: SourcePreview["state"];
+          post_id: string | null;
+          intake_id: string | null;
+          title: string | null;
+          channel_name: string;
+          published_at: string | null;
+          published_date: string | null;
+        }
+    >("GET", `/events/source-preview?url=${encodeURIComponent(url)}`);
+    if (!r.found) return null;
+    return {
+      state: r.state,
+      postId: r.post_id,
+      intakeId: r.intake_id,
+      title: r.title,
+      channelName: r.channel_name,
+      publishedAt: r.published_at,
+      publishedDate: r.published_date,
+    };
   }
 
   async findEntities(query: string, types: readonly string[]): Promise<EntityOption[]> {

@@ -350,7 +350,71 @@ async function syncParticipants(
   }
 }
 
+/** 同じページを指す URL の書き方の違い（http/https・末尾の /・# 以降）をそろえて、候補を並べる */
+export function urlVariants(url: string): string[] {
+  const base = url.trim().replace(/#.*$/, "");
+  const out = new Set<string>();
+  for (const scheme of ["https://", "http://"]) {
+    const rest = base.replace(/^https?:\/\//i, "");
+    const withScheme = scheme + rest;
+    out.add(withScheme);
+    out.add(withScheme.endsWith("/") ? withScheme.slice(0, -1) : `${withScheme}/`);
+  }
+  return [...out];
+}
+
+const previewQuery = z.object({
+  url: z.url({ protocol: /^https?$/ }).max(2000),
+});
+
 export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
+  /**
+   * 出典の URL の見出し。取り込み済みの素材（保存済みの投稿、振り分け・承認待ちの下書き）から探す。
+   * 外のサイトには取りに行かない（設計書 決定記録 0030）
+   */
+  app.get("/events/source-preview", async (c) => {
+    const q = previewQuery.safeParse(c.req.query());
+    if (!q.success) badRequest("URL が正しくありません");
+    const variants = urlVariants(q.data.url);
+    const { rows: posts } = await sql<{
+      post_id: string;
+      title: string | null;
+      published_at: string | null;
+      published_date: string | null;
+      channel_name: string;
+    }>`
+      select p.id as post_id, p.title, p.published_at, p.published_date, ch.name as channel_name
+      from public.posts p
+      join public.channels ch on ch.id = p.channel_id
+      where p.url = any(${variants}::text[])
+      order by p.created_at
+      limit 1`.execute(db);
+    const post = posts[0];
+    if (post) return c.json({ found: true, state: "saved", intake_id: null, ...post });
+    const { rows: drafts } = await sql<{
+      intake_id: string;
+      state: string;
+      title: string | null;
+      published_at: string | null;
+      published_date: string | null;
+      channel_name: string;
+    }>`
+      select i.id as intake_id, i.state::text as state,
+        i.draft -> 'post' ->> 'title' as title,
+        i.draft -> 'post' ->> 'published_at' as published_at,
+        i.draft -> 'post' ->> 'published_date' as published_date,
+        ch.name as channel_name
+      from public.intake_items i
+      join public.channels ch on ch.id = i.channel_id
+      where i.state in ('triage', 'pending', 'on_hold')
+        and i.draft -> 'post' ->> 'url' = any(${variants}::text[])
+      order by i.captured_at
+      limit 1`.execute(db);
+    const draft = drafts[0];
+    if (draft) return c.json({ found: true, post_id: null, ...draft });
+    return c.json({ found: false });
+  });
+
   app.get("/events", async (c) => {
     const q = listQuery.safeParse(c.req.query());
     if (!q.success) badRequest("条件が正しくありません");

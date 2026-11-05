@@ -13,11 +13,10 @@ import { EventLinks } from "../components/EventLinks.tsx";
 import { Snippet } from "../components/Snippet.tsx";
 import { useApp } from "../context.tsx";
 import { formatInstant } from "../format.ts";
-import { newsPrefill } from "../source/news-prefill.ts";
+import { newsDates } from "../source/news-dates.ts";
 import { confirmPeopleTags, eventsOf } from "../source/tags.ts";
 import { matchesMention, TRIAGE_FILTERS, withAppears } from "../source/triage.ts";
 import type {
-  RefLabel,
   TriageCounts,
   TriageItem,
   TriageMentionFilter,
@@ -56,7 +55,6 @@ function TriageCard({
   onKeep,
   onDiscard,
   onToEvents,
-  subject,
 }: {
   item: TriageItem;
   selected: boolean;
@@ -66,13 +64,11 @@ function TriageCard({
   onKeep: () => Promise<void>;
   /** 言及なしにする（管理者だけ。参加者には出さない） */
   onDiscard: (() => Promise<void>) | null;
-  /** ニュースを出来事にして保存する（出来事への紐付けを足した下書き） */
+  /** ニュースを出来事に紐付けて保存する（出来事への紐付けを足した下書き） */
   onToEvents: (draft: DraftInput) => Promise<void>;
-  /** 写真の印・出来事の出演を付ける人（蓄積対象の人物） */
-  subject: RefLabel | null;
 }) {
   const [busy, setBusy] = useState(false);
-  // 公式サイトのニュースは、残す代わりに出来事に足す（設計書 決定記録 0029・0030）
+  // 公式サイトのニュースは、残す代わりに既にある出来事に紐付ける（設計書 決定記録 0029・0030）
   const news = item.channelKind === "web";
   const [toEvents, setToEvents] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -190,7 +186,6 @@ function TriageCard({
       {toEvents && (
         <NewsEvents
           item={item}
-          subject={subject}
           onCancel={() => setToEvents(false)}
           onSave={(draft) => onToEvents(draft)}
         />
@@ -215,7 +210,7 @@ function TriageCard({
           )}
           {news ? (
             <button type="button" className="button primary" onClick={() => setToEvents(true)}>
-              出来事に足す
+              出来事に紐付ける
             </button>
           ) : (
             <button
@@ -242,17 +237,15 @@ function bodyOf(draft: DraftInput): string {
 }
 
 /**
- * ニュースから出来事を作る・選ぶ。初めの値はニュースから規則で入れる。保存すると、ニュースを出典として
- * 出来事に紐付け、素材として残す（承認の一覧には回らない。設計書 決定記録 0029）
+ * ニュースを、既にある出来事に紐付ける。保存すると、ニュースを素材として残し、出来事の出典にする
+ * （承認の一覧には回らない）。出来事はここでは作らず、出来事の画面で作る（設計書 決定記録 0029・0030）
  */
 function NewsEvents({
   item,
-  subject,
   onCancel,
   onSave,
 }: {
   item: TriageItem;
-  subject: RefLabel | null;
   onCancel: () => void;
   onSave: (draft: DraftInput) => Promise<void>;
 }) {
@@ -260,36 +253,28 @@ function NewsEvents({
   const [labels, setLabels] = useState(new Map<string, string>());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const prefill = useMemo(() => {
-    const p = newsPrefill({
-      title: item.title ?? "",
-      body: bodyOf(item.draft),
-      publishedDate: item.publishedAt?.slice(0, 10) ?? null,
-      category: item.category,
-      categoryCode:
-        typeof item.draft.context?.["news_category_code"] === "string"
-          ? item.draft.context["news_category_code"]
-          : null,
-    });
-    return {
-      ...p,
-      sources: item.url ? [item.url] : [],
-      withSubject: item.subjectMentions > 0,
-    };
-  }, [item]);
+  const dates = useMemo(
+    () =>
+      newsDates({
+        title: item.title ?? "",
+        body: bodyOf(item.draft),
+        publishedDate: item.publishedAt?.slice(0, 10) ?? null,
+      }),
+    [item],
+  );
   const linked = eventsOf(draft);
 
   return (
-    <div className="news-events" role="group" aria-label="このニュースを出来事に足す">
+    <div className="news-events" role="group" aria-label="このニュースを出来事に紐付ける">
       <EventLinks
         draft={draft}
         onChange={setDraft}
         name={(id) => labels.get(id) ?? "（出来事）"}
         onLabel={(ref) => setLabels((prev) => new Map(prev).set(ref.id, ref.label))}
-        subject={subject}
         readOnly={busy}
-        prefill={prefill}
-        title="このニュースを足す出来事"
+        dates={dates}
+        required
+        title="このニュースを紐付ける出来事"
       />
       {error && (
         <p className="error" role="alert">
@@ -300,7 +285,7 @@ function NewsEvents({
         <span className="quiet triage-picked">
           {linked.length > 0
             ? `出来事 ${linked.length} 件に、このニュースを出典として紐付けます`
-            : "出来事を作るか選ぶと、保存できます"}
+            : "出来事を選ぶと、保存できます"}
         </span>
         <button type="button" className="button" disabled={busy} onClick={onCancel}>
           やめる
@@ -318,7 +303,7 @@ function NewsEvents({
             });
           }}
         >
-          出来事にして保存
+          紐付けて保存
         </button>
       </div>
     </div>
@@ -336,8 +321,6 @@ export function TriagePage() {
     () => source.listTriage({ mention, sort, source: from }),
     [source, mention, sort, from],
   );
-  const [subjects] = useLoad(() => source.listArchiveSubjects(), [source]);
-  const subject = subjects.status === "ready" ? (subjects.data[0] ?? null) : null;
   const [appears, setAppears] = useState<Record<string, Record<string, boolean>>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [gone, setGone] = useState<Set<string>>(new Set());
@@ -596,7 +579,6 @@ export function TriagePage() {
                 .then(() => finish([item.id]))
             }
             onDiscard={viewer.isAdmin ? () => discard([item.id]).then(() => undefined) : null}
-            subject={subject}
             onToEvents={async (draft) => {
               // 残してから、そのまま承認する（ニュースは承認の一覧に回さない）
               await source.keepTriage(item.id, draft);

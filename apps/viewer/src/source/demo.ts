@@ -33,6 +33,7 @@ import {
   type InviteView,
   type MemberView,
   type NewEntity,
+  type SourcePreview,
   type PostView,
   type RefLabel,
   type Role,
@@ -466,6 +467,57 @@ export class DemoSource implements ArchiveSource {
       (i.draft.links ?? []).some((l) => l.to_type === "event" && l.to_id === id),
     ).length;
     this.events.remove(id, linked);
+  }
+
+  async previewSource(url: string): Promise<SourcePreview | null> {
+    await this.delay();
+    // 書き方の違い（http・末尾の /・# 以降）はそろえて比べる
+    const key = (u: string) =>
+      u
+        .trim()
+        .replace(/#.*$/, "")
+        .replace(/^https?:\/\//i, "")
+        .replace(/\/$/, "");
+    const post = this.posts.find((p) => p.url && key(p.url) === key(url));
+    if (post) {
+      return {
+        state: "saved",
+        postId: post.id,
+        intakeId: null,
+        title: post.title,
+        channelName: post.channelName,
+        publishedAt: post.publishedAt,
+        publishedDate: post.publishedDate,
+      };
+    }
+    const triage = this.triage.find((t) => t.draft.post.url && key(t.draft.post.url) === key(url));
+    if (triage) {
+      return {
+        state: "triage",
+        postId: null,
+        intakeId: triage.id,
+        title: triage.draft.post.title ?? null,
+        channelName: triage.channelName,
+        publishedAt: triage.draft.post.published_at ?? null,
+        publishedDate: triage.draft.post.published_date ?? null,
+      };
+    }
+    const intake = this.intakes.find(
+      (i) =>
+        i.draft.post.url &&
+        key(i.draft.post.url) === key(url) &&
+        (i.state === "pending" || i.state === "on_hold"),
+    );
+    if (!intake) return null;
+    return {
+      state: intake.state as SourcePreview["state"],
+      postId: null,
+      intakeId: intake.id,
+      title: intake.draft.post.title ?? null,
+      channelName: intake.channelName,
+      publishedAt: intake.draft.post.published_at ?? null,
+      publishedDate: intake.draft.post.published_date ?? null,
+    };
   }
 
   async findEntities(query: string, types: readonly string[]): Promise<EntityOption[]> {

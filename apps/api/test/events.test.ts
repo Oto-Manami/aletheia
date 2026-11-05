@@ -339,4 +339,75 @@ describe("出来事を作る・直す", () => {
       await make({ kind: "performance", parent_id: parent }, owner);
       expect((await ctx.call("POST", `/events/${parent}/delete`, {}, owner)).status).toBe(409);
     }));
+
+  it("出典の URL の見出しを、取り込み済みの素材（保存済み・振り分け待ち）から返す。外には取りに行かない", () =>
+    withApi(async (ctx) => {
+      const token = await participant(ctx);
+      const { rows } = await ctx.c.query<{ id: string }>(
+        `insert into public.channels (key, name, kind, availability, item_unit, classification)
+         values ('web:test_news', '試験のニュース', 'web', 'free', 'post', 'public') returning id`,
+      );
+      const channel = rows[0]!.id;
+      const { rows: post } = await ctx.c.query<{ id: string }>(
+        `insert into public.posts (channel_id, external_id, title, url, published_date, published_date_precision, classification)
+         values ($1, 'N0001', '試験の番組に出演', 'https://example.com/test-news/1', '2026-10-30', 'day', 'public')
+         returning id`,
+        [channel],
+      );
+      await ctx.c.query(
+        `insert into public.intake_items (channel_id, external_id, captured_at, route, state, draft)
+         values ($1, 'N0002', now(), 'fetch', 'triage', $2)`,
+        [
+          channel,
+          JSON.stringify({
+            version: 1,
+            post: {
+              title: "試験のライブの開催が決定",
+              url: "https://example.com/test-news/2",
+              published_date: "2026-10-31",
+              classification: "public",
+            },
+          }),
+        ],
+      );
+      const preview = (url: string) =>
+        json<Record<string, unknown>>(
+          ctx.call(
+            "GET",
+            `/events/source-preview?url=${encodeURIComponent(url)}`,
+            undefined,
+            token,
+          ),
+        );
+      // 書き方の違い（http・末尾の /）はそろえて探す
+      expect(await preview("http://example.com/test-news/1/")).toMatchObject({
+        found: true,
+        state: "saved",
+        post_id: post[0]!.id,
+        title: "試験の番組に出演",
+        channel_name: "試験のニュース",
+      });
+      expect(await preview("https://example.com/test-news/2")).toMatchObject({
+        found: true,
+        state: "triage",
+        post_id: null,
+        title: "試験のライブの開催が決定",
+        published_date: "2026-10-31",
+      });
+      expect(await preview("https://example.com/test-news/3")).toEqual({ found: false });
+      const bad = await ctx.call(
+        "GET",
+        "/events/source-preview?url=javascript:alert(1)",
+        undefined,
+        token,
+      );
+      expect(bad.status).toBe(400);
+      const anonymous = await ctx.call(
+        "GET",
+        "/events/source-preview?url=https://example.com/",
+        undefined,
+        null,
+      );
+      expect(anonymous.status).toBe(401);
+    }));
 });
