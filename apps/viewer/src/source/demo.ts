@@ -2,6 +2,7 @@
 
 import { type DraftInput, draftSchema } from "@aletheia/intake/draft";
 import {
+  DEMO_GENERATION,
   DEMO_SUBJECT,
   type DemoIntake,
   type DemoTriage,
@@ -17,7 +18,7 @@ import {
 import { proposeSubjectLinks } from "@aletheia/intake/mentions";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import { DemoEvents } from "./demo-events.ts";
-import { triageItemOf } from "./triage.ts";
+import { bySignal, matchesMention, TRIAGE_FILTERS, triageItemOf } from "./triage.ts";
 import {
   type ArchiveSource,
   type Decision,
@@ -36,7 +37,9 @@ import {
   type Role,
   type SearchHit,
   SourceError,
-  type TriageItem,
+  type TriageCounts,
+  type TriageMentionFilter,
+  type TriageSort,
 } from "./types.ts";
 
 function escapeHtml(s: string): string {
@@ -81,7 +84,7 @@ export class DemoSource implements ArchiveSource {
   private triage: DemoTriage[] = demoTriage().map((t) => ({
     ...t,
     // 取り込みのときと同じ規則で、言及と画像の確認の候補を付ける
-    draft: proposeSubjectLinks(t.draft, DEMO_SUBJECT),
+    draft: proposeSubjectLinks(proposeSubjectLinks(t.draft, DEMO_SUBJECT), DEMO_GENERATION),
   }));
   private members: MemberView[] = [
     {
@@ -353,19 +356,30 @@ export class DemoSource implements ArchiveSource {
     if (this.members.length === before) throw new SourceError("外せる閲覧者がいません");
   }
 
-  async listTriage(): Promise<TriageItem[]> {
+  async listTriage(options: { mention?: TriageMentionFilter; sort?: TriageSort } = {}) {
     await this.delay();
-    return this.triage.map((t) =>
-      triageItemOf({
-        id: t.id,
-        channelName: t.channelName,
-        capturedAt: t.capturedAt,
-        draft: t.draft,
-        previews: Object.fromEntries(
-          Object.entries(t.photos).map(([ref, hue]) => [ref, placeholderImage(ref, hue)]),
-        ),
-      }),
+    const subjects = new Set([DEMO_SUBJECT.id]);
+    const all = this.triage.map((t) =>
+      triageItemOf(
+        {
+          id: t.id,
+          channelName: t.channelName,
+          capturedAt: t.capturedAt,
+          draft: t.draft,
+          previews: Object.fromEntries(
+            Object.entries(t.photos).map(([ref, hue]) => [ref, placeholderImage(ref, hue)]),
+          ),
+        },
+        subjects,
+      ),
     );
+    const counts = Object.fromEntries(
+      TRIAGE_FILTERS.map((f) => [f, all.filter((i) => matchesMention(i, f)).length]),
+    ) as TriageCounts;
+    const mention = options.mention ?? "all";
+    const items = all.filter((i) => matchesMention(i, mention));
+    if (options.sort === "signal") items.sort(bySignal);
+    return { items, total: counts[mention], counts };
   }
 
   async keepTriage(id: string, draft: DraftInput): Promise<void> {

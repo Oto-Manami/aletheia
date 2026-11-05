@@ -7,15 +7,22 @@
 
 import { Check, ExternalLink } from "lucide-react";
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 import { Snippet } from "../components/Snippet.tsx";
 import { useApp } from "../context.tsx";
 import { formatInstant } from "../format.ts";
-import { withAppears } from "../source/triage.ts";
-import type { TriageItem } from "../source/types.ts";
+import { matchesMention, TRIAGE_FILTERS, withAppears } from "../source/triage.ts";
+import type { TriageCounts, TriageItem, TriageMentionFilter, TriageSort } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 import { useLayout } from "./Layout.tsx";
 
-type Filter = "all" | "mention" | "none";
+const FILTER_LABELS: Record<TriageMentionFilter, string> = {
+  all: "すべて",
+  any: "言及あり",
+  subject: "本人への言及",
+  group_only: "期への言及だけ",
+  none: "言及なし",
+};
 
 function hasSignal(item: TriageItem, appears: Record<string, boolean>): boolean {
   return item.mentionCount > 0 || item.images.some((img) => appears[img.ref] ?? img.appears);
@@ -52,7 +59,11 @@ function TriageCard({
   const picked = item.images.filter((img) => appears[img.ref] ?? img.appears).length;
 
   return (
-    <li className={`panel triage-card ${hasSignal(item, appears) ? "has-signal" : ""}`}>
+    <li
+      className={`panel triage-card ${hasSignal(item, appears) ? "has-signal" : ""} ${
+        item.subjectMentions === 0 && item.groupMentions > 0 ? "is-group-only" : ""
+      }`}
+    >
       <div className="triage-head">
         <input
           type="checkbox"
@@ -84,7 +95,11 @@ function TriageCard({
         {item.mentions.length > 0 ? (
           <span className="triage-mentions">
             {item.mentions.map((m) => (
-              <span key={m.name} className="tag triage-mention" title={m.aliases.join("・")}>
+              <span
+                key={m.name}
+                className={`tag triage-mention is-${m.level}`}
+                title={m.aliases.join("・")}
+              >
                 {m.name} {m.count}
               </span>
             ))}
@@ -159,11 +174,13 @@ function TriageCard({
 export function TriagePage() {
   const { source, viewer } = useApp();
   const layout = useLayout();
+  const [params, setParams] = useSearchParams();
+  const mention = TRIAGE_FILTERS.find((f) => f === params.get("mention")) ?? "all";
+  const sort: TriageSort = params.get("sort") === "signal" ? "signal" : "oldest";
   const [list, reload] = useLoad(
-    () => Promise.all([source.listTriage(), source.countIntake("triage")]),
-    [source],
+    () => source.listTriage({ mention, sort }),
+    [source, mention, sort],
   );
-  const [filter, setFilter] = useState<Filter>("all");
   const [appears, setAppears] = useState<Record<string, Record<string, boolean>>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [gone, setGone] = useState<Set<string>>(new Set());
@@ -179,22 +196,34 @@ export function TriagePage() {
     );
   }
 
-  const items = list.status === "ready" ? list.data[0].filter((i) => !gone.has(i.id)) : [];
-  // 振り分け待ちの本当の件数（画面に出すのは古い順に上限まで）。処理した分を引く
-  const total =
+  const loaded = list.status === "ready" ? list.data.items : [];
+  const items = loaded.filter((i) => !gone.has(i.id));
+  // 件数は本当の数（画面に出すのは上限まで）。この画面で処理した分を引く
+  const done = loaded.filter((i) => gone.has(i.id));
+  const counts =
     list.status === "ready"
-      ? Math.max(list.data[1] - list.data[0].filter((i) => gone.has(i.id)).length, items.length)
+      ? (Object.fromEntries(
+          TRIAGE_FILTERS.map((f) => [
+            f,
+            Math.max(0, list.data.counts[f] - done.filter((i) => matchesMention(i, f)).length),
+          ]),
+        ) as TriageCounts)
       : null;
+  const total = counts ? Math.max(counts[mention], items.length) : null;
   const more = total !== null && total > items.length;
   const appearsOf = (id: string) => appears[id] ?? {};
-  const counts = {
-    all: items.length,
-    mention: items.filter((i) => hasSignal(i, appearsOf(i.id))).length,
-    none: items.filter((i) => !hasSignal(i, appearsOf(i.id))).length,
+
+  const setView = (patch: { mention?: TriageMentionFilter; sort?: TriageSort }) => {
+    const next = new URLSearchParams(params);
+    const m = patch.mention ?? mention;
+    const so = patch.sort ?? sort;
+    if (m === "all") next.delete("mention");
+    else next.set("mention", m);
+    if (so === "oldest") next.delete("sort");
+    else next.set("sort", so);
+    setSelected(new Set());
+    setParams(next);
   };
-  const shown = items.filter((i) =>
-    filter === "all" ? true : (filter === "mention") === hasSignal(i, appearsOf(i.id)),
-  );
 
   const finish = (ids: string[]) => {
     setGone((g) => new Set([...g, ...ids]));
@@ -211,11 +240,14 @@ export function TriagePage() {
     return result.done.length;
   };
 
-  const tabs: { key: Filter; label: string }[] = [
-    { key: "all", label: "すべて" },
-    { key: "mention", label: "言及・写真あり" },
-    { key: "none", label: "言及なし" },
+  // 言及ありの中は、本人への言及・期への言及だけ、をさらに選べる
+  const mentionTab = mention === "any" || mention === "subject" || mention === "group_only";
+  const tabs: { key: TriageMentionFilter; label: string; selected: boolean }[] = [
+    { key: "all", label: "すべて", selected: mention === "all" },
+    { key: "any", label: "言及あり", selected: mentionTab },
+    { key: "none", label: "言及なし", selected: mention === "none" },
   ];
+  const count = (f: TriageMentionFilter) => (counts ? ` ${counts[f].toLocaleString("ja-JP")}` : "");
 
   return (
     <section className="page wide">
@@ -227,19 +259,47 @@ export function TriagePage() {
       </div>
 
       <div className="triage-toolbar">
-        <div className="tabs" role="tablist" aria-label="絞り込み">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={filter === t.key}
-              className="tab"
-              onClick={() => setFilter(t.key)}
+        <div className="triage-views">
+          <div className="tabs" role="tablist" aria-label="絞り込み">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={t.selected}
+                className="tab"
+                onClick={() => setView({ mention: t.key })}
+              >
+                {t.label}
+                {count(t.key)}
+              </button>
+            ))}
+          </div>
+          {mentionTab && (
+            <span className="triage-select">
+              <label htmlFor="triage-mention">言及の対象</label>
+              <select
+                id="triage-mention"
+                value={mention}
+                onChange={(e) => setView({ mention: e.target.value as TriageMentionFilter })}
+              >
+                <option value="any">すべての言及{count("any")}</option>
+                <option value="subject">本人への言及{count("subject")}</option>
+                <option value="group_only">期への言及だけ{count("group_only")}</option>
+              </select>
+            </span>
+          )}
+          <span className="triage-select">
+            <label htmlFor="triage-sort">並び</label>
+            <select
+              id="triage-sort"
+              value={sort}
+              onChange={(e) => setView({ sort: e.target.value as TriageSort })}
             >
-              {t.label} {counts[t.key]}
-            </button>
-          ))}
+              <option value="oldest">古い順</option>
+              <option value="signal">言及の強い順</option>
+            </select>
+          </span>
         </div>
         {viewer.isAdmin ? (
           <div className="triage-bulk">
@@ -276,10 +336,14 @@ export function TriagePage() {
           </p>
         )}
       </div>
-      {total !== null && (
+      {counts && total !== null && (
         <p className="quiet triage-total">
-          振り分け待ちは全 {total.toLocaleString("ja-JP")} 件です。
-          {more && `古い順に ${items.length.toLocaleString("ja-JP")} 件を表示しています。`}
+          振り分け待ちは全 {counts.all.toLocaleString("ja-JP")} 件です。
+          {mention !== "all" &&
+            `このうち「${FILTER_LABELS[mention]}」は ${total.toLocaleString("ja-JP")} 件。`}
+          {more &&
+            `${sort === "signal" ? "言及の強い順" : "古い順"}に ${items.length.toLocaleString("ja-JP")} 件を表示しています。`}
+          {sort === "signal" && "本人への言及の多いもの、期への言及の多いもの、の順です。"}
         </p>
       )}
       {message && (
@@ -297,7 +361,7 @@ export function TriagePage() {
           </button>
         </p>
       )}
-      {list.status === "ready" && shown.length === 0 && !more && (
+      {list.status === "ready" && items.length === 0 && !more && (
         <p className="quiet">振り分け待ちの記事はありません。</p>
       )}
       {list.status === "ready" && items.length === 0 && more && (
@@ -310,7 +374,7 @@ export function TriagePage() {
       )}
 
       <ul className="triage-list" aria-label="振り分け待ちの記事">
-        {shown.map((item) => (
+        {items.map((item) => (
           <TriageCard
             key={item.id}
             item={item}

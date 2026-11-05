@@ -41,6 +41,7 @@ import { z } from "zod";
 import type { FileStore } from "@aletheia/storage";
 import { type Actor, assertAdmin, type AuthEnv, type AuthOptions, requireMember } from "./auth.ts";
 import { registerEventRoutes } from "./events.ts";
+import { listTriage, triageListQuery } from "./triage-list.ts";
 import { finalizeApprovedFiles, moveRejectedFiles, removeStagedFiles, stageFile } from "./files.ts";
 
 const uuid = z.uuid();
@@ -244,6 +245,12 @@ export function createApp(
   app.get("/intake", async (c) => {
     const q = listQuery.safeParse(c.req.query());
     if (!q.success) throw new HTTPException(400, { message: "条件が正しくありません" });
+    // 振り分け待ちは、言及の強さで絞り込み・並べ替えられる（triage-list.ts）
+    if (q.data.state === "triage") {
+      const t = triageListQuery.safeParse(c.req.query());
+      if (!t.success) throw new HTTPException(400, { message: "条件が正しくありません" });
+      return c.json(await listTriage(db, t.data));
+    }
     // 承認済み・却下は判断の新しい順（履歴）、それ以外は取り込んだ古い順
     const decided = q.data.state === "approved" || q.data.state === "rejected";
     const items = await db

@@ -5,7 +5,7 @@
 // - 画像の表示用の URL は、取り込みのときに下書きに入れた元の画像の URL（attributes.source_url）を使う
 
 import type { DraftInput } from "@aletheia/intake/draft";
-import type { TriageImage, TriageItem, TriageSnippet } from "./types.ts";
+import type { TriageImage, TriageItem, TriageMentionFilter, TriageSnippet } from "./types.ts";
 
 type Link = NonNullable<DraftInput["links"]>[number];
 
@@ -62,22 +62,33 @@ function isMention(l: Link): boolean {
   );
 }
 
-export function triageItemOf(row: {
-  id: string;
-  channelName: string;
-  capturedAt: string;
-  draft: DraftInput;
-  previews?: Record<string, string>;
-}): TriageItem {
+export function triageItemOf(
+  row: {
+    id: string;
+    channelName: string;
+    capturedAt: string;
+    draft: DraftInput;
+    previews?: Record<string, string>;
+  },
+  /** 蓄積対象の人物（本人）の ID。ほかの対象（期など）への言及と分ける */
+  subjectIds: ReadonlySet<string> = new Set(),
+): TriageItem {
   const { draft } = row;
   const links = draft.links ?? [];
   // 対象（本人・期）ごとの言及。同じ本文の位置はまとめて抜き出す
-  const evidences = links.filter(isMention).map((l) => (l.evidence ?? {}) as MentionEvidence);
-  const mentions = evidences.map((e) => ({
-    name: e.subject ?? "言及",
-    count: e.count ?? 1,
-    aliases: e.aliases ?? [],
-  }));
+  const mentionLinks = links.filter(isMention);
+  const evidences = mentionLinks.map((l) => (l.evidence ?? {}) as MentionEvidence);
+  const mentions = mentionLinks
+    .map((l, i) => ({
+      name: evidences[i]!.subject ?? "言及",
+      count: evidences[i]!.count ?? 1,
+      aliases: evidences[i]!.aliases ?? [],
+      level: subjectIds.has(l.to_id) ? ("subject" as const) : ("group" as const),
+    }))
+    // 本人への言及を先に見せる
+    .sort((a, b) => (a.level === b.level ? 0 : a.level === "subject" ? -1 : 1));
+  const countOf = (level: "subject" | "group") =>
+    mentions.filter((m) => m.level === level).reduce((n, m) => n + m.count, 0);
   const spansByText = new Map<
     string,
     { asset: string; textType: string; spans: [number, number][] }
@@ -125,6 +136,8 @@ export function triageItemOf(row: {
     publishedAt: draft.post.published_at ?? draft.post.published_date ?? null,
     url: draft.post.url ?? null,
     mentionCount: mentions.reduce((n, m) => n + m.count, 0),
+    subjectMentions: countOf("subject"),
+    groupMentions: countOf("group"),
     aliases: [...new Set(mentions.flatMap((m) => m.aliases))],
     mentions,
     snippets,
@@ -149,3 +162,27 @@ export function withAppears(draft: DraftInput, appears: Record<string, boolean>)
     ),
   };
 }
+
+/** 一覧の絞り込みの条件に当てはまるか（デモ版・画面で処理した分の件数の調整に使う） */
+export function matchesMention(item: TriageItem, filter: TriageMentionFilter): boolean {
+  const s = item.subjectMentions > 0;
+  const g = item.groupMentions > 0;
+  if (filter === "any") return s || g;
+  if (filter === "subject") return s;
+  if (filter === "group_only") return !s && g;
+  if (filter === "none") return !s && !g;
+  return true;
+}
+
+/** 言及の強い順（本人への言及の数 → 期への言及の数）。同じなら元の順（古い順）のまま */
+export function bySignal(a: TriageItem, b: TriageItem): number {
+  return b.subjectMentions - a.subjectMentions || b.groupMentions - a.groupMentions;
+}
+
+export const TRIAGE_FILTERS: TriageMentionFilter[] = [
+  "all",
+  "any",
+  "subject",
+  "group_only",
+  "none",
+];

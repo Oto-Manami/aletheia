@@ -168,12 +168,22 @@ export interface TriageItem {
   /** 本文で見つかった別名の数 */
   mentionCount: number;
   aliases: string[];
-  /** 対象（本人・期）ごとの言及 */
-  mentions: { name: string; count: number; aliases: string[] }[];
+  /** 対象（本人・期）ごとの言及。level は本人（蓄積対象の人物）へのものか、期などへのものか */
+  mentions: { name: string; count: number; aliases: string[]; level: "subject" | "group" }[];
+  /** 本人への言及の数 */
+  subjectMentions: number;
+  /** 期などへの言及の数 */
+  groupMentions: number;
   snippets: TriageSnippet[];
   images: TriageImage[];
   draft: DraftInput;
 }
+
+/** 振り分けの絞り込み: すべて・言及あり・本人への言及あり・期への言及だけ・言及なし */
+export type TriageMentionFilter = "all" | "any" | "subject" | "group_only" | "none";
+/** 振り分けの並び: 取り込んだ古い順・言及の強い順（本人への言及の数 → 期への言及の数） */
+export type TriageSort = "oldest" | "signal";
+export type TriageCounts = Record<TriageMentionFilter, number>;
 
 /** 出来事（仕事と公式の発表。設計書 決定記録 0020・0027） */
 export type ParticipantStatus = "scheduled" | "appeared" | "not_appearing" | "cancelled";
@@ -303,8 +313,12 @@ export interface ArchiveSource {
   listTagCandidates(): Promise<RefLabel[]>;
   search(query: string): Promise<SearchHit[]>;
   getPost(id: string): Promise<PostView>;
-  /** 振り分け待ちの記事（決定記録 0021）。古い順に上限 200 件 */
-  listTriage(): Promise<TriageItem[]>;
+  /** 振り分け待ちの記事（決定記録 0021）。条件に当てはまるものを上限 200 件。件数は本当の数 */
+  listTriage(options?: { mention?: TriageMentionFilter; sort?: TriageSort }): Promise<{
+    items: TriageItem[];
+    total: number;
+    counts: TriageCounts;
+  }>;
   /** 残す。写っている画像の選択などを直した下書きを送り、承認待ちへ進める */
   keepTriage(id: string, draft: DraftInput): Promise<void>;
   /** 言及なしにする（まとめて）。確認済みの記録だけを残し、下書きと仮置きのファイルを消す */
