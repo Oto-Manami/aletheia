@@ -11,7 +11,7 @@ import { TriagePage } from "./pages/Triage.tsx";
 
 function Home() {
   const { viewer } = useApp();
-  return <Navigate to={viewer.isAdmin ? "/intake" : "/search"} replace />;
+  return <Navigate to={viewer.isMember ? "/intake" : "/search"} replace />;
 }
 
 function NotFound() {

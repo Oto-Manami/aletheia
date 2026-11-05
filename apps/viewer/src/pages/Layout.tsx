@@ -34,13 +34,13 @@ export function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const changed = useCallback(() => setVersion((v) => v + 1), []);
   const [pending] = useLoad(
-    () => (viewer.isAdmin ? source.listIntake("pending") : Promise.resolve([])),
-    [source, viewer.isAdmin, version],
+    () => (viewer.isMember ? source.listIntake("pending") : Promise.resolve([])),
+    [source, viewer.isMember, version],
   );
   const pendingCount = pending.status === "ready" ? pending.data.length : null;
   const [triage] = useLoad(
-    () => (viewer.isAdmin ? source.listTriage() : Promise.resolve([])),
-    [source, viewer.isAdmin, version],
+    () => (viewer.isMember ? source.listTriage() : Promise.resolve([])),
+    [source, viewer.isMember, version],
   );
   const triageCount = triage.status === "ready" ? triage.data.length : null;
   const close = () => setMenuOpen(false);
@@ -68,7 +68,7 @@ export function Layout() {
           </NavLink>
         </div>
         <nav className="sidebar-nav" aria-label="画面">
-          {viewer.isAdmin && (
+          {viewer.isMember && (
             <NavLink to="/intake" className="nav-item" onClick={close}>
               <Inbox size={16} aria-hidden="true" />
               承認
@@ -79,7 +79,7 @@ export function Layout() {
               )}
             </NavLink>
           )}
-          {viewer.isAdmin && (
+          {viewer.isMember && (
             <NavLink to="/triage" className="nav-item" onClick={close}>
               <Filter size={16} aria-hidden="true" />
               振り分け

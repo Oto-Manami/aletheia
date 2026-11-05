@@ -56,6 +56,8 @@ interface IntakeRow {
   captured_at: string;
   state: IntakeState;
   draft: DraftInput;
+  reviewed_at?: string | null;
+  reviewed_by_name?: string | null;
 }
 
 interface IntakeDetailRow {
@@ -67,6 +69,8 @@ interface IntakeDetailRow {
   state: IntakeState;
   draft: DraftInput;
   review_note: string | null;
+  reviewed_at?: string | null;
+  reviewed_by_name?: string | null;
 }
 
 interface ChannelRow {
@@ -133,6 +137,8 @@ function summarize(row: IntakeRow): IntakeSummary {
     assetCount: (row.draft.assets ?? []).length,
     warningCount: draftWarnings(row.draft).length,
     reviewReasons: reviewReasons(row.draft),
+    reviewedAt: row.reviewed_at ?? null,
+    reviewedByName: row.reviewed_by_name ?? null,
   };
 }
 

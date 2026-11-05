@@ -148,6 +148,8 @@ export class DemoSource implements ArchiveSource {
       assetCount: (item.draft.assets ?? []).length,
       warningCount: draftWarnings(item.draft).length,
       reviewReasons: reviewReasons(item.draft),
+      reviewedAt: item.reviewedAt ?? null,
+      reviewedByName: item.reviewedAt ? "デモの運営者" : null,
     };
   }
 
@@ -212,6 +214,7 @@ export class DemoSource implements ArchiveSource {
       decision
     ] as IntakeState;
     item.reviewNote = options.note ?? null;
+    item.reviewedAt = new Date().toISOString();
     const postId = this.posts[0]?.id;
     return decision === "approve" && postId ? { postId } : {};
   }

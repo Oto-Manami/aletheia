@@ -51,14 +51,14 @@ describe("認証", () => {
       expect((await call("GET", "/intake", undefined, "wrong-token")).status).toBe(401);
     }));
 
-  it("ログインした管理者は使え、閲覧のみの利用者・登録の無い人は使えない", () =>
+  it("参加者（管理者・招待で登録した人）は使え、登録の無い人は使えない", () =>
     withApi(async ({ c, call }) => {
       const admin = await discordUser(c, "11111111-1111-4111-8111-111111111111", "admin");
       const viewer = await discordUser(c, "22222222-2222-4222-8222-222222222222", "viewer");
       const stranger = "33333333-3333-4333-8333-333333333333";
 
       expect((await call("GET", "/intake", undefined, await tokenFor(admin))).status).toBe(200);
-      expect((await call("GET", "/intake", undefined, await tokenFor(viewer))).status).toBe(403);
+      expect((await call("GET", "/intake", undefined, await tokenFor(viewer))).status).toBe(200);
       expect((await call("GET", "/intake", undefined, await tokenFor(stranger))).status).toBe(403);
     }));
 

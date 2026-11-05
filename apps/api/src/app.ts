@@ -38,7 +38,7 @@ import { sql } from "kysely";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { FileStore } from "@aletheia/storage";
-import { type Actor, type AuthEnv, type AuthOptions, requireAdmin } from "./auth.ts";
+import { type Actor, assertAdmin, type AuthEnv, type AuthOptions, requireMember } from "./auth.ts";
 import { finalizeApprovedFiles, moveRejectedFiles, removeStagedFiles, stageFile } from "./files.ts";
 
 const uuid = z.uuid();
@@ -131,6 +131,14 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+/** 判断した人の表示名（閲覧サイトの利用者。Discord の ID で利用者の記録とつなぐ） */
+const reviewerName = sql<string | null>`(
+  select p.display_name from app.user_profiles p
+  join auth.identities a on a.provider = 'discord' and a.provider_id = p.discord_user_id
+  where a.user_id = i.reviewed_by
+  limit 1
+)`.as("reviewed_by_name");
+
 /** 誰の判断として記録するか。ログインした管理者ならその人、Bot なら伝えられた人 */
 function reviewerOf(actor: Actor, body: { reviewer_id?: string | undefined }): string | undefined {
   return actor.kind === "user" ? actor.userId : body.reviewer_id;
@@ -186,10 +194,10 @@ export function createApp(
 
   app.get("/health", (c) => c.json({ ok: true }));
 
-  app.use("/intake/*", requireAdmin(db, auth));
-  app.use("/intake", requireAdmin(db, auth));
-  app.use("/resolve", requireAdmin(db, auth));
-  app.use("/files/*", requireAdmin(db, auth));
+  app.use("/intake/*", requireMember(db, auth));
+  app.use("/intake", requireMember(db, auth));
+  app.use("/resolve", requireMember(db, auth));
+  app.use("/files/*", requireMember(db, auth));
 
   app.post("/files/staging", async (c) => {
     if (!files) throw new HTTPException(503, { message: "ファイルの保存先が設定されていません" });
@@ -230,6 +238,8 @@ export function createApp(
   app.get("/intake", async (c) => {
     const q = listQuery.safeParse(c.req.query());
     if (!q.success) throw new HTTPException(400, { message: "条件が正しくありません" });
+    // 承認済み・却下は判断の新しい順（履歴）、それ以外は取り込んだ古い順
+    const decided = q.data.state === "approved" || q.data.state === "rejected";
     const items = await db
       .selectFrom("intake_items as i")
       .innerJoin("channels as ch", "ch.id", "i.channel_id")
@@ -243,9 +253,12 @@ export function createApp(
         "i.captured_at",
         "i.state",
         "i.draft",
+        "i.reviewed_at",
+        "i.review_note",
+        reviewerName,
       ])
       .where("i.state", "=", q.data.state)
-      .orderBy("i.captured_at", "asc")
+      .orderBy(decided ? "i.reviewed_at" : "i.captured_at", decided ? "desc" : "asc")
       .limit(q.data.limit)
       .execute();
     return c.json({ items });
@@ -254,9 +267,10 @@ export function createApp(
   app.get("/intake/:id", async (c) => {
     const id = idParam(c.req.param("id"));
     const item = await db
-      .selectFrom("intake_items")
-      .selectAll()
-      .where("id", "=", id)
+      .selectFrom("intake_items as i")
+      .selectAll("i")
+      .select(reviewerName)
+      .where("i.id", "=", id)
       .executeTakeFirst();
     if (!item) throw new HTTPException(404, { message: "見つかりません" });
     const check = draftSchema.safeParse(item.draft);
@@ -357,6 +371,7 @@ export function createApp(
   // 全件を取り込む経路の、振り分け待ち・承認待ちの下書きの言及の印を、今の別名で付け直す（別名や
   // タグ付けの候補を足したとき）。言及の規則が付けた紐付けだけを外して付け直し、人が選んだもの・発信者は変えない
   app.post("/intake/redetect", async (c) => {
+    assertAdmin(c.get("actor"));
     const subjects = await archiveSubjects();
     const candidates = await tagCandidates();
     const items = await db
@@ -499,6 +514,7 @@ export function createApp(
   }
 
   app.post("/intake/no-mention", async (c) => {
+    assertAdmin(c.get("actor"));
     const body = await parseBody(c.req.raw, bulkNoMentionBody);
     const reviewerId = reviewerOf(c.get("actor"), body);
     const done: string[] = [];
@@ -515,6 +531,7 @@ export function createApp(
   });
 
   app.post("/intake/:id/no-mention", async (c) => {
+    assertAdmin(c.get("actor"));
     const id = idParam(c.req.param("id"));
     const body = await parseBody(c.req.raw, decisionBody);
     const reviewerId = reviewerOf(c.get("actor"), body);

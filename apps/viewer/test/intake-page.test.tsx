@@ -96,11 +96,26 @@ describe("承認の画面", () => {
     expect(within(checklist).getByText("すべて確認済み")).toBeTruthy();
   });
 
-  it("運営者でない利用者には、承認の画面を出さない", async () => {
-    open("/intake", { ...admin, isAdmin: false });
-    expect(await screen.findByText("承認の画面は運営者だけが使えます。")).toBeTruthy();
+  it("参加者として登録されていない人には、承認の画面もメニューも出さない", async () => {
+    open("/intake", { ...admin, isAdmin: false, isMember: false });
+    expect(
+      await screen.findByText("承認の画面は、参加者として登録された人だけが使えます。"),
+    ).toBeTruthy();
     const nav = screen.getByRole("navigation", { name: "画面" });
     expect(within(nav).queryByRole("link", { name: /承認/ })).toBeNull();
+  });
+
+  it("参加者は承認の画面を使え、承認済みの一覧に判断した日時と人が出る", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/intake", { ...admin, isAdmin: false });
+    const nav = await screen.findByRole("navigation", { name: "画面" });
+    expect(within(nav).getByRole("link", { name: /承認/ })).toBeTruthy();
+    const pending = await source.listIntake("pending");
+    const target = pending.find((i) => i.reviewReasons.length === 0)!;
+    await source.decide(target.id, "approve");
+    await user.click(await screen.findByRole("tab", { name: "承認済み" }));
+    const row = await screen.findByRole("link", { name: new RegExp(target.title ?? "") });
+    expect(within(row).getByText(/承認 .* ・ デモの運営者/)).toBeTruthy();
   });
 });
 

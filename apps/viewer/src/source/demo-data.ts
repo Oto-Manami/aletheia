@@ -87,6 +87,8 @@ export interface DemoIntake {
   capturedAt: string;
   state: IntakeState;
   reviewNote: string | null;
+  /** 承認・却下・保留した日時 */
+  reviewedAt?: string | null;
   draft: DraftInput;
 }
 

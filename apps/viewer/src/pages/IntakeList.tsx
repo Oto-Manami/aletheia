@@ -13,6 +13,12 @@ const STATES: { state: IntakeState; label: string }[] = [
   { state: "rejected", label: "却下" },
 ];
 
+const DECIDED_LABELS: Partial<Record<IntakeState, string>> = {
+  approved: "承認",
+  rejected: "却下",
+  on_hold: "保留",
+};
+
 export function IntakePage() {
   const { source, viewer } = useApp();
   const layout = useLayout();
@@ -21,11 +27,11 @@ export function IntakePage() {
   const detail = useMatch("/intake/:id");
   const [list] = useLoad(() => source.listIntake(state), [source, state, layout.version]);
 
-  if (!viewer.isAdmin) {
+  if (!viewer.isMember) {
     return (
       <section className="page narrow">
         <h1 className="page-title">承認</h1>
-        <p>承認の画面は運営者だけが使えます。</p>
+        <p>承認の画面は、参加者として登録された人だけが使えます。</p>
       </section>
     );
   }
@@ -83,6 +89,12 @@ export function IntakePage() {
                     <span className="sep" aria-hidden="true" />
                     {routeLabel(item.route)}
                   </span>
+                  {item.reviewedAt && item.state !== "pending" && (
+                    <span className="intake-reviewed">
+                      {DECIDED_LABELS[item.state] ?? "判断"} {formatInstant(item.reviewedAt)}
+                      {item.reviewedByName && <> ・ {item.reviewedByName}</>}
+                    </span>
+                  )}
                   <span className="intake-flags">
                     <Tags classification={item.classification} availability={item.availability} />
                     <span className="quiet">素材 {item.assetCount}</span>

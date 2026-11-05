@@ -73,9 +73,19 @@ describe("振り分けの画面", () => {
     expect(screen.getByRole("tab", { name: "言及なし 0" })).toBeTruthy();
   });
 
-  it("運営者でない利用者には、振り分けの画面もメニューも出さない", async () => {
+  it("参加者は残せるが、言及なしは運営者だけが選べる", async () => {
     open({ ...admin, isAdmin: false });
-    expect(await screen.findByText("振り分けの画面は運営者だけが使えます。")).toBeTruthy();
+    const list = await screen.findByRole("list", { name: "振り分け待ちの記事" });
+    expect(within(list).getAllByRole("button", { name: "残す" }).length).toBeGreaterThan(0);
+    expect(within(list).queryByRole("button", { name: "言及なし" })).toBeNull();
+    expect(screen.getByText(/「言及なし」は運営者が判断します/)).toBeTruthy();
+  });
+
+  it("参加者として登録されていない人には、振り分けの画面もメニューも出さない", async () => {
+    open({ ...admin, isAdmin: false, isMember: false });
+    expect(
+      await screen.findByText("振り分けの画面は、参加者として登録された人だけが使えます。"),
+    ).toBeTruthy();
     const nav = screen.getByRole("navigation", { name: "画面" });
     expect(within(nav).queryByRole("link", { name: /振り分け/ })).toBeNull();
   });
