@@ -29,7 +29,10 @@ import {
   type Role,
   type SearchHit,
   SourceError,
+  type TriageCounts,
   type TriageItem,
+  type TriageMentionFilter,
+  type TriageSort,
   type Viewer,
 } from "./types.ts";
 import { INVITE_ERRORS } from "../invite.ts";
@@ -492,19 +495,32 @@ export class LiveSource implements ArchiveSource {
     rpcRows(await this.supabase.rpc("remove_member", { member_discord_user_id: discordUserId }));
   }
 
-  async listTriage(): Promise<TriageItem[]> {
-    const { items } = await this.api<{ items: IntakeRow[] }>(
-      "GET",
-      `/intake?${new URLSearchParams({ state: "triage", limit: "200" }).toString()}`,
-    );
-    return items.map((i) =>
-      triageItemOf({
-        id: i.id,
-        channelName: i.channel_name,
-        capturedAt: i.captured_at,
-        draft: i.draft,
-      }),
-    );
+  async listTriage(options: { mention?: TriageMentionFilter; sort?: TriageSort } = {}) {
+    const params = new URLSearchParams({ state: "triage", limit: "200" });
+    if (options.mention && options.mention !== "all") params.set("mention", options.mention);
+    if (options.sort && options.sort !== "oldest") params.set("sort", options.sort);
+    const { items, total, counts, subject_ids } = await this.api<{
+      items: IntakeRow[];
+      total: number;
+      counts: TriageCounts;
+      subject_ids: string[];
+    }>("GET", `/intake?${params.toString()}`);
+    const subjects = new Set(subject_ids);
+    return {
+      total,
+      counts,
+      items: items.map((i): TriageItem =>
+        triageItemOf(
+          {
+            id: i.id,
+            channelName: i.channel_name,
+            capturedAt: i.captured_at,
+            draft: i.draft,
+          },
+          subjects,
+        ),
+      ),
+    };
   }
 
   async keepTriage(id: string, draft: DraftInput): Promise<void> {

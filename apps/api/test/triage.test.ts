@@ -152,4 +152,73 @@ describe("振り分け", () => {
       expect(row?.reviewed_by_name).toBe("参加者");
       expect(row?.reviewed_at).toBeTruthy();
     }));
+
+  it("言及の強さで絞り込み・並べ替えられる。本人への言及が先、期への言及だけのものはその後", () =>
+    withApi(async (ctx) => {
+      await seed(ctx.c);
+      // 情報源の持ち主（d.person）とは別の人を蓄積対象にする（持ち主が蓄積対象だと、本人の記事として承認待ちから始まる）
+      const { rows: subjects } = await ctx.c.query<{ id: string }>(
+        `insert into public.entities (type, subtype, canonical_name, attributes, classification)
+         values ('person', 'member', '架空 三郎', '{"archive_subject": true}', 'public') returning id`,
+      );
+      const person = subjects[0]!.id;
+      const { rows } = await ctx.c.query<{ id: string }>(
+        `insert into public.entities (type, subtype, canonical_name, attributes, classification)
+         values ('group', 'generation', '架空 2 期生', '{"archive_subject": true}', 'public') returning id`,
+      );
+      const group = rows[0]!.id;
+      const { rows: other } = await ctx.c.query<{ id: string }>(
+        `insert into public.entities (type, canonical_name, classification)
+         values ('person', '架空 さくら', 'public') returning id`,
+      );
+      const mention = (to: string, count: number, purpose?: string) => ({
+        from: "post",
+        to_type: "entity",
+        to_id: to,
+        role: "mentioned",
+        origin: "rule",
+        confidence: 0.6,
+        evidence: { rule: "alias_match", count, ...(purpose ? { purpose } : {}) },
+      });
+      const make = async (externalId: string, day: number, links: unknown[]) => {
+        const res = await ctx.call("POST", "/intake", {
+          channel_key: "sns:test_account",
+          external_id: externalId,
+          route: "fetch",
+          state: "triage",
+          captured_at: `2026-10-${String(day).padStart(2, "0")}T00:00:00+09:00`,
+          draft: { version: 1, post: { classification: "public" }, links },
+        });
+        expect(res.status).toBe(201);
+        return ((await res.json()) as { id: string }).id;
+      };
+      const a = await make("401", 1, [mention(person, 1)]);
+      const b = await make("402", 2, [mention(group, 3)]);
+      const c = await make("403", 3, []);
+      const dd = await make("404", 4, [mention(person, 2), mention(group, 1)]);
+      // 登場するメンバーのタグ付けの候補は、言及に数えない
+      const e = await make("405", 5, [mention(other[0]!.id, 4, "tag")]);
+
+      type List = {
+        items: { id: string; subject_mentions: number; group_mentions: number }[];
+        total: number;
+        counts: Record<string, number>;
+      };
+      const list = async (query: string) =>
+        (await (await ctx.call("GET", `/intake?state=triage&${query}`)).json()) as List;
+
+      const all = await list("sort=signal");
+      expect(all.items.map((i) => i.id)).toEqual([dd, a, b, c, e]);
+      expect(all.counts).toEqual({ all: 5, any: 3, subject: 2, group_only: 1, none: 2 });
+      expect(all.items[0]).toMatchObject({ subject_mentions: 2, group_mentions: 1 });
+      expect((all as List & { subject_ids: string[] }).subject_ids).toEqual([person]);
+
+      const subject = await list("mention=subject");
+      expect(subject.items.map((i) => i.id)).toEqual([a, dd]);
+      expect(subject.total).toBe(2);
+      expect((await list("mention=group_only")).items.map((i) => i.id)).toEqual([b]);
+      expect((await list("mention=none")).items.map((i) => i.id)).toEqual([c, e]);
+      expect((await list("mention=any&sort=signal")).items.map((i) => i.id)).toEqual([dd, a, b]);
+      expect((await ctx.call("GET", "/intake?state=triage&mention=wrong")).status).toBe(400);
+    }));
 });

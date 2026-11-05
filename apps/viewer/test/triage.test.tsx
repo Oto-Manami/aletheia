@@ -43,7 +43,7 @@ describe("振り分けの画面", () => {
     const user = userEvent.setup();
     const source = open();
     await screen.findByText("リハーサルの日");
-    expect(cards()).toHaveLength(5);
+    expect(cards()).toHaveLength(6);
     const first = cards()[0]!;
     expect(within(first).getByText("試験 花子 2")).toBeTruthy();
     expect(within(first).getByText("はなちゃん").tagName).toBe("MARK");
@@ -51,7 +51,7 @@ describe("振り分けの画面", () => {
     await user.click(within(first).getByRole("button", { name: "画像 2" }));
     expect(within(first).getByText("写っている 1 / 3 枚")).toBeTruthy();
     await user.click(within(first).getByRole("button", { name: "残す" }));
-    await waitFor(() => expect(cards()).toHaveLength(4));
+    await waitFor(() => expect(cards()).toHaveLength(5));
 
     const pending = await source.listIntake("pending");
     const kept = pending.find((i) => i.title === "リハーサルの日")!;
@@ -68,32 +68,63 @@ describe("振り分けの画面", () => {
     await user.click(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" }));
     await user.click(screen.getByRole("button", { name: "選んだ 3 件を言及なしにする" }));
     expect(await screen.findByText("3 件を言及なしにしました")).toBeTruthy();
-    expect(cards()).toHaveLength(2);
+    expect(cards()).toHaveLength(3);
     expect(screen.getByRole("tab", { name: "言及なし 0" })).toBeTruthy();
   });
 
   it("本当の件数を出し、表示した分を終えたら続きを読み込める", async () => {
     const user = userEvent.setup();
     const source = new DemoSource(0);
-    // 振り分け待ちが表示の上限より多い場合（画面に出ているのは 5 件）
+    // 振り分け待ちが表示の上限より多い場合（画面に出ているのは 6 件）
+    const original = source.listTriage.bind(source);
+    const list = vi.spyOn(source, "listTriage").mockImplementation(async (options) => {
+      const r = await original(options);
+      return { ...r, total: r.total + 1228, counts: { ...r.counts, all: r.counts.all + 1228 } };
+    });
     const count = vi.spyOn(source, "countIntake").mockResolvedValue(1234);
     open(admin, source);
     expect(
-      await screen.findByText("振り分け待ちは全 1,234 件です。古い順に 5 件を表示しています。"),
+      await screen.findByText("振り分け待ちは全 1,234 件です。古い順に 6 件を表示しています。"),
     ).toBeTruthy();
     const nav = screen.getByRole("navigation", { name: "画面" });
     expect(within(nav).getByLabelText("振り分け待ち 1234 件")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" }));
     await user.click(screen.getByRole("button", { name: "選んだ 3 件を言及なしにする" }));
-    expect(await screen.findByText(/全 1,231 件です。古い順に 2 件/)).toBeTruthy();
+    expect(await screen.findByText(/全 1,231 件です。古い順に 3 件/)).toBeTruthy();
 
+    list.mockRestore();
     count.mockRestore();
     for (const card of cards()) {
       await user.click(within(card).getByRole("button", { name: "残す" }));
     }
     await user.click(await screen.findByRole("button", { name: "続きを読み込む" }));
     expect(await screen.findByText("振り分け待ちの記事はありません。")).toBeTruthy();
+  });
+
+  it("言及ありの中を本人への言及・期への言及だけで絞り込み、言及の強い順に並べられる", async () => {
+    const user = userEvent.setup();
+    open();
+    await screen.findByText("リハーサルの日");
+    await user.click(screen.getByRole("tab", { name: "言及あり 3" }));
+    await waitFor(() => expect(cards()).toHaveLength(3));
+
+    const target = screen.getByLabelText("言及の対象");
+    await user.selectOptions(target, "subject");
+    await waitFor(() => expect(cards()).toHaveLength(2));
+    expect(screen.getByText(/このうち「本人への言及」は 2 件。/)).toBeTruthy();
+
+    await user.selectOptions(screen.getByLabelText("言及の対象"), "group_only");
+    await waitFor(() => expect(cards()).toHaveLength(1));
+    const group = cards()[0]!;
+    expect(within(group).getByText("後輩たちへ")).toBeTruthy();
+    expect(within(group).getByText("試験 2 期生 2").className).toContain("is-group");
+
+    await user.click(screen.getByRole("tab", { name: "すべて 6" }));
+    await user.selectOptions(screen.getByLabelText("並び"), "signal");
+    await waitFor(() => expect(cards()[0]?.textContent).toContain("リハーサルの日"));
+    expect(cards()[1]?.textContent).toContain("ラジオありがとうございました");
+    expect(cards()[2]?.textContent).toContain("後輩たちへ");
   });
 
   it("参加者は残せるが、言及なしは運営者だけが選べる", async () => {

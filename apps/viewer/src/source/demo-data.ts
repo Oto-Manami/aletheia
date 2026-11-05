@@ -1240,6 +1240,14 @@ export const DEMO_SUBJECT = {
   aliases: ["花子", "はなちゃん", "はなこさん"],
 };
 
+/** 蓄積対象の人物の期（期への言及のデモ） */
+export const DEMO_GENERATION = {
+  id: PEOPLE.gen5,
+  name: "試験 2 期生",
+  aliases: ["2期生", "二期生"],
+  checkImages: false,
+};
+
 export interface DemoTriage {
   id: string;
   channelName: string;
@@ -1320,6 +1328,14 @@ export function demoTriage(): DemoTriage[] {
       "ご報告",
       "明日の配信のお知らせです。お時間ある方はぜひ見てください。",
       [120],
+    ),
+    memberBlog(
+      6,
+      "仮名 ゆい",
+      "2026-10-25",
+      "後輩たちへ",
+      "今日は2期生のみんなとごはんに行きました。2期生はみんな元気で、こちらまで元気をもらいました。",
+      [60],
     ),
   ];
 }
