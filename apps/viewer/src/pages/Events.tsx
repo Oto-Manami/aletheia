@@ -846,12 +846,16 @@ function EventForm({
                     set({ sources: f.sources.map((s, j) => (j === i ? e.target.value : s)) })
                   }
                 />
-                {f.sources.length > 1 && (
+                {/* 1 つだけでも外せる（最後の 1 つを外したら、空の欄を残す） */}
+                {(f.sources.length > 1 || url.trim() !== "") && (
                   <button
                     type="button"
                     className="icon-button"
                     aria-label={`出典の URL ${i + 1} を外す`}
-                    onClick={() => set({ sources: f.sources.filter((_, j) => j !== i) })}
+                    onClick={() => {
+                      const rest = f.sources.filter((_, j) => j !== i);
+                      set({ sources: rest.length > 0 ? rest : [""] });
+                    }}
                   >
                     <X size={16} aria-hidden="true" />
                   </button>

@@ -112,6 +112,22 @@ describe("出来事", () => {
     expect(saved.sources).toEqual([{ url: "https://example.com/news/magazine" }]);
   });
 
+  it("出典の URL が 1 つだけでも外して保存できる", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/events/e1000000-0000-4000-8000-000000000003");
+    await screen.findByRole("heading", { name: "出来事を直す" });
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "出典の URL 1" }).value).toBe(
+      "https://example.com/news/winter-live",
+    );
+    await user.click(screen.getByRole("button", { name: "出典の URL 1 を外す" }));
+    // 空の欄が残り、空の欄には「外す」を出さない
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "出典の URL 1" }).value).toBe("");
+    expect(screen.queryByRole("button", { name: "出典の URL 1 を外す" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "直す" }));
+    expect(await screen.findByText("直しました")).toBeTruthy();
+    expect((await source.getEvent("e1000000-0000-4000-8000-000000000003")).sources).toEqual([]);
+  });
+
   it("出典の URL を入れると、取り込み済みの素材なら見出しを見せる", async () => {
     const user = userEvent.setup();
     open("/events/e1000000-0000-4000-8000-000000000001");
