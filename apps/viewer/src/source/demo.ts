@@ -16,6 +16,7 @@ import {
   PEOPLE,
   REFS,
 } from "./demo-data.ts";
+import { onlyChosenImages } from "@aletheia/intake/images";
 import { proposeSubjectLinks } from "@aletheia/intake/mentions";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import { DemoEvents } from "./demo-events.ts";
@@ -221,6 +222,7 @@ export class DemoSource implements ArchiveSource {
       previews: this.previews.get(id) ?? {},
       pageHtml: this.pageHtml.get(id) ?? {},
       channelAvailability: item.channelKey.startsWith("blog:") ? "free" : null,
+      chosenImagesOnly: item.triaged === true,
     };
   }
 
@@ -240,7 +242,10 @@ export class DemoSource implements ArchiveSource {
       if (issues.length > 0) {
         throw new SourceError("下書きに直すところがあります", 422, issues);
       }
-      item.draft = structuredClone(draft);
+      // 振り分けで残したものは、写っている人を付けた画像だけを素材にする（API と同じ規則）
+      item.draft = item.triaged
+        ? onlyChosenImages(draftSchema.parse(draft))
+        : structuredClone(draft);
     }
     item.state = { approve: "approved", reject: "rejected", hold: "on_hold" }[
       decision
@@ -487,6 +492,7 @@ export class DemoSource implements ArchiveSource {
       capturedAt: item.capturedAt,
       state: "pending",
       reviewNote: null,
+      triaged: true,
       draft,
     });
   }

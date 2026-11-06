@@ -227,10 +227,11 @@ export class LiveSource implements ArchiveSource {
   }
 
   async getIntake(id: string): Promise<IntakeDetail> {
-    const { item, draft_valid, issues } = await this.api<{
+    const { item, draft_valid, issues, chosen_images_only } = await this.api<{
       item: IntakeDetailRow;
       draft_valid: boolean;
       issues: IntakeIssue[];
+      chosen_images_only?: boolean;
     }>("GET", `/intake/${encodeURIComponent(id)}`);
     const [channel] = rowsOf<ChannelRow>(
       await this.supabase
@@ -252,6 +253,7 @@ export class LiveSource implements ArchiveSource {
       previews: {},
       pageHtml: {},
       channelAvailability: channel?.availability ?? null,
+      chosenImagesOnly: chosen_images_only === true,
     };
   }
 

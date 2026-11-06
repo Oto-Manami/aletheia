@@ -329,7 +329,21 @@ export function createApp(
       .executeTakeFirst();
     if (!item) throw new HTTPException(404, { message: "見つかりません" });
     const check = draftSchema.safeParse(item.draft);
-    return c.json({ item, draft_valid: check.success, issues: check.error?.issues ?? [] });
+    // 振り分けで「言及あり」として残したものは、承認のときに写っている人を付けた画像だけを素材にする
+    // （決定記録 0037）。承認の画面で知らせるために返す
+    const triaged = await db
+      .selectFrom("coverage_checks")
+      .select("id")
+      .where("channel_id", "=", item.channel_id)
+      .where("external_id", "=", item.external_id)
+      .where("result", "=", "mention")
+      .executeTakeFirst();
+    return c.json({
+      item,
+      draft_valid: check.success,
+      issues: check.error?.issues ?? [],
+      chosen_images_only: triaged !== undefined,
+    });
   });
 
   /**

@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./draft": "./src/draft.ts",
+    "./images": "./src/images.ts",
     "./mentions": "./src/mentions.ts"
   },
   "scripts": {

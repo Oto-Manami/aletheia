@@ -121,7 +121,7 @@ describe("承認・却下の後の移動", () => {
       );
     }));
 
-  it("下書きの素材から外した画像（ニュースで選ばなかった画像）は、却下の場所へ移す（削除しない）", () =>
+  it("下書きの素材に無い画像（振り分けで選ばなかった画像）は、保存せずに消す", () =>
     withApi(async (ctx) => {
       const d = await seed(ctx.c);
       const kept = await stage(ctx, "3003", 1);
@@ -132,7 +132,7 @@ describe("承認・却下の後の移動", () => {
       );
       const droppedFile = (await dropped.json()) as StagedFile;
       const id = await intakeWith(ctx, d, [kept, droppedFile]);
-      // 承認するときの下書きには、選んだ画像だけを残す（決定記録 0035）
+      // 承認するときの下書きには、選んだ画像だけを残す（決定記録 0035・0037）
       const res = await ctx.call("POST", `/intake/${id}/approve`, {
         draft: {
           version: 1,
@@ -149,10 +149,8 @@ describe("承認・却下の後の移動", () => {
         unselected: 1,
         failed: [],
       });
-      expect(ctx.files.pathOf(droppedFile.storage_key)).toBe(
-        "_rejected/discord/unselected_3003_02.jpg",
-      );
-      expect(ctx.files.files.size).toBe(2);
+      expect(ctx.files.pathOf(droppedFile.storage_key)).toBeUndefined();
+      expect(ctx.files.files.size).toBe(1);
     }));
 
   it("却下すると、却下の場所へ移す（削除しない）", () =>

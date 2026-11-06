@@ -46,6 +46,30 @@ function memberBlog(d: Seed, appears: boolean) {
   };
 }
 
+/** 写っている人を付けていない 2 枚目の画像と、記事のページを足す */
+function withSecondImage(d: Seed, draft: ReturnType<typeof memberBlog>) {
+  return {
+    ...draft,
+    assets: [
+      ...draft.assets,
+      { ref: "photo-2", media_type: "image" },
+      { ref: "page", media_type: "webpage" },
+    ],
+    links: [
+      ...draft.links,
+      {
+        from: { asset: "photo-2" },
+        to_type: "entity",
+        to_id: d.person,
+        role: "appears",
+        origin: "rule",
+        confidence: 0,
+        accepted: false,
+      },
+    ],
+  };
+}
+
 async function triage(c: Queryable, d: Seed, externalId = "101") {
   return insert(c, "public.intake_items", {
     channel_id: d.freeChannel,
@@ -99,6 +123,48 @@ describe("振り分け", () => {
       // 承認待ちになった下書きは、そのまま承認できる
       const approved = await approveIntakeIn(trx, id);
       expect(approved.counts.links).toBe(1);
+    }));
+
+  it("振り分けで残したものは、写っている人を付けた画像だけを素材にする。ページと本文はすべて残す", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const id = await triage(c, d);
+      const draft = withSecondImage(d, memberBlog(d, true));
+      await keepTriageIn(trx, id, { draft });
+      const approved = await approveIntakeIn(trx, id);
+      expect(Object.keys(approved.assetIds).sort()).toEqual(["body", "page", "photo-1"]);
+      const { rows } = await c.query<{ media_type: string }>(
+        "select media_type from public.assets where post_id = $1 order by position",
+        [approved.postId],
+      );
+      expect(rows.map((r) => r.media_type)).toEqual(["text", "image", "webpage"]);
+      // 外した画像の「写っている」の候補も残さない
+      const links = await c.query<{ role: string }>(
+        "select role from public.links where from_type = 'asset' and from_id = any($1::uuid[])",
+        [Object.values(approved.assetIds)],
+      );
+      expect(links.rows.map((r) => r.role)).toEqual(["appears"]);
+      // 承認した下書きにも、残したものだけが記録される
+      const stored = await c.query<{ draft: { assets: { ref: string }[] } }>(
+        "select draft from public.intake_items where id = $1",
+        [id],
+      );
+      expect(stored.rows[0]!.draft.assets.map((a) => a.ref)).toEqual(["body", "photo-1", "page"]);
+    }));
+
+  it("振り分けを通らないもの（本人のブログ・人が送った下書き）は、すべての画像を素材にする", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const id = await insert(c, "public.intake_items", {
+        channel_id: d.freeChannel,
+        external_id: "102",
+        captured_at: "2026-10-13T00:00:00+09:00",
+        route: "fetch",
+        state: "pending",
+        draft: JSON.stringify(withSecondImage(d, memberBlog(d, false))),
+      });
+      const approved = await approveIntakeIn(trx, id);
+      expect(Object.keys(approved.assetIds).sort()).toEqual(["body", "page", "photo-1", "photo-2"]);
     }));
 
   it("言及なしにすると、確認済みの記録を残して下書きを置き場に移す。戻すと振り分け待ちに戻る", () =>
