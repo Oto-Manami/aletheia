@@ -1,7 +1,15 @@
 // 出来事の一覧と、作る・直す画面（設計書 決定記録 0027）
 
-import { CalendarPlus, ChevronLeft, ExternalLink, Plus, X } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import {
+  CalendarPlus,
+  ChevronDown,
+  ChevronLeft,
+  ChevronUp,
+  ExternalLink,
+  Plus,
+  X,
+} from "lucide-react";
+import { type KeyboardEvent, useEffect, useId, useState } from "react";
 import {
   Link,
   NavLink,
@@ -46,7 +54,8 @@ export function EventsPage() {
   const [typed, setTyped] = useState(query);
   const detail = useMatch("/events/:id");
   const [list] = useLoad(
-    () => source.listEvents({ query, kind }),
+    // 日程（まとまりの各日・各部）は一覧に出さず、まとまりの画面で見せる（設計書 決定記録 0034）
+    () => source.listEvents({ query, kind, schedule: "hide" }),
     [source, query, kind, layout.version],
   );
 
@@ -160,6 +169,7 @@ function EventRow({ event: e, to }: { event: EventSummary; to: string }) {
       <span className="event-title">{e.title}</span>
       <span className="event-meta">
         <span className="tag">{EVENT_KIND_SHORT[e.kind] ?? e.kind}</span>
+        {e.scheduleCount > 0 && <span className="tag">日程 {e.scheduleCount}</span>}
         {e.workName && <span>{e.workName}</span>}
         {e.subjectStatus && (
           <span className={`event-status status-${e.subjectStatus}`}>
@@ -209,6 +219,20 @@ interface Row {
   auto: boolean;
 }
 
+/** セットリストの 1 行（画面の中だけの key を持つ） */
+interface ItemRow {
+  key: string;
+  id: string | null;
+  workId: string | null;
+  label: string;
+  note: string;
+  /** 素材が紐付いている（外せない） */
+  linked: boolean;
+}
+
+/** セットリストを入れる種類（設計書 決定記録 0034。まとまりには全日程で共通の曲） */
+const SETLIST_KINDS = new Set(["live", "performance"]);
+
 interface FormState {
   kind: string;
   eventType: string;
@@ -219,11 +243,14 @@ interface FormState {
   startTime: string;
   endTime: string;
   episodeNumber: string;
+  /** 部（日程のとき。1 部・昼公演など） */
+  part: string;
   work: Picked | null;
   venue: Picked | null;
   parent: Picked | null;
   rows: Row[];
   sources: string[];
+  items: ItemRow[];
 }
 
 /** 種類ごとの、蓄積対象の人物の役割の初めの値 */
@@ -273,6 +300,7 @@ function emptyForm(subjects: RefLabel[], parent: Picked | null): FormState {
     startTime: "",
     endTime: "",
     episodeNumber: "",
+    part: "",
     work: null,
     venue: null,
     parent,
@@ -287,6 +315,7 @@ function emptyForm(subjects: RefLabel[], parent: Picked | null): FormState {
       auto: true,
     })),
     sources: [""],
+    items: [],
   };
 }
 
@@ -304,6 +333,7 @@ function formOf(e: EventDetail, subjects: RefLabel[]): FormState {
     startTime: jstTime(e.startsAt),
     endTime: jstTime(e.endsAt),
     episodeNumber: e.episodeNumber === null ? "" : String(e.episodeNumber),
+    part: e.part ?? "",
     work: e.workId ? { id: e.workId, label: e.workName ?? "（名前なし）" } : null,
     venue: e.venueId ? { id: e.venueId, label: e.venueName ?? "（名前なし）" } : null,
     parent: e.parentId ? { id: e.parentId, label: e.parentTitle ?? "（題名なし）" } : null,
@@ -318,6 +348,14 @@ function formOf(e: EventDetail, subjects: RefLabel[]): FormState {
       auto: false,
     })),
     sources: e.sources.length > 0 ? e.sources.map((s) => s.url) : [""],
+    items: e.items.map((i) => ({
+      key: rowKey(),
+      id: i.id,
+      workId: i.workId,
+      label: i.workName ?? i.title ?? "（題名なし）",
+      note: i.note ?? "",
+      linked: i.linked,
+    })),
   };
 }
 
@@ -357,6 +395,7 @@ function toInput(f: FormState): { input: EventInput } | { problems: string[] } {
       workId: f.work?.id ?? null,
       venueId: f.venue?.id ?? null,
       episodeNumber: f.kind === "episode" ? episodeNumber : null,
+      part: f.parent && f.kind !== "episode" && f.part.trim() ? f.part.trim() : null,
       startsOn,
       endsOn,
       datePrecision: startsOn ? f.precision : null,
@@ -374,6 +413,18 @@ function toInput(f: FormState): { input: EventInput } | { problems: string[] } {
         status: r.status,
         characterName: r.role === "cast" && r.characterName.trim() ? r.characterName.trim() : null,
       })),
+      // セットリストを入れる種類のときだけ送る（ほかの種類の中身の並びは変えない）
+      ...(SETLIST_KINDS.has(f.kind)
+        ? {
+            items: f.items.map((i) => ({
+              id: i.id,
+              itemType: "song",
+              workId: i.workId,
+              title: i.workId ? null : i.label,
+              note: i.note.trim() || null,
+            })),
+          }
+        : {}),
     },
   };
 }
@@ -523,8 +574,21 @@ function EventForm({
           <ChevronLeft size={16} aria-hidden="true" />
           一覧に戻る
         </Link>
+        {detail?.parentId && isScheduleParent(detail.parentKind) && (
+          <Link className="event-schedule-of" to={`/events/${detail.parentId}`}>
+            「{detail.parentTitle ?? "（題名なし）"}」の日程
+          </Link>
+        )}
         <h2 id={`${formId}-title`} className="column-title">
-          {readOnly ? "出来事" : detail ? "出来事を直す" : "出来事を作る"}
+          {detail?.parentId && isScheduleParent(detail.parentKind)
+            ? readOnly
+              ? "日程"
+              : "日程を直す"
+            : readOnly
+              ? "出来事"
+              : detail
+                ? "出来事を直す"
+                : "出来事を作る"}
         </h2>
         {detail && (
           <p className="quiet event-stamp">
@@ -691,6 +755,17 @@ function EventForm({
               value={f.work}
               onChange={(work) => set({ work })}
             />
+            {f.parent && f.kind !== "episode" && (
+              <div className="field narrow-field">
+                <label htmlFor={`${formId}-part`}>部（任意）</label>
+                <input
+                  id={`${formId}-part`}
+                  value={f.part}
+                  placeholder="昼公演"
+                  onChange={(e) => set({ part: e.target.value })}
+                />
+              </div>
+            )}
             {f.kind === "episode" && (
               <div className="field narrow-field">
                 <label htmlFor={`${formId}-episode`}>回の番号</label>
@@ -716,7 +791,7 @@ function EventForm({
             value={f.parent}
             onChange={(parent) => set({ parent })}
           />
-          {detail && detail.children.length > 0 && (
+          {detail && !isScheduleParent(detail.kind) && detail.children.length > 0 && (
             <div className="field">
               <span className="field-label">この出来事の下の出来事</span>
               <ul className="event-children">
@@ -731,12 +806,31 @@ function EventForm({
               </ul>
             </div>
           )}
-          {detail && !readOnly && (
-            <Link to={`/events/new?parent=${detail.id}`} className="link-button event-add-child">
-              この出来事の下に作る（各公演・各回など）
-            </Link>
-          )}
+          {detail &&
+            !readOnly &&
+            !isScheduleParent(detail.kind) &&
+            !(detail.parentId && isScheduleParent(detail.parentKind)) && (
+              <Link to={`/events/new?parent=${detail.id}`} className="link-button event-add-child">
+                この出来事の下に作る（番組の各回など）
+              </Link>
+            )}
         </section>
+
+        {detail && isScheduleParent(detail.kind) && (
+          <Schedule
+            detail={detail}
+            readOnly={readOnly}
+            onAdded={(label) => onSaved(`日程「${label}」を足しました`)}
+          />
+        )}
+
+        {SETLIST_KINDS.has(f.kind) && (
+          <Setlist
+            items={f.items}
+            common={f.kind === "live"}
+            onChange={(items) => set({ items })}
+          />
+        )}
 
         <section className="editor-section" aria-labelledby={`${formId}-who`}>
           <h2 id={`${formId}-who`}>出演</h2>
@@ -917,6 +1011,278 @@ function EventForm({
         </div>
       )}
     </form>
+  );
+}
+
+/**
+ * セットリスト（中身の並び。設計書 決定記録 0034）。曲を選んで足し、上下で並べ替える。素材が紐付いている
+ * 行（誌面のスキャン → 記事など）は外せない
+ */
+function Setlist({
+  items,
+  common,
+  onChange,
+}: {
+  items: ItemRow[];
+  /** まとまり（全日程で共通の曲）か */
+  common: boolean;
+  onChange: (items: ItemRow[]) => void;
+}) {
+  const id = useId();
+  const move = (index: number, by: number) => {
+    const next = [...items];
+    const [row] = next.splice(index, 1);
+    next.splice(index + by, 0, row!);
+    onChange(next);
+  };
+  return (
+    <section className="editor-section" aria-labelledby={`${id}-setlist`}>
+      <h2 id={`${id}-setlist`}>セットリスト{common ? "（全日程で共通の曲）" : ""}</h2>
+      {common && (
+        <p className="field-hint">日ごとに違う曲は、日程を開いてそちらに入れてください。</p>
+      )}
+      {items.length === 0 ? (
+        <p className="quiet">まだ曲がありません。</p>
+      ) : (
+        <ol className="setlist" aria-label="セットリスト">
+          {items.map((row, index) => (
+            <li key={row.key} className="setlist-row">
+              <span className="setlist-no">{index + 1}</span>
+              <span className="setlist-name">{row.label}</span>
+              <label className="visually-hidden" htmlFor={`${row.key}-note`}>
+                {row.label} のメモ
+              </label>
+              <input
+                id={`${row.key}-note`}
+                className="setlist-note"
+                value={row.note}
+                placeholder="メモ（アンコールなど）"
+                onChange={(e) =>
+                  onChange(
+                    items.map((r) => (r.key === row.key ? { ...r, note: e.target.value } : r)),
+                  )
+                }
+              />
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`${row.label} を上へ`}
+                disabled={index === 0}
+                onClick={() => move(index, -1)}
+              >
+                <ChevronUp size={16} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`${row.label} を下へ`}
+                disabled={index === items.length - 1}
+                onClick={() => move(index, 1)}
+              >
+                <ChevronDown size={16} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`${row.label} を外す`}
+                title={row.linked ? "素材が紐付いているため外せません" : undefined}
+                disabled={row.linked}
+                onClick={() => onChange(items.filter((r) => r.key !== row.key))}
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+      <EntityPicker
+        label="曲を足す"
+        types={["work"]}
+        createType="work"
+        defaultSubtype="song"
+        value={null}
+        addMode
+        exclude={[]}
+        onChange={(picked) => {
+          if (!picked) return;
+          onChange([
+            ...items,
+            {
+              key: rowKey(),
+              id: null,
+              workId: picked.id,
+              label: picked.label,
+              note: "",
+              linked: false,
+            },
+          ]);
+        }}
+      />
+    </section>
+  );
+}
+
+/** 日程になる親の種類（設計書 決定記録 0034） */
+const SCHEDULE_PARENTS: Record<string, string> = {
+  live: "performance",
+  meet_greet: "meet_greet",
+  event: "event",
+};
+
+function isScheduleParent(kind: string | null | undefined): boolean {
+  return kind !== null && kind !== undefined && kind in SCHEDULE_PARENTS;
+}
+
+/** 日程の題名: まとまりの題名 + 月/日（+ 部） */
+function scheduleTitle(parent: string, date: string, part: string): string {
+  const [, m, d] = date.split("-");
+  return `${parent} ${Number(m)}/${Number(d)}${part ? ` ${part}` : ""}`;
+}
+
+/**
+ * まとまり（ライブ・ツアー、ミーグリ、イベント）の日程（設計書 決定記録 0034）。日付・会場・部・本人の出演を
+ * 並べ、日付・会場・部だけでその場で足せる。出演はまとまりの出演を写す
+ */
+function Schedule({
+  detail,
+  readOnly,
+  onAdded,
+}: {
+  detail: EventDetail;
+  readOnly: boolean;
+  onAdded: (label: string) => void;
+}) {
+  const { source } = useApp();
+  const id = useId();
+  const [date, setDate] = useState("");
+  const [part, setPart] = useState("");
+  const [venue, setVenue] = useState<Picked | null>(
+    detail.venueId ? { id: detail.venueId, label: detail.venueName ?? "（名前なし）" } : null,
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const schedules = detail.children.filter((c) => c.kind !== "episode");
+
+  const add = () => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return setError("日付を入れてください");
+    const title = scheduleTitle(detail.title, date, part.trim());
+    setBusy(true);
+    setError(null);
+    source
+      .saveEvent(null, {
+        kind: SCHEDULE_PARENTS[detail.kind] ?? detail.kind,
+        eventType: detail.kind === "event" ? detail.eventType : null,
+        title,
+        parentId: detail.id,
+        workId: detail.workId,
+        venueId: venue?.id ?? null,
+        episodeNumber: null,
+        part: part.trim() || null,
+        startsOn: date,
+        endsOn: null,
+        datePrecision: "day",
+        startsAt: null,
+        endsAt: null,
+        sources: [],
+        classification: "public",
+        participants: detail.participants.map((p) => ({
+          entityId: p.entityId,
+          role: p.role,
+          status: defaultStatus(date, "day"),
+          characterName: p.characterName,
+        })),
+      })
+      .then(() => {
+        setDate("");
+        setPart("");
+        setBusy(false);
+        onAdded(title);
+      })
+      .catch((e: unknown) => {
+        setBusy(false);
+        setError(e instanceof Error ? e.message : String(e));
+      });
+  };
+  // 日程の欄で Enter を押しても、出来事の保存にしない
+  const noSubmit = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      add();
+    }
+  };
+
+  return (
+    <section className="editor-section" aria-labelledby={`${id}-schedule`}>
+      <h2 id={`${id}-schedule`}>日程</h2>
+      {schedules.length === 0 ? (
+        <p className="quiet">
+          まだ日程がありません。公演・各日・各部を足すと、セットリストや出演を日ごとに残せます。
+        </p>
+      ) : (
+        <ul className="event-schedule" aria-label="日程">
+          {schedules.map((c) => (
+            <li key={c.id}>
+              <Link to={`/events/${c.id}`} className="event-schedule-date">
+                {eventDateLabel(c.startsOn, c.endsOn, c.datePrecision)}
+                {c.part && <span>{c.part}</span>}
+              </Link>
+              <span className="quiet event-schedule-venue">{c.venueName ?? "会場未定"}</span>
+              {c.subjectStatus && (
+                <span className={`event-status status-${c.subjectStatus}`}>
+                  {PARTICIPANT_STATUS_LABELS[c.subjectStatus]}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!readOnly && (
+        <div className="event-schedule-add" role="group" aria-label="日程を足す">
+          <div className="field-row">
+            <div className="field">
+              <label htmlFor={`${id}-date`}>日付</label>
+              <input
+                id={`${id}-date`}
+                type="date"
+                value={date}
+                onKeyDown={noSubmit}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+            <div className="field narrow-field">
+              <label htmlFor={`${id}-part`}>部（任意）</label>
+              <input
+                id={`${id}-part`}
+                value={part}
+                placeholder="昼公演"
+                onKeyDown={noSubmit}
+                onChange={(e) => setPart(e.target.value)}
+              />
+            </div>
+          </div>
+          <EntityPicker
+            label="会場"
+            types={["place"]}
+            createType="place"
+            defaultSubtype="venue"
+            value={venue}
+            onChange={setVenue}
+          />
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          <button type="button" className="button" disabled={busy} onClick={add}>
+            <Plus size={14} aria-hidden="true" /> 日程を足す
+          </button>
+          <p className="field-hint">
+            題名は「{detail.title} 月/日
+            部」になり、出演はこの出来事の出演を写します。セットリストや出演の細かいところは、足した日程を開いて直してください。
+          </p>
+        </div>
+      )}
+    </section>
   );
 }
 

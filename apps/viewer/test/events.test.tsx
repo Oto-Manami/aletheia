@@ -18,8 +18,7 @@ const member: Viewer = {
   discordUserId: null,
 };
 
-function open(path = "/events", viewer: Viewer = member) {
-  const source = new DemoSource(0);
+function open(path = "/events", viewer: Viewer = member, source = new DemoSource(0)) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   render(
     <Ctx.Provider value={{ source, viewer }}>
@@ -33,15 +32,37 @@ const rows = () =>
   within(screen.getByRole("region", { name: "出来事の一覧" })).queryAllByRole("listitem");
 
 describe("出来事", () => {
-  it("一覧は日付の新しい順で、出典の無いものと本人の出演の状態が分かる。題名で探せる", async () => {
+  it("一覧は日付の新しい順で、出典の無いものと本人の出演の状態が分かる。日程は隠して件数を出す。題名で探せる", async () => {
     const user = userEvent.setup();
-    open();
-    await screen.findByText("冬の試験公演 1 日目");
-    expect(rows()[0]?.textContent).toContain("冬の試験公演（架空ホール）");
+    const source = new DemoSource(0);
+    await source.saveEvent(null, {
+      kind: "release",
+      eventType: null,
+      title: "試験のシングル 発売",
+      parentId: null,
+      workId: null,
+      venueId: null,
+      episodeNumber: null,
+      startsOn: "2026-12-10",
+      endsOn: null,
+      datePrecision: "day",
+      startsAt: null,
+      endsAt: null,
+      sources: [],
+      classification: "public",
+      participants: [],
+    });
+    open("/events", member, source);
+    await screen.findByText("冬の試験公演（架空ホール）");
+    expect(rows()[0]?.textContent).toContain("試験のシングル 発売");
     // 手で入れた URL も紐付いた素材も無いものは「出典なし」
-    const day1 = rows().find((r) => r.textContent?.includes("冬の試験公演 1 日目"))!;
-    expect(within(day1).getByText("出典なし")).toBeTruthy();
-    expect(within(day1).getByText("予定")).toBeTruthy();
+    const release = rows()[0]!;
+    expect(within(release).getByText("出典なし")).toBeTruthy();
+    // 公演（日程）は一覧に出さず、まとまりに日程の件数を出す（設計書 決定記録 0034）
+    expect(screen.queryByText("冬の試験公演 1 日目")).toBeNull();
+    const live = rows().find((r) => r.textContent?.includes("冬の試験公演（架空ホール）"))!;
+    expect(within(live).getByText("日程 1")).toBeTruthy();
+    expect(within(live).getByText("予定")).toBeTruthy();
     // URL は無くても、素材が紐付いていれば出典あり
     const magazine = rows().find((r) => r.textContent?.includes("『月刊ミホン』12 月号"))!;
     expect(within(magazine).queryByText("出典なし")).toBeNull();
@@ -49,6 +70,43 @@ describe("出来事", () => {
     await user.type(screen.getByRole("searchbox", { name: "題名・作品名で探す" }), "仮の時間");
     await waitFor(() => expect(rows()).toHaveLength(1));
     expect(rows()[0]?.textContent).toContain("ラジオ「仮の時間」第 12 回");
+  });
+
+  it("まとまりの画面に日程が並び、日付・部・会場だけで日程を足せる。日程の画面からまとまりに戻れる", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/events/e1000000-0000-4000-8000-000000000003");
+    await screen.findByRole("heading", { name: "出来事を直す" });
+    const schedule = screen.getByRole("list", { name: "日程" });
+    expect(within(schedule).getAllByRole("listitem")).toHaveLength(1);
+
+    const add = screen.getByRole("group", { name: "日程を足す" });
+    await user.type(within(add).getByLabelText("日付"), "2026-12-02");
+    await user.type(within(add).getByLabelText("部（任意）"), "夜公演");
+    await user.click(within(add).getByRole("button", { name: /日程を足す/ }));
+    expect(
+      await screen.findByText("日程「冬の試験公演（架空ホール） 12/2 夜公演」を足しました"),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("list", { name: "日程" })).getAllByRole("listitem"),
+      ).toHaveLength(2),
+    );
+    const { items } = await source.listEvents({ query: "12/2 夜公演" });
+    expect(items[0]).toMatchObject({
+      kind: "performance",
+      parentId: "e1000000-0000-4000-8000-000000000003",
+      part: "夜公演",
+      startsOn: "2026-12-02",
+      subjectStatus: "scheduled",
+    });
+
+    // 日程の画面からまとまりに戻れる
+    await user.click(within(screen.getByRole("list", { name: "日程" })).getAllByRole("link")[1]!);
+    expect(await screen.findByRole("heading", { name: "日程を直す" })).toBeTruthy();
+    expect(screen.getByLabelText<HTMLInputElement>("部（任意）").value).toBe("夜公演");
+    expect(screen.getByRole("link", { name: "「冬の試験公演（架空ホール）」の日程" })).toBeTruthy();
+    // 日程の下には、さらに出来事を作らない
+    expect(screen.queryByRole("link", { name: /この出来事の下に作る/ })).toBeNull();
   });
 
   it("参加者が作品をその場で作り、出演者を足して出来事を作れる。出来事はすべて公開", async () => {
@@ -155,7 +213,7 @@ describe("出来事", () => {
   it("何も紐付いていない出来事は、確かめてから消せる。紐付いている出来事は消せない", async () => {
     const user = userEvent.setup();
     const { source } = open("/events/e1000000-0000-4000-8000-000000000011");
-    await screen.findByRole("heading", { name: "出来事を直す" });
+    await screen.findByRole("heading", { name: "日程を直す" });
     await user.click(screen.getByRole("button", { name: "この出来事を消す" }));
     const confirm = screen.getByRole("group", { name: "出来事を消すかの確認" });
     await user.click(within(confirm).getByRole("button", { name: "消す" }));
@@ -173,6 +231,39 @@ describe("出来事", () => {
     const list = within(materials.parentElement as HTMLElement).getAllByRole("listitem");
     expect(list.length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /紐付いている素材 \d+ 件/ })).toBeTruthy();
+  });
+
+  it("日程にセットリストを入れられる。曲はその場で作れ、並べ替え・メモ・外すができる", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/events/e1000000-0000-4000-8000-000000000011");
+    await screen.findByRole("heading", { name: "日程を直す" });
+    expect(screen.getByRole("heading", { name: "セットリスト" })).toBeTruthy();
+
+    for (const name of ["試験の曲 A", "試験の曲 B"]) {
+      await user.type(screen.getByLabelText("曲を足す"), name);
+      await user.click(await screen.findByRole("button", { name: `「${name}」を新しく作る` }));
+      const create = screen.getByRole("group", { name: `「${name}」を作る` });
+      await user.click(within(create).getByRole("radio", { name: "公開" }));
+      await user.click(within(create).getByRole("button", { name: "作って選ぶ" }));
+      await within(screen.getByRole("list", { name: "セットリスト" })).findByText(name);
+    }
+    await user.click(screen.getByRole("button", { name: "試験の曲 B を上へ" }));
+    await user.type(screen.getByLabelText("試験の曲 A のメモ"), "アンコール");
+    await user.click(screen.getByRole("button", { name: "直す" }));
+    expect(await screen.findByText("直しました")).toBeTruthy();
+
+    const saved = await source.getEvent("e1000000-0000-4000-8000-000000000011");
+    expect(saved.items.map((i) => [i.workName, i.note])).toEqual([
+      ["試験の曲 B", null],
+      ["試験の曲 A", "アンコール"],
+    ]);
+
+    // まとまりには、全日程で共通の曲として入れる
+    cleanup();
+    open("/events/e1000000-0000-4000-8000-000000000003");
+    expect(
+      await screen.findByRole("heading", { name: "セットリスト（全日程で共通の曲）" }),
+    ).toBeTruthy();
   });
 
   it("閲覧者は出来事を見られるが、作る・直す・消すはできない", async () => {

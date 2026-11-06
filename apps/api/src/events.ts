@@ -36,6 +36,21 @@ export const PARTICIPANT_STATUSES = [
   "cancelled",
 ] as const;
 
+/**
+ * 中身の並び（セットリストの曲など。設計書 決定記録 0034）の 1 行。id があれば既にある行を直し、
+ * 無ければ足す。作品（曲など）を選ぶか、題名を書く
+ */
+const itemInput = z
+  .object({
+    id: z.uuid().nullish(),
+    item_type: key,
+    work_id: z.uuid().nullish(),
+    title: z.string().trim().max(300).nullish(),
+    /** メモ（アンコール・ユニットなど） */
+    note: z.string().trim().max(200).nullish(),
+  })
+  .refine((v) => v.work_id || v.title, { message: "曲・項目を選ぶか、題名を入れてください" });
+
 const participantInput = z.object({
   entity_id: z.uuid(),
   role: key,
@@ -53,6 +68,8 @@ export const eventInput = z
     work_id: z.uuid().nullish(),
     venue_id: z.uuid().nullish(),
     episode_number: z.number().int().min(0).max(100000).nullish(),
+    /** 部（1 部・昼公演など。日程のとき） */
+    part: z.string().trim().max(40).nullish(),
     starts_on: date.nullish(),
     ends_on: date.nullish(),
     date_precision: z.enum(["year", "month", "day"]).nullish(),
@@ -65,6 +82,8 @@ export const eventInput = z
       .default([]),
     classification,
     participants: z.array(participantInput).max(300).default([]),
+    /** 中身の並び。送らなければ変えない（送ったら、その並びに合わせる） */
+    items: z.array(itemInput).max(300).optional(),
   })
   .superRefine((v, ctx) => {
     if (v.ends_on && !v.starts_on) {
@@ -108,8 +127,22 @@ const entityInput = z.object({
   classification,
 });
 
+/**
+ * 日程（まとまりの各日・各部）になる親の種類（設計書 決定記録 0034）。この種類の親を持つ子は、閲覧サイトでは
+ * 親の画面の「日程」として扱う。番組の各回（episode）は日程にしない
+ */
+export const SCHEDULE_PARENT_KINDS = ["live", "meet_greet", "event"] as const;
+
+/** e が日程か（親が日程になる種類で、自分は番組の回でない） */
+const isSchedule = sql<boolean>`(e.parent_id is not null and e.kind <> 'episode' and exists (
+  select 1 from public.events sp
+  where sp.id = e.parent_id and sp.kind in (${sql.join(SCHEDULE_PARENT_KINDS.map((k) => sql`${k}`))})
+))`;
+
 const listQuery = z.object({
   q: z.string().trim().max(100).optional(),
+  /** hide: 日程を出さない（出来事の一覧）。include: 日程も出す（素材を紐付ける候補） */
+  schedule: z.enum(["hide", "include"]).default("include"),
   kind: key.optional(),
   /** この期間（JST の暦日）に重なる出来事だけ。承認の画面で、投稿日の前後の出来事を候補に出す */
   from: date.optional(),
@@ -260,6 +293,76 @@ async function validateRefs(trx: Kysely<DB>, input: EventInput, selfId: string |
     "出演者",
   );
   if (input.parent_id) await assertParent(trx, input.parent_id, selfId);
+  if (input.items) {
+    await assertEntityTypes(
+      trx,
+      input.items.flatMap((i) => (i.work_id ? [i.work_id] : [])),
+      REF_TYPES.work_id,
+      "曲・項目",
+    );
+  }
+}
+
+/**
+ * 中身の並びを、送られた並びに合わせる。既にある行は id で直し、無くなった行は外す。
+ * 素材が紐付いている行（誌面のスキャン → 記事など）は外さずに断る
+ */
+async function syncItems(trx: Trx, eventId: string, input: EventInput): Promise<void> {
+  const items = input.items;
+  if (!items) return;
+  const existing = await trx
+    .selectFrom("event_items")
+    .select(["id", "attributes"])
+    .where("event_id", "=", eventId)
+    .execute();
+  const keep = new Set(items.flatMap((i) => (i.id ? [i.id] : [])));
+  for (const id of keep) {
+    if (!existing.some((e) => e.id === id)) badRequest("この出来事に無い中身の行が含まれています");
+  }
+  const removed = existing.filter((e) => !keep.has(e.id)).map((e) => e.id);
+  if (removed.length > 0) {
+    const { rows } = await sql<{ n: number }>`
+      select count(*)::int as n from public.links
+      where to_type = 'event_item' and to_id = any(${removed}::uuid[])`.execute(trx);
+    if ((rows[0]?.n ?? 0) > 0) {
+      throw new HTTPException(409, {
+        message: "素材が紐付いている中身の行は外せません。先に紐付けを外してください",
+      });
+    }
+    await trx.deleteFrom("event_items").where("id", "in", removed).execute();
+  }
+  // 並び順の重なり（event_id, position）を避けるため、いったん負の番号にしてから付け直す
+  if (keep.size > 0) {
+    await trx
+      .updateTable("event_items")
+      .set({ position: sql`-position - 1` })
+      .where("event_id", "=", eventId)
+      .execute();
+  }
+  for (const [index, item] of items.entries()) {
+    const current = item.id ? existing.find((e) => e.id === item.id) : undefined;
+    const attributes: Record<string, unknown> = {
+      ...((current?.attributes as Record<string, unknown> | null) ?? {}),
+    };
+    if (item.note) attributes["note"] = item.note;
+    else delete attributes["note"];
+    const values = {
+      position: index + 1,
+      item_type: item.item_type,
+      work_id: item.work_id ?? null,
+      title: item.title?.trim() || null,
+      attributes: JSON.stringify(attributes),
+      classification: input.classification,
+    };
+    if (current) {
+      await trx.updateTable("event_items").set(values).where("id", "=", current.id).execute();
+    } else {
+      await trx
+        .insertInto("event_items")
+        .values({ ...values, event_id: eventId })
+        .execute();
+    }
+  }
 }
 
 /** 出来事の列と属性。属性は、画面で扱わないキーを残したまま、細かい種類と出典だけを入れ替える */
@@ -269,6 +372,8 @@ function eventColumns(input: EventInput, attributes: Record<string, unknown>) {
   else delete next["event_type"];
   if (input.sources.length > 0) next["sources"] = input.sources;
   else delete next["sources"];
+  if (input.part) next["part"] = input.part;
+  else delete next["part"];
   return {
     kind: input.kind,
     title: input.title,
@@ -420,15 +525,24 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
   app.get("/events", async (c) => {
     const q = listQuery.safeParse(c.req.query());
     if (!q.success) badRequest("条件が正しくありません");
-    const { q: text, kind, from, to, limit } = q.data;
+    const { q: text, kind, from, to, limit, schedule } = q.data;
     let query = db
       .selectFrom("events as e")
       .leftJoin("entities as w", "w.id", "e.work_id")
+      .leftJoin("events as pe", "pe.id", "e.parent_id")
       .select([
         "e.id",
         "e.kind",
         "e.title",
         "e.parent_id",
+        "pe.title as parent_title",
+        sql<string | null>`e.attributes ->> 'part'`.as("part"),
+        // 日程の件数（まとまりのとき）
+        sql<number>`(
+          select count(*)::int from public.events c
+          where c.parent_id = e.id and c.kind <> 'episode'
+            and e.kind in (${sql.join(SCHEDULE_PARENT_KINDS.map((k) => sql`${k}`))})
+        )`.as("schedule_count"),
         "e.starts_on",
         "e.ends_on",
         "e.date_precision",
@@ -452,6 +566,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       .orderBy("e.created_at", "desc")
       .limit(limit);
     if (kind) query = query.where("e.kind", "=", kind);
+    if (schedule === "hide") query = query.where(sql<boolean>`not ${isSchedule}`);
     if (to) query = query.where("e.starts_on", "<=", to);
     if (from) {
       query = query.where(sql<boolean>`coalesce(e.ends_on, e.starts_on) >= ${from}`);
@@ -462,10 +577,11 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
         eb.or([eb("e.title", "ilike", pattern), eb("w.canonical_name", "ilike", pattern)]),
       );
     }
-    const { total } = await db
-      .selectFrom("events")
-      .select((eb) => eb.fn.countAll<string>().as("total"))
-      .executeTakeFirstOrThrow();
+    let totalQuery = db
+      .selectFrom("events as e")
+      .select((eb) => eb.fn.countAll<string>().as("total"));
+    if (schedule === "hide") totalQuery = totalQuery.where(sql<boolean>`not ${isSchedule}`);
+    const { total } = await totalQuery.executeTakeFirstOrThrow();
     return c.json({ items: await query.execute(), total: Number(total) });
   });
 
@@ -482,6 +598,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
         "w.canonical_name as work_name",
         "v.canonical_name as venue_name",
         "p.title as parent_title",
+        "p.kind as parent_kind",
         userName("e.created_by", "created_by_name"),
         userName("e.updated_by", "updated_by_name"),
       ])
@@ -503,11 +620,31 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       .where("ep.event_id", "=", id.data)
       .orderBy("ep.created_at")
       .execute();
+    // 下の出来事（日程など）。日程の表に、会場・部・本人の出演も出す（決定記録 0034）
     const children = await db
-      .selectFrom("events")
-      .select(["id", "kind", "title", "starts_on", "date_precision"])
-      .where("parent_id", "=", id.data)
-      .orderBy(sql`starts_on asc nulls last`)
+      .selectFrom("events as c")
+      .leftJoin("entities as cv", "cv.id", "c.venue_id")
+      .select([
+        "c.id",
+        "c.kind",
+        "c.title",
+        "c.starts_on",
+        "c.ends_on",
+        "c.starts_at",
+        "c.date_precision",
+        "cv.canonical_name as venue_name",
+        sql<string | null>`c.attributes ->> 'part'`.as("part"),
+        sql<string | null>`(
+          select ep.status from public.event_participants ep
+          join public.entities s on s.id = ep.entity_id
+          where ep.event_id = c.id and s.type = 'person' and s.attributes @> '{"archive_subject": true}'
+          order by ep.created_at limit 1
+        )`.as("subject_status"),
+      ])
+      .where("c.parent_id", "=", id.data)
+      .orderBy(sql`c.starts_on asc nulls last`)
+      .orderBy(sql`c.starts_at asc nulls last`)
+      .orderBy("c.created_at")
       .execute();
     // この出来事に紐付いた素材（ニュース・ブログなど）。投稿から、または投稿の中の素材から紐付いたもの
     const { rows: materials } = await sql<{
@@ -536,12 +673,32 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
         String(b.published_at ?? b.published_date ?? ""),
       ),
     );
+    // 中身の並び（セットリストの曲など）。素材が紐付いている行は、画面で外せないことを示す
+    const items = await db
+      .selectFrom("event_items as i")
+      .leftJoin("entities as iw", "iw.id", "i.work_id")
+      .select([
+        "i.id",
+        "i.position",
+        "i.item_type",
+        "i.work_id",
+        "iw.canonical_name as work_name",
+        "i.title",
+        sql<string | null>`i.attributes ->> 'note'`.as("note"),
+        sql<boolean>`exists (
+          select 1 from public.links l where l.to_type = 'event_item' and l.to_id = i.id
+        )`.as("linked"),
+      ])
+      .where("i.event_id", "=", id.data)
+      .orderBy("i.position")
+      .execute();
     const usage = await usageOf(db, id.data);
     const deletable = usage.links === 0 && usage.drafts === 0 && usage.children === 0;
     return c.json({
       event,
       participants,
       children,
+      items,
       materials,
       usage,
       can_delete: deletable && mayDelete(c.get("actor"), event.created_by),
@@ -559,6 +716,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
         .returning("id")
         .executeTakeFirstOrThrow();
       await syncParticipants(trx, row.id, input, userId);
+      await syncItems(trx, row.id, input);
       return row.id;
     });
     return c.json({ id }, 201);
@@ -588,6 +746,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
         .where("id", "=", id.data)
         .execute();
       await syncParticipants(trx, id.data, input, userId);
+      await syncItems(trx, id.data, input);
     });
     return c.json({ id: id.data });
   });

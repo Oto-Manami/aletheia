@@ -659,8 +659,17 @@ export class LiveSource implements ArchiveSource {
     );
   }
 
-  async listEvents(filter: { query?: string; kind?: string; from?: string; to?: string } = {}) {
+  async listEvents(
+    filter: {
+      query?: string;
+      kind?: string;
+      from?: string;
+      to?: string;
+      schedule?: "hide" | "include";
+    } = {},
+  ) {
     const params = new URLSearchParams({ limit: "200" });
+    if (filter.schedule === "hide") params.set("schedule", "hide");
     if (filter.query?.trim()) params.set("q", filter.query.trim());
     if (filter.kind) params.set("kind", filter.kind);
     if (filter.from) params.set("from", filter.from);
@@ -677,6 +686,9 @@ export class LiveSource implements ArchiveSource {
         eventType: r.event_type,
         title: r.title ?? "（題名なし）",
         parentId: r.parent_id,
+        parentTitle: r.parent_title ?? null,
+        part: r.part ?? null,
+        scheduleCount: r.schedule_count ?? 0,
         startsOn: r.starts_on,
         endsOn: r.ends_on,
         datePrecision: r.date_precision,
@@ -696,6 +708,7 @@ export class LiveSource implements ArchiveSource {
       usage,
       can_delete,
       materials,
+      items,
     } = await this.api<EventDetailResponse>("GET", `/events/${encodeURIComponent(id)}`);
     const attributes = e.attributes ?? {};
     const sources = Array.isArray(attributes["sources"])
@@ -710,6 +723,8 @@ export class LiveSource implements ArchiveSource {
       title: e.title ?? "",
       parentId: e.parent_id,
       parentTitle: e.parent_title,
+      parentKind: e.parent_kind ?? null,
+      part: typeof attributes["part"] === "string" ? attributes["part"] : null,
       workId: e.work_id,
       workName: e.work_name,
       venueId: e.venue_id,
@@ -734,7 +749,12 @@ export class LiveSource implements ArchiveSource {
         kind: c.kind,
         title: c.title ?? "（題名なし）",
         startsOn: c.starts_on,
+        endsOn: c.ends_on ?? null,
+        startsAt: c.starts_at ?? null,
         datePrecision: c.date_precision,
+        venueName: c.venue_name ?? null,
+        part: c.part ?? null,
+        subjectStatus: c.subject_status ?? null,
       })),
       createdAt: e.created_at,
       updatedAt: e.updated_at,
@@ -742,6 +762,15 @@ export class LiveSource implements ArchiveSource {
       updatedByName: e.updated_by_name,
       canDelete: can_delete,
       usage,
+      items: (items ?? []).map((i) => ({
+        id: i.id,
+        itemType: i.item_type,
+        workId: i.work_id,
+        workName: i.work_name,
+        title: i.title,
+        note: i.note,
+        linked: i.linked,
+      })),
       materials: materials.map((m) => ({
         postId: m.post_id,
         title: m.title,
@@ -764,6 +793,7 @@ export class LiveSource implements ArchiveSource {
       work_id: input.workId,
       venue_id: input.venueId,
       episode_number: input.episodeNumber,
+      part: input.part ?? null,
       starts_on: input.startsOn,
       ends_on: input.endsOn,
       date_precision: input.datePrecision,
@@ -777,6 +807,17 @@ export class LiveSource implements ArchiveSource {
         status: p.status,
         character_name: p.characterName,
       })),
+      ...(input.items
+        ? {
+            items: input.items.map((i) => ({
+              id: i.id,
+              item_type: i.itemType,
+              work_id: i.workId,
+              title: i.title,
+              note: i.note,
+            })),
+          }
+        : {}),
     };
     const path = id ? `/events/${encodeURIComponent(id)}` : "/events";
     const result = await this.api<{ id: string }>("POST", path, body);
@@ -881,6 +922,9 @@ interface EventRow {
   event_type: string | null;
   title: string | null;
   parent_id: string | null;
+  parent_title?: string | null;
+  part?: string | null;
+  schedule_count?: number;
   starts_on: string | null;
   ends_on: string | null;
   date_precision: string | null;
@@ -897,6 +941,7 @@ interface EventDetailResponse {
     title: string | null;
     parent_id: string | null;
     parent_title: string | null;
+    parent_kind?: string | null;
     work_id: string | null;
     work_name: string | null;
     venue_id: string | null;
@@ -921,12 +966,26 @@ interface EventDetailResponse {
     status: ParticipantStatus;
     character_name: string | null;
   }[];
+  items?: {
+    id: string;
+    item_type: string;
+    work_id: string | null;
+    work_name: string | null;
+    title: string | null;
+    note: string | null;
+    linked: boolean;
+  }[];
   children: {
     id: string;
     kind: string;
     title: string | null;
     starts_on: string | null;
+    ends_on?: string | null;
+    starts_at?: string | null;
     date_precision: string | null;
+    venue_name?: string | null;
+    part?: string | null;
+    subject_status?: ParticipantStatus | null;
   }[];
   usage: { links: number; drafts: number; children: number };
   can_delete: boolean;

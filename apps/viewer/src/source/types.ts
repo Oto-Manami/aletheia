@@ -246,6 +246,12 @@ export interface EventSummary {
   eventType: string | null;
   title: string;
   parentId: string | null;
+  /** まとまりの題名（日程のとき。候補に添える） */
+  parentTitle: string | null;
+  /** 部（1 部・昼公演など） */
+  part: string | null;
+  /** 日程の件数（まとまりのとき。設計書 決定記録 0034） */
+  scheduleCount: number;
   startsOn: string | null;
   endsOn: string | null;
   datePrecision: string | null;
@@ -273,6 +279,10 @@ export interface EventDetail {
   title: string;
   parentId: string | null;
   parentTitle: string | null;
+  /** まとまりの種類（日程かどうかを見分ける） */
+  parentKind: string | null;
+  /** 部（1 部・昼公演など。日程のとき） */
+  part: string | null;
   workId: string | null;
   workName: string | null;
   venueId: string | null;
@@ -291,7 +301,13 @@ export interface EventDetail {
     kind: string;
     title: string;
     startsOn: string | null;
+    endsOn: string | null;
+    startsAt: string | null;
     datePrecision: string | null;
+    venueName: string | null;
+    part: string | null;
+    /** 蓄積対象の人物の出演の状態 */
+    subjectStatus: ParticipantStatus | null;
   }[];
   createdAt: string;
   updatedAt: string;
@@ -303,6 +319,8 @@ export interface EventDetail {
   usage: { links: number; drafts: number; children: number };
   /** この出来事に紐付いた素材（ニュース・ブログなど。出典として見せる） */
   materials: EventMaterial[];
+  /** 中身の並び（セットリストの曲など） */
+  items: EventItemView[];
 }
 
 /** 出典の URL に当たる、取り込み済みの素材 */
@@ -315,6 +333,18 @@ export interface SourcePreview {
   channelName: string;
   publishedAt: string | null;
   publishedDate: string | null;
+}
+
+/** 出来事の中身の並びの 1 行（セットリストの曲など。設計書 決定記録 0034） */
+export interface EventItemView {
+  id: string;
+  itemType: string;
+  workId: string | null;
+  workName: string | null;
+  title: string | null;
+  note: string | null;
+  /** 素材が紐付いているか（紐付いている行は外せない） */
+  linked: boolean;
 }
 
 /** 出来事に紐付いた素材（投稿 1 件） */
@@ -340,6 +370,8 @@ export interface EventInput {
   workId: string | null;
   venueId: string | null;
   episodeNumber: number | null;
+  /** 部（日程のとき） */
+  part?: string | null;
   startsOn: string | null;
   endsOn: string | null;
   datePrecision: DatePrecision | null;
@@ -352,6 +384,14 @@ export interface EventInput {
     role: string;
     status: ParticipantStatus;
     characterName: string | null;
+  }[];
+  /** 中身の並び。送らなければ変えない */
+  items?: {
+    id: string | null;
+    itemType: string;
+    workId: string | null;
+    title: string | null;
+    note: string | null;
   }[];
 }
 
@@ -438,7 +478,14 @@ export interface ArchiveSource {
   /** 作業者・閲覧者を切り替える（運営者だけ。運営者は切り替えない） */
   setMemberRole(discordUserId: string, role: "worker" | "viewer"): Promise<void>;
   /** 出来事の一覧（日付の新しい順。題名・作品名で探す、種類・期間（JST の暦日）で絞る） */
-  listEvents(filter?: { query?: string; kind?: string; from?: string; to?: string }): Promise<{
+  /** schedule: hide で日程（まとまりの各日・各部）を出さない（設計書 決定記録 0034） */
+  listEvents(filter?: {
+    query?: string;
+    kind?: string;
+    from?: string;
+    to?: string;
+    schedule?: "hide" | "include";
+  }): Promise<{
     items: EventSummary[];
     total: number;
   }>;
