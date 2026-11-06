@@ -253,7 +253,7 @@ describe("振り分けの画面", () => {
     }
   });
 
-  it("ニュースは既にある出来事を選んで紐付け、出典として保存する。出来事はここでは作らない", async () => {
+  it("ニュースは関連が高そうな出来事を押して紐付け、出典として保存する", async () => {
     const user = userEvent.setup();
     const source = open();
     await screen.findByText("リハーサルの日");
@@ -263,17 +263,11 @@ describe("振り分けの画面", () => {
     expect(within(card).queryByRole("button", { name: "残す" })).toBeNull();
     await user.click(within(card).getByRole("button", { name: "出来事に紐付ける" }));
 
-    // 出来事はここでは作らない（設計書 決定記録 0030）
-    expect(within(card).queryByRole("group", { name: "出来事をその場で作る" })).toBeNull();
     const save = within(card).getByRole("button", { name: "紐付けて保存" });
     expect(save).toHaveProperty("disabled", true);
-    await user.type(
-      within(card).getByRole("searchbox", { name: "出来事を題名で探す" }),
-      "仮の時間",
-    );
-    await user.click(
-      await within(card).findByRole("button", { name: /ラジオ「仮の時間」第 12 回/ }),
-    );
+    // 題名の文字の重なりと日付の近さで、関連が高そうな出来事を先に出す（決定記録 0033）
+    const suggested = await within(card).findByRole("group", { name: "関連が高そうな出来事" });
+    await user.click(within(suggested).getByRole("button", { name: /ラジオ「仮の時間」第 12 回/ }));
     await waitFor(() => expect(save).toHaveProperty("disabled", false));
     await user.click(save);
     await waitFor(() => expect(cards()).toHaveLength(2));
@@ -292,5 +286,42 @@ describe("振り分けの画面", () => {
     // 出来事の画面の「紐付いている素材」に出る
     const event = await source.getEvent("e1000000-0000-4000-8000-000000000004");
     expect(event.materials.map((m) => m.title)).toContain(approved.title);
+  });
+
+  it("合う出来事が無ければ、ニュースの振り分けで題名・種類・日付だけ入れて作れる", async () => {
+    const user = userEvent.setup();
+    const source = open();
+    await screen.findByText("リハーサルの日");
+    await user.selectOptions(screen.getByLabelText("情報源"), "news");
+    await waitFor(() => expect(cards()).toHaveLength(3));
+    const card = cards().find((c) => c.textContent?.includes("「ミホンの番組」に見本 さくら"))!;
+    await user.click(within(card).getByRole("button", { name: "出来事に紐付ける" }));
+
+    // 探す欄に打った言葉で作る（ニュースの題名は自動では入れない）
+    const combo = within(card).getByRole("combobox", { name: "出来事を選ぶ・題名で探す" });
+    await user.type(combo, "ミホンの番組 11月2日の回");
+    await user.click(
+      await within(card).findByRole("option", { name: /「ミホンの番組 11月2日の回」で新しく作る/ }),
+    );
+    const quick = within(card).getByRole("group", { name: "出来事をその場で作る" });
+    expect(within(quick).getByLabelText<HTMLInputElement>("題名").value).toBe(
+      "ミホンの番組 11月2日の回",
+    );
+    await user.click(within(quick).getByRole("button", { name: "11/02" }));
+    await user.click(within(quick).getByRole("button", { name: "作って紐付ける" }));
+    expect(
+      await within(card).findByRole("button", { name: "ミホンの番組 11月2日の回 の紐付けを外す" }),
+    ).toBeTruthy();
+    expect(within(card).getByRole("link", { name: /出来事の画面で入れる/ })).toBeTruthy();
+
+    await user.click(within(card).getByRole("button", { name: "紐付けて保存" }));
+    await waitFor(() => expect(cards()).toHaveLength(2));
+    const { items } = await source.listEvents({ query: "ミホンの番組 11月2日の回" });
+    expect(items[0]).toMatchObject({
+      kind: "episode",
+      startsOn: "2026-11-02",
+      hasSources: true,
+      classification: "public",
+    });
   });
 });

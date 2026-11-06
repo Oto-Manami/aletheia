@@ -2859,7 +2859,8 @@ details.more[open] > summary {
 }
 
 .picker-option:hover,
-.picker-option:focus-visible {
+.picker-option:focus-visible,
+.picker-option.is-active {
   background: var(--subtle);
   outline: none;
 }
@@ -3193,7 +3194,37 @@ details.more[open] > summary {
   margin: 0;
 }
 
+/* 出来事を選ぶ欄（押すと候補が開き、打つと絞り込める。決定記録 0033） */
+.event-combo {
+  display: grid;
+  gap: 4px;
+}
+
+.event-combo-list {
+  margin-top: 2px;
+}
+
+.event-created {
+  margin: 0;
+  font-size: 13px;
+}
+
+.event-created a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--ink);
+}
+
+.quick-dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
 .event-create-open {
+  justify-self: start;
   display: inline-flex;
   align-items: center;
   gap: 3px;
