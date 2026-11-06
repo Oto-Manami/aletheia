@@ -1,0 +1,79 @@
+name: サーバーの更新
+
+# main への取り込みで、サーバー用の機械の API を最新にする（設計書 決定記録 0036。手順は ops/deploy/README.md）
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      migrations_applied:
+        description: 新しいマイグレーションの SQL を本番のデータベースに流し終えた
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: サーバーの API を最新にする
+    if: github.repository == 'Oto-Manami/aletheia'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: server
+    steps:
+      - name: 設定を確かめる
+        id: config
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -z "$HOST" ]; then
+            echo "::notice::サーバーの更新の設定（環境 server のシークレット）がまだ無いため、更新しません"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tailscale につなぐ
+        if: steps.config.outputs.ready == 'true'
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: サーバーを更新する
+        if: steps.config.outputs.ready == 'true'
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          APPLIED: ${{ inputs.migrations_applied }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          request=deploy
+          if [ "$APPLIED" = "true" ]; then request="deploy --migrations-applied"; fi
+          set +e
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "aletheia@$HOST" "$request" 2>&1 | tee result.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "### サーバーの更新"
+            echo '```'
+            cat result.txt
+            echo '```'
+            if [ "$status" = 3 ]; then
+              echo "SQL を流し終えたら、Actions の「サーバーの更新」→「Run workflow」で「新しいマイグレーションの SQL を本番のデータベースに流し終えた」に印を付けて動かし直してください。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm -f ~/.ssh/deploy_key
+          exit "$status"

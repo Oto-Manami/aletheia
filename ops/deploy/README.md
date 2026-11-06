@@ -1,0 +1,58 @@
+# サーバーの API を自動で更新する
+
+`main` にプルリクエストを取り込むと、GitHub Actions（`.github/workflows/deploy.yml`）がサーバー用の機械の API を最新にする（設計書 決定記録 0036）。
+
+1. 実行の間だけ、GitHub Actions の実行環境を Tailscale につなぐ（タグ `tag:ci`、使い捨て）
+2. 更新専用の鍵で、サーバーに SSH で入る。この鍵では `ops/deploy/server-deploy.sh` しか動かせない
+3. `server-deploy.sh` が `main` に早送りで合わせ、依存を入れ直し、API を再起動し、`/health` を確かめる
+
+## 新しいマイグレーションが含まれるとき
+
+データベースの構造が足りないまま新しい API を動かさないよう、**更新せずに止める**（実行は失敗の表示になり、流す SQL のファイルが実行の結果に出る）。
+
+1. 表示されたファイルの SQL を、Supabase の SQL エディタで本番のデータベースに流す（列挙型に値を足すファイルは、ほかと分けて先に流す）
+2. GitHub の Actions →「サーバーの更新」→「Run workflow」で、「新しいマイグレーションの SQL を本番のデータベースに流し終えた」に印を付けて動かす
+
+## 最初の設定（運営者が 1 回だけ行う）
+
+鍵の値は、リポジトリ・チャットのどこにも書かない。
+
+### 1. Tailscale
+
+管理画面の Access controls で、`tag:ci` を作り、`tag:ci` からはサーバーの SSH（22 番）だけに届くようにする。
+
+```jsonc
+"tagOwners": { "tag:ci": ["autogroup:admin"] },
+"grants": [
+  // 既にある決まりはそのまま残し、これを足す
+  { "src": ["tag:ci"], "dst": ["<サーバーの機械の名前>"], "ip": ["tcp:22"] }
+]
+```
+
+Settings → OAuth clients で、書き込みの範囲 `auth_keys`・タグ `tag:ci` の OAuth クライアントを作る。
+
+### 2. サーバー（ユーザー `aletheia`）
+
+更新専用の鍵を作り、`authorized_keys` に、このスクリプトしか動かせない形で足す。
+
+```sh
+ssh-keygen -t ed25519 -N "" -C github-actions-deploy -f ~/deploy_key
+echo "command=\"$HOME/aletheia/ops/deploy/server-deploy.sh\",restrict $(cat ~/deploy_key.pub)" >> ~/.ssh/authorized_keys
+cat ~/deploy_key   # 次の 3 で GitHub に貼る。貼ったら消す
+rm ~/deploy_key ~/deploy_key.pub
+```
+
+### 3. GitHub
+
+Settings → Environments で環境 `server` を作り、Deployment branches を `main` だけにして、次のシークレットを入れる。
+
+| シークレット                             | 中身                                                                                  |
+| ---------------------------------------- | ------------------------------------------------------------------------------------- |
+| `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` | 1 で作った OAuth クライアント                                                         |
+| `DEPLOY_HOST`                            | サーバーの tailnet の中での名前（MagicDNS の名前）                                    |
+| `DEPLOY_SSH_KEY`                         | 2 で作った鍵（秘密鍵の中身すべて）                                                    |
+| `DEPLOY_KNOWN_HOSTS`                     | tailnet の中の機械で `ssh-keyscan -t ed25519 <DEPLOY_HOST と同じ名前>` を実行した結果 |
+
+### 4. 試す
+
+Actions →「サーバーの更新」→「Run workflow」で動かし、「変わっていません」か「更新しました」が出れば動いている。シークレットが無いあいだは、何もせずに終わる。
