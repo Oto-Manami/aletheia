@@ -708,6 +708,7 @@ export class LiveSource implements ArchiveSource {
       usage,
       can_delete,
       materials,
+      items,
     } = await this.api<EventDetailResponse>("GET", `/events/${encodeURIComponent(id)}`);
     const attributes = e.attributes ?? {};
     const sources = Array.isArray(attributes["sources"])
@@ -761,6 +762,15 @@ export class LiveSource implements ArchiveSource {
       updatedByName: e.updated_by_name,
       canDelete: can_delete,
       usage,
+      items: (items ?? []).map((i) => ({
+        id: i.id,
+        itemType: i.item_type,
+        workId: i.work_id,
+        workName: i.work_name,
+        title: i.title,
+        note: i.note,
+        linked: i.linked,
+      })),
       materials: materials.map((m) => ({
         postId: m.post_id,
         title: m.title,
@@ -797,6 +807,17 @@ export class LiveSource implements ArchiveSource {
         status: p.status,
         character_name: p.characterName,
       })),
+      ...(input.items
+        ? {
+            items: input.items.map((i) => ({
+              id: i.id,
+              item_type: i.itemType,
+              work_id: i.workId,
+              title: i.title,
+              note: i.note,
+            })),
+          }
+        : {}),
     };
     const path = id ? `/events/${encodeURIComponent(id)}` : "/events";
     const result = await this.api<{ id: string }>("POST", path, body);
@@ -944,6 +965,15 @@ interface EventDetailResponse {
     role: string;
     status: ParticipantStatus;
     character_name: string | null;
+  }[];
+  items?: {
+    id: string;
+    item_type: string;
+    work_id: string | null;
+    work_name: string | null;
+    title: string | null;
+    note: string | null;
+    linked: boolean;
   }[];
   children: {
     id: string;

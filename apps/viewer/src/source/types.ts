@@ -319,6 +319,8 @@ export interface EventDetail {
   usage: { links: number; drafts: number; children: number };
   /** この出来事に紐付いた素材（ニュース・ブログなど。出典として見せる） */
   materials: EventMaterial[];
+  /** 中身の並び（セットリストの曲など） */
+  items: EventItemView[];
 }
 
 /** 出典の URL に当たる、取り込み済みの素材 */
@@ -331,6 +333,18 @@ export interface SourcePreview {
   channelName: string;
   publishedAt: string | null;
   publishedDate: string | null;
+}
+
+/** 出来事の中身の並びの 1 行（セットリストの曲など。設計書 決定記録 0034） */
+export interface EventItemView {
+  id: string;
+  itemType: string;
+  workId: string | null;
+  workName: string | null;
+  title: string | null;
+  note: string | null;
+  /** 素材が紐付いているか（紐付いている行は外せない） */
+  linked: boolean;
 }
 
 /** 出来事に紐付いた素材（投稿 1 件） */
@@ -370,6 +384,14 @@ export interface EventInput {
     role: string;
     status: ParticipantStatus;
     characterName: string | null;
+  }[];
+  /** 中身の並び。送らなければ変えない */
+  items?: {
+    id: string | null;
+    itemType: string;
+    workId: string | null;
+    title: string | null;
+    note: string | null;
   }[];
 }
 

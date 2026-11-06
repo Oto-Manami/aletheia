@@ -401,6 +401,88 @@ describe("出来事を作る・直す", () => {
       expect(detail.children[0]).toMatchObject({ part: "昼公演", subject_status: "scheduled" });
     }));
 
+  it("中身の並び（セットリスト）を送った並びに合わせる。素材が紐付いた行は外せない", () =>
+    withApi(async (ctx) => {
+      const song = await json<{ id: string }>(
+        ctx.call("POST", "/entities", {
+          type: "work",
+          subtype: "song",
+          canonical_name: "試験の曲",
+          classification: "public",
+        }),
+      );
+      const performance = await json<{ id: string }>(
+        ctx.call("POST", "/events", {
+          ...base,
+          kind: "performance",
+          title: "試験のライブ 12/1",
+          items: [
+            { item_type: "song", work_id: song.id, note: "1 曲目" },
+            { item_type: "song", title: "架空の曲" },
+          ],
+        }),
+      );
+      type Item = {
+        id: string;
+        position: number;
+        title: string | null;
+        work_name: string | null;
+        note: string | null;
+      };
+      const read = async () =>
+        (await json<{ items: Item[] }>(ctx.call("GET", `/events/${performance.id}`))).items;
+      const first = await read();
+      expect(first.map((i) => [i.position, i.work_name ?? i.title, i.note])).toEqual([
+        [1, "試験の曲", "1 曲目"],
+        [2, "架空の曲", null],
+      ]);
+
+      // 並べ替え・足す・外す
+      const save = (items: unknown[]) =>
+        ctx.call("POST", `/events/${performance.id}`, {
+          ...base,
+          kind: "performance",
+          title: "試験のライブ 12/1",
+          items,
+        });
+      expect(
+        (
+          await save([
+            { id: first[1]!.id, item_type: "song", title: "架空の曲" },
+            { item_type: "song", title: "アンコールの曲", note: "アンコール" },
+          ])
+        ).status,
+      ).toBe(200);
+      const second = await read();
+      expect(second.map((i) => i.title ?? i.work_name)).toEqual(["架空の曲", "アンコールの曲"]);
+      expect(second[0]!.id).toBe(first[1]!.id);
+
+      // 送らなければ変えない
+      await ctx.call("POST", `/events/${performance.id}`, {
+        ...base,
+        kind: "performance",
+        title: "試験のライブ 12/1",
+      });
+      expect((await read()).length).toBe(2);
+
+      // 素材が紐付いた行は外せない
+      const { rows: post } = await ctx.c.query<{ id: string }>(
+        `with ch as (
+           insert into public.channels (key, name, kind, availability, item_unit, classification)
+           values ('web:test_items', '試験の情報源', 'web', 'free', 'post', 'public') returning id
+         )
+         insert into public.posts (channel_id, external_id, classification)
+         select id, 'I0001', 'public' from ch returning id`,
+      );
+      await ctx.c.query(
+        `insert into public.links (from_type, from_id, to_type, to_id, role, classification)
+         values ('post', $1, 'event_item', $2, 'part_of', 'public')`,
+        [post[0]!.id, second[0]!.id],
+      );
+      const res = await save([{ id: second[1]!.id, item_type: "song", title: "アンコールの曲" }]);
+      expect(res.status).toBe(409);
+    }));
+
   it("出典の URL の見出しを、取り込み済みの素材（保存済み・振り分け待ち）から返す。外には取りに行かない", () =>
     withApi(async (ctx) => {
       const token = await participant(ctx);

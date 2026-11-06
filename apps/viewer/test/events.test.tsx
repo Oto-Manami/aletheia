@@ -233,6 +233,39 @@ describe("出来事", () => {
     expect(screen.getByRole("link", { name: /紐付いている素材 \d+ 件/ })).toBeTruthy();
   });
 
+  it("日程にセットリストを入れられる。曲はその場で作れ、並べ替え・メモ・外すができる", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/events/e1000000-0000-4000-8000-000000000011");
+    await screen.findByRole("heading", { name: "日程を直す" });
+    expect(screen.getByRole("heading", { name: "セットリスト" })).toBeTruthy();
+
+    for (const name of ["試験の曲 A", "試験の曲 B"]) {
+      await user.type(screen.getByLabelText("曲を足す"), name);
+      await user.click(await screen.findByRole("button", { name: `「${name}」を新しく作る` }));
+      const create = screen.getByRole("group", { name: `「${name}」を作る` });
+      await user.click(within(create).getByRole("radio", { name: "公開" }));
+      await user.click(within(create).getByRole("button", { name: "作って選ぶ" }));
+      await within(screen.getByRole("list", { name: "セットリスト" })).findByText(name);
+    }
+    await user.click(screen.getByRole("button", { name: "試験の曲 B を上へ" }));
+    await user.type(screen.getByLabelText("試験の曲 A のメモ"), "アンコール");
+    await user.click(screen.getByRole("button", { name: "直す" }));
+    expect(await screen.findByText("直しました")).toBeTruthy();
+
+    const saved = await source.getEvent("e1000000-0000-4000-8000-000000000011");
+    expect(saved.items.map((i) => [i.workName, i.note])).toEqual([
+      ["試験の曲 B", null],
+      ["試験の曲 A", "アンコール"],
+    ]);
+
+    // まとまりには、全日程で共通の曲として入れる
+    cleanup();
+    open("/events/e1000000-0000-4000-8000-000000000003");
+    expect(
+      await screen.findByRole("heading", { name: "セットリスト（全日程で共通の曲）" }),
+    ).toBeTruthy();
+  });
+
   it("閲覧者は出来事を見られるが、作る・直す・消すはできない", async () => {
     const reader: Viewer = { ...member, canWork: false };
     open("/events/e1000000-0000-4000-8000-000000000011", reader);

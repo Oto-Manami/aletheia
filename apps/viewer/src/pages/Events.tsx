@@ -1,6 +1,14 @@
 // 出来事の一覧と、作る・直す画面（設計書 決定記録 0027）
 
-import { CalendarPlus, ChevronLeft, ExternalLink, Plus, X } from "lucide-react";
+import {
+  CalendarPlus,
+  ChevronDown,
+  ChevronLeft,
+  ChevronUp,
+  ExternalLink,
+  Plus,
+  X,
+} from "lucide-react";
 import { type KeyboardEvent, useEffect, useId, useState } from "react";
 import {
   Link,
@@ -211,6 +219,20 @@ interface Row {
   auto: boolean;
 }
 
+/** セットリストの 1 行（画面の中だけの key を持つ） */
+interface ItemRow {
+  key: string;
+  id: string | null;
+  workId: string | null;
+  label: string;
+  note: string;
+  /** 素材が紐付いている（外せない） */
+  linked: boolean;
+}
+
+/** セットリストを入れる種類（設計書 決定記録 0034。まとまりには全日程で共通の曲） */
+const SETLIST_KINDS = new Set(["live", "performance"]);
+
 interface FormState {
   kind: string;
   eventType: string;
@@ -228,6 +250,7 @@ interface FormState {
   parent: Picked | null;
   rows: Row[];
   sources: string[];
+  items: ItemRow[];
 }
 
 /** 種類ごとの、蓄積対象の人物の役割の初めの値 */
@@ -292,6 +315,7 @@ function emptyForm(subjects: RefLabel[], parent: Picked | null): FormState {
       auto: true,
     })),
     sources: [""],
+    items: [],
   };
 }
 
@@ -324,6 +348,14 @@ function formOf(e: EventDetail, subjects: RefLabel[]): FormState {
       auto: false,
     })),
     sources: e.sources.length > 0 ? e.sources.map((s) => s.url) : [""],
+    items: e.items.map((i) => ({
+      key: rowKey(),
+      id: i.id,
+      workId: i.workId,
+      label: i.workName ?? i.title ?? "（題名なし）",
+      note: i.note ?? "",
+      linked: i.linked,
+    })),
   };
 }
 
@@ -381,6 +413,18 @@ function toInput(f: FormState): { input: EventInput } | { problems: string[] } {
         status: r.status,
         characterName: r.role === "cast" && r.characterName.trim() ? r.characterName.trim() : null,
       })),
+      // セットリストを入れる種類のときだけ送る（ほかの種類の中身の並びは変えない）
+      ...(SETLIST_KINDS.has(f.kind)
+        ? {
+            items: f.items.map((i) => ({
+              id: i.id,
+              itemType: "song",
+              workId: i.workId,
+              title: i.workId ? null : i.label,
+              note: i.note.trim() || null,
+            })),
+          }
+        : {}),
     },
   };
 }
@@ -780,6 +824,14 @@ function EventForm({
           />
         )}
 
+        {SETLIST_KINDS.has(f.kind) && (
+          <Setlist
+            items={f.items}
+            common={f.kind === "live"}
+            onChange={(items) => set({ items })}
+          />
+        )}
+
         <section className="editor-section" aria-labelledby={`${formId}-who`}>
           <h2 id={`${formId}-who`}>出演</h2>
           {f.rows.length === 0 && <p className="quiet">出演はまだ付いていません。</p>}
@@ -959,6 +1011,114 @@ function EventForm({
         </div>
       )}
     </form>
+  );
+}
+
+/**
+ * セットリスト（中身の並び。設計書 決定記録 0034）。曲を選んで足し、上下で並べ替える。素材が紐付いている
+ * 行（誌面のスキャン → 記事など）は外せない
+ */
+function Setlist({
+  items,
+  common,
+  onChange,
+}: {
+  items: ItemRow[];
+  /** まとまり（全日程で共通の曲）か */
+  common: boolean;
+  onChange: (items: ItemRow[]) => void;
+}) {
+  const id = useId();
+  const move = (index: number, by: number) => {
+    const next = [...items];
+    const [row] = next.splice(index, 1);
+    next.splice(index + by, 0, row!);
+    onChange(next);
+  };
+  return (
+    <section className="editor-section" aria-labelledby={`${id}-setlist`}>
+      <h2 id={`${id}-setlist`}>セットリスト{common ? "（全日程で共通の曲）" : ""}</h2>
+      {common && (
+        <p className="field-hint">日ごとに違う曲は、日程を開いてそちらに入れてください。</p>
+      )}
+      {items.length === 0 ? (
+        <p className="quiet">まだ曲がありません。</p>
+      ) : (
+        <ol className="setlist" aria-label="セットリスト">
+          {items.map((row, index) => (
+            <li key={row.key} className="setlist-row">
+              <span className="setlist-no">{index + 1}</span>
+              <span className="setlist-name">{row.label}</span>
+              <label className="visually-hidden" htmlFor={`${row.key}-note`}>
+                {row.label} のメモ
+              </label>
+              <input
+                id={`${row.key}-note`}
+                className="setlist-note"
+                value={row.note}
+                placeholder="メモ（アンコールなど）"
+                onChange={(e) =>
+                  onChange(
+                    items.map((r) => (r.key === row.key ? { ...r, note: e.target.value } : r)),
+                  )
+                }
+              />
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`${row.label} を上へ`}
+                disabled={index === 0}
+                onClick={() => move(index, -1)}
+              >
+                <ChevronUp size={16} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`${row.label} を下へ`}
+                disabled={index === items.length - 1}
+                onClick={() => move(index, 1)}
+              >
+                <ChevronDown size={16} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`${row.label} を外す`}
+                title={row.linked ? "素材が紐付いているため外せません" : undefined}
+                disabled={row.linked}
+                onClick={() => onChange(items.filter((r) => r.key !== row.key))}
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+      <EntityPicker
+        label="曲を足す"
+        types={["work"]}
+        createType="work"
+        defaultSubtype="song"
+        value={null}
+        addMode
+        exclude={[]}
+        onChange={(picked) => {
+          if (!picked) return;
+          onChange([
+            ...items,
+            {
+              key: rowKey(),
+              id: null,
+              workId: picked.id,
+              label: picked.label,
+              note: "",
+              linked: false,
+            },
+          ]);
+        }}
+      />
+    </section>
   );
 }
 

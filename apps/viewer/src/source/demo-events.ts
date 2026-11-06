@@ -104,6 +104,7 @@ function event(
     canDelete: true,
     usage: { links: 0, drafts: 0, children: 0 },
     materials: [],
+    items: [],
     ...partial,
   };
 }
@@ -311,6 +312,20 @@ export class DemoEvents {
         ? (this.events.find((x) => x.id === input.parentId)?.kind ?? null)
         : null,
       part: input.part?.trim() || null,
+      items: input.items
+        ? input.items.map((i) => {
+            const before = current?.items.find((x) => x.id === i.id);
+            return {
+              id: i.id ?? this.nextId("e3000000"),
+              itemType: i.itemType,
+              workId: i.workId,
+              workName: this.nameOf(i.workId),
+              title: i.title,
+              note: i.note,
+              linked: before?.linked ?? false,
+            };
+          })
+        : (current?.items ?? []),
       workId: input.workId,
       workName: this.nameOf(input.workId),
       venueId: input.venueId,
