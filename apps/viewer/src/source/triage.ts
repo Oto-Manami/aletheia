@@ -179,6 +179,54 @@ export function withAppears(draft: DraftInput, appears: Record<string, boolean>)
   };
 }
 
+/**
+ * 公式サイトのニュースを出来事に紐付けて保存するときの下書き（設計書 決定記録 0035）。
+ * 選んだ画像（本人が写っている）だけを素材として残し、本人に「写っている」、紐付けた出来事に about で
+ * つなぐ。選ばなかった画像は素材から外す（記事のページの中には残る）
+ */
+export function newsDraftWithImages(
+  draft: DraftInput,
+  appears: Record<string, boolean>,
+): DraftInput {
+  const decided = withAppears(draft, appears);
+  const links = decided.links ?? [];
+  const assetOf = (l: (typeof links)[number]) =>
+    typeof l.from === "object" && "asset" in l.from ? l.from.asset : null;
+  const images = (decided.assets ?? []).filter((a) => a.media_type === "image").map((a) => a.ref);
+  const picked = new Set(
+    images.filter((ref) =>
+      links.some((l) => l.role === "appears" && assetOf(l) === ref && l.accepted !== false),
+    ),
+  );
+  const dropped = new Set(images.filter((ref) => !picked.has(ref)));
+  const events = links
+    .filter(
+      (l) =>
+        l.from === "post" && l.to_type === "event" && l.role === "about" && l.accepted !== false,
+    )
+    .map((l) => l.to_id);
+  return {
+    ...decided,
+    assets: (decided.assets ?? []).filter((a) => !dropped.has(a.ref)),
+    links: [
+      ...links.filter((l) => {
+        const ref = assetOf(l);
+        return ref === null || !dropped.has(ref);
+      }),
+      ...[...picked].flatMap((ref) =>
+        events.map((eventId) => ({
+          from: { asset: ref },
+          to_type: "event" as const,
+          to_id: eventId,
+          role: "about",
+          origin: "human" as const,
+          confidence: 1,
+        })),
+      ),
+    ],
+  };
+}
+
 /** 一覧の絞り込みの条件に当てはまるか（デモ版・画面で処理した分の件数の調整に使う） */
 export function matchesMention(item: TriageItem, filter: TriageMentionFilter): boolean {
   const s = item.subjectMentions > 0;

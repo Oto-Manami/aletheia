@@ -67,6 +67,8 @@ export async function stageFile(
 export interface FileReport {
   stored: number;
   duplicates: number;
+  /** 下書きの素材に無かった（振り分けで選ばなかった画像など）ので、却下の場所へ移した数 */
+  unselected?: number;
   failed: { storage_key: string; error: string }[];
 }
 
@@ -107,6 +109,7 @@ export async function finalizeApprovedFiles(
       "a.position",
       "a.sha256",
       "a.classification",
+      "a.file_policy",
       eb
         .exists(
           eb
@@ -118,8 +121,6 @@ export async function finalizeApprovedFiles(
         .as("has_original"),
     ])
     .where("a.post_id", "=", postId)
-    // 記録だけの素材（同じファイルを別の素材が保存している）には、ファイルを置かない
-    .where("a.file_policy", "=", "stored")
     .where(
       "a.sha256",
       "in",
@@ -129,12 +130,22 @@ export async function finalizeApprovedFiles(
 
   for (const file of staged) {
     try {
-      const asset = assets.find((a) => a.sha256 === file.sha256 && !a.has_original);
+      // 記録だけの素材（同じファイルを別の素材が保存している）には、ファイルを置かない
+      const asset = assets.find(
+        (a) => a.sha256 === file.sha256 && a.file_policy === "stored" && !a.has_original,
+      );
       if (!asset) {
-        // 既に同じファイルが保存されている
         const place = rejectedLocation(intake.route, file.staged_name);
-        await files.move(file.storage_key, place.folder, `duplicate_${place.name}`);
-        report.duplicates++;
+        if (assets.some((a) => a.sha256 === file.sha256)) {
+          // 既に同じファイルが保存されている
+          await files.move(file.storage_key, place.folder, `duplicate_${place.name}`);
+          report.duplicates++;
+        } else {
+          // 下書きの素材に無い（ニュースの振り分けで選ばなかった画像など。設計書 決定記録 0035）。
+          // 削除はせず、却下の場所へ移す
+          await files.move(file.storage_key, place.folder, `unselected_${place.name}`);
+          report.unselected = (report.unselected ?? 0) + 1;
+        }
         continue;
       }
       const place = finalLocation({
