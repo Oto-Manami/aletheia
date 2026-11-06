@@ -143,13 +143,16 @@ export interface Viewer {
   name: string;
   /** 閲覧サイトの利用者として登録されているか（登録が無ければ何も見えない） */
   isMember: boolean;
-  /** 承認の画面を使えるか */
+  /** 運営者か（利用者管理・言及の印の付け直し） */
   isAdmin: boolean;
+  /** 作業者か運営者か（承認・振り分け・出来事を作る・直す）。閲覧者は見るだけ（決定記録 0032） */
+  canWork: boolean;
   /** 登録が無い人に、運営者へ伝える ID として見せる */
   discordUserId: string | null;
 }
 
-export type Role = "admin" | "viewer";
+/** 閲覧サイトの役割: 運営者・作業者・閲覧者（設計書 決定記録 0032） */
+export type Role = "admin" | "worker" | "viewer";
 /** 招待の状態: 未使用・使用済み・取り消し・期限切れ */
 export type InviteState = "open" | "used" | "revoked" | "expired";
 
@@ -432,6 +435,8 @@ export interface ArchiveSource {
   listMembers(): Promise<MemberView[]>;
   /** 閲覧者を外す（管理者は外せない） */
   removeMember(discordUserId: string): Promise<void>;
+  /** 作業者・閲覧者を切り替える（運営者だけ。運営者は切り替えない） */
+  setMemberRole(discordUserId: string, role: "worker" | "viewer"): Promise<void>;
   /** 出来事の一覧（日付の新しい順。題名・作品名で探す、種類・期間（JST の暦日）で絞る） */
   listEvents(filter?: { query?: string; kind?: string; from?: string; to?: string }): Promise<{
     items: EventSummary[];

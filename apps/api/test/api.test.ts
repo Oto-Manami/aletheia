@@ -51,15 +51,36 @@ describe("認証", () => {
       expect((await call("GET", "/intake", undefined, "wrong-token")).status).toBe(401);
     }));
 
-  it("参加者（管理者・招待で登録した人）は使え、登録の無い人は使えない", () =>
+  it("利用者（運営者・作業者・閲覧者）は見られ、登録の無い人は使えない。閲覧者は変更できない", () =>
     withApi(async ({ c, call }) => {
+      const d = await seed(c);
       const admin = await discordUser(c, "11111111-1111-4111-8111-111111111111", "admin");
       const viewer = await discordUser(c, "22222222-2222-4222-8222-222222222222", "viewer");
+      const worker = await discordUser(c, "44444444-4444-4444-8444-444444444444", "worker");
       const stranger = "33333333-3333-4333-8333-333333333333";
 
-      expect((await call("GET", "/intake", undefined, await tokenFor(admin))).status).toBe(200);
-      expect((await call("GET", "/intake", undefined, await tokenFor(viewer))).status).toBe(200);
+      for (const user of [admin, worker, viewer]) {
+        expect((await call("GET", "/intake", undefined, await tokenFor(user))).status).toBe(200);
+      }
       expect((await call("GET", "/intake", undefined, await tokenFor(stranger))).status).toBe(403);
+
+      // 閲覧者は見るだけ（決定記録 0032）
+      const created = await call("POST", "/intake", newIntake(d));
+      const { id } = (await created.json()) as { id: string };
+      const asViewer = await tokenFor(viewer);
+      for (const [path, body] of [
+        [`/intake/${id}/approve`, {}],
+        [`/intake/${id}/hold`, {}],
+        ["/events", { kind: "episode", title: "試験の回", participants: [] }],
+        ["/entities", { type: "work", canonical_name: "試験の番組", classification: "public" }],
+      ] as const) {
+        const res = await call("POST", path, body, asViewer);
+        expect(res.status).toBe(403);
+        expect(((await res.json()) as { error: string }).error).toContain("閲覧者は見るだけです");
+      }
+      expect((await call("POST", `/intake/${id}/hold`, {}, await tokenFor(worker))).status).toBe(
+        200,
+      );
     }));
 
   it("Discord 以外でログインした人は、同じ ID の管理者がいても使えない", () =>

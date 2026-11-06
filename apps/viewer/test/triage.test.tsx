@@ -11,7 +11,13 @@ import type { Viewer } from "../src/source/types.ts";
 
 afterEach(cleanup);
 
-const admin: Viewer = { name: "試験 運営者", isMember: true, isAdmin: true, discordUserId: null };
+const admin: Viewer = {
+  name: "試験 運営者",
+  isMember: true,
+  isAdmin: true,
+  canWork: true,
+  discordUserId: null,
+};
 
 function open(viewer: Viewer = admin, source = new DemoSource(0)) {
   const router = createMemoryRouter(routes, { initialEntries: ["/triage"] });
@@ -79,15 +85,6 @@ describe("振り分けの画面", () => {
     // チェックの箱そのものでも選べる（二重に切り替わらない）
     await user.click(box);
     expect(box.checked).toBe(true);
-  });
-
-  it("言及なしを選べない参加者は、記事を押しても何も選ばない", async () => {
-    const user = userEvent.setup();
-    open({ ...admin, isAdmin: false });
-    await screen.findByText("リハーサルの日");
-    const card = cards().find((c) => c.textContent?.includes("リハーサルの日"))!;
-    await user.click(card.querySelector(".triage-snippet") ?? card);
-    expect(card.className).not.toContain("is-selected");
   });
 
   it("言及も写真の選択も無いものを選び、まとめて言及なしにできる", async () => {
@@ -235,21 +232,25 @@ describe("振り分けの画面", () => {
     await waitFor(() => expect(cards()[0]?.textContent).toContain("新しいシングルの発売が決定"));
   });
 
-  it("参加者は残せるが、言及なしは運営者だけが選べる", async () => {
-    open({ ...admin, isAdmin: false });
+  it("作業者は、残すも言及なしも選べる（運営者でなくてよい）", async () => {
+    open({ ...admin, isAdmin: false, canWork: true });
     const list = await screen.findByRole("list", { name: "振り分け待ちの記事" });
     expect(within(list).getAllByRole("button", { name: "残す" }).length).toBeGreaterThan(0);
-    expect(within(list).queryByRole("button", { name: "言及なし" })).toBeNull();
-    expect(screen.getByText(/「言及なし」は運営者が判断します/)).toBeTruthy();
+    expect(within(list).getAllByRole("button", { name: "言及なし" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" })).toBeTruthy();
   });
 
-  it("参加者として登録されていない人には、振り分けの画面もメニューも出さない", async () => {
-    open({ ...admin, isAdmin: false, isMember: false });
-    expect(
-      await screen.findByText("振り分けの画面は、参加者として登録された人だけが使えます。"),
-    ).toBeTruthy();
-    const nav = screen.getByRole("navigation", { name: "画面" });
-    expect(within(nav).queryByRole("link", { name: /振り分け/ })).toBeNull();
+  it("閲覧者と、登録されていない人には、振り分けの画面もメニューも出さない", async () => {
+    for (const viewer of [
+      { ...admin, isAdmin: false, canWork: false },
+      { ...admin, isAdmin: false, canWork: false, isMember: false },
+    ]) {
+      open(viewer);
+      expect(await screen.findByText(/振り分けの画面は、作業者と運営者が使えます。/)).toBeTruthy();
+      const nav = screen.getByRole("navigation", { name: "画面" });
+      expect(within(nav).queryByRole("link", { name: /振り分け/ })).toBeNull();
+      cleanup();
+    }
   });
 
   it("ニュースは既にある出来事を選んで紐付け、出典として保存する。出来事はここでは作らない", async () => {

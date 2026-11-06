@@ -10,7 +10,13 @@ import type { Viewer } from "../src/source/types.ts";
 
 afterEach(cleanup);
 
-const member: Viewer = { name: "試験 参加者", isMember: true, isAdmin: false, discordUserId: null };
+const member: Viewer = {
+  name: "試験 参加者",
+  isMember: true,
+  isAdmin: false,
+  canWork: true,
+  discordUserId: null,
+};
 
 function open(viewer: Viewer = member, path = "/assets") {
   const source = new DemoSource(0);

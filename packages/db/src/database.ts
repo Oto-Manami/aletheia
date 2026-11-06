@@ -6,7 +6,7 @@
 import type { ColumnType } from "kysely";
 import type { IPostgresInterval } from "postgres-interval";
 
-export type AppRole = "admin" | "viewer";
+export type AppRole = "admin" | "viewer" | "worker";
 
 export type Availability = "free" | "mixed" | "paid";
 

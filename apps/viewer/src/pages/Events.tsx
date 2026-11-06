@@ -84,10 +84,12 @@ export function EventsPage() {
               {list.status === "ready" && ` — 全 ${list.data.total.toLocaleString("ja-JP")} 件`}
             </p>
           </div>
-          <Link to={keep("/events/new")} className="button primary">
-            <CalendarPlus size={16} aria-hidden="true" />
-            作る
-          </Link>
+          {viewer.canWork && (
+            <Link to={keep("/events/new")} className="button primary">
+              <CalendarPlus size={16} aria-hidden="true" />
+              作る
+            </Link>
+          )}
         </div>
         <div className="events-filter">
           <label className="visually-hidden" htmlFor="events-q">
@@ -172,6 +174,7 @@ function EventRow({ event: e, to }: { event: EventSummary; to: string }) {
 }
 
 export function EventsEmpty() {
+  const { viewer } = useApp();
   // 出来事を消したあとは、その知らせを出す
   const location = useLocation();
   const notice = (location.state as { notice?: string } | null)?.notice ?? null;
@@ -183,7 +186,9 @@ export function EventsEmpty() {
         </p>
       )}
       <div className="split-empty">
-        左の一覧から出来事を選ぶか、「作る」から新しく記録してください。
+        {viewer.canWork
+          ? "左の一覧から出来事を選ぶか、「作る」から新しく記録してください。"
+          : "左の一覧から出来事を選んでください。"}
       </div>
     </>
   );
@@ -376,7 +381,7 @@ function toInput(f: FormState): { input: EventInput } | { problems: string[] } {
 export function EventEditPage() {
   const { id } = useParams();
   const isNew = !id || id === "new";
-  const { source } = useApp();
+  const { source, viewer } = useApp();
   const layout = useLayout();
   const [params] = useSearchParams();
   const parentId = params.get("parent");
@@ -402,6 +407,10 @@ export function EventEditPage() {
       ? saved.text
       : ((location.state as { notice?: string } | null)?.notice ?? null);
 
+  // 閲覧者は見るだけ（決定記録 0032）
+  if (isNew && !viewer.canWork) {
+    return <p className="split-empty">出来事を作れるのは、作業者と運営者です。</p>;
+  }
   if (loaded.status === "loading") return <p className="quiet">読み込んでいます</p>;
   if (loaded.status === "error") {
     return (
@@ -440,7 +449,9 @@ function EventForm({
   initial: FormState;
   onSaved: (notice: string) => void;
 }) {
-  const { source } = useApp();
+  const { source, viewer } = useApp();
+  // 閲覧者は見るだけ。直す欄は出すが触れず、保存・消すのボタンは出さない（決定記録 0032）
+  const readOnly = !viewer.canWork;
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const formId = useId();
@@ -513,7 +524,7 @@ function EventForm({
           一覧に戻る
         </Link>
         <h2 id={`${formId}-title`} className="column-title">
-          {detail ? "出来事を直す" : "出来事を作る"}
+          {readOnly ? "出来事" : detail ? "出来事を直す" : "出来事を作る"}
         </h2>
         {detail && (
           <p className="quiet event-stamp">
@@ -530,7 +541,10 @@ function EventForm({
         )}
       </div>
 
-      <fieldset className="editor" disabled={busy}>
+      {readOnly && (
+        <p className="quiet event-readonly">閲覧者は見るだけです。直すのは作業者・運営者です。</p>
+      )}
+      <fieldset className="editor" disabled={busy || readOnly}>
         <section className="editor-section">
           <div className="field-row">
             <div className="field grow">
@@ -717,7 +731,7 @@ function EventForm({
               </ul>
             </div>
           )}
-          {detail && (
+          {detail && !readOnly && (
             <Link to={`/events/new?parent=${detail.id}`} className="link-button event-add-child">
               この出来事の下に作る（各公演・各回など）
             </Link>
@@ -889,23 +903,25 @@ function EventForm({
           {message.text}
         </p>
       )}
-      <div className="event-form-actions">
-        {detail && <DeleteEvent detail={detail} />}
-        {!detail && (
-          <Link to="/events" className="button">
-            やめる
-          </Link>
-        )}
-        <button type="submit" className="button primary" disabled={busy}>
-          {detail ? "直す" : "作る"}
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="event-form-actions">
+          {detail && <DeleteEvent detail={detail} />}
+          {!detail && (
+            <Link to="/events" className="button">
+              やめる
+            </Link>
+          )}
+          <button type="submit" className="button primary" disabled={busy}>
+            {detail ? "直す" : "作る"}
+          </button>
+        </div>
+      )}
     </form>
   );
 }
 
 /**
- * 出来事を消す（管理者と作った本人。素材が紐付いていないときだけ。設計書 決定記録 0030）。
+ * 出来事を消す（運営者と作った本人の作業者。素材が紐付いていないときだけ。設計書 決定記録 0030・0032）。
  * 押すとその場で確かめてから消す。消す前の状態は変更履歴に残る
  */
 const PREVIEW_STATE: Record<SourcePreview["state"], string | null> = {

@@ -1,13 +1,14 @@
-// 設定の「利用者管理」: 利用者と招待（管理者だけ。設計書 決定記録 0019）
+// 設定の「利用者管理」: 利用者と招待（運営者だけ。設計書 決定記録 0019・0032）
 //
 // 招待リンクは 1 回だけ・7 日まで使え、付く役割は閲覧者だけ。リンクは作った直後にだけ表示する。
+// 利用者は、作業者と閲覧者を切り替えられる。運営者にする・運営者から外すのは運営者が SQL で行う。
 
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
 import { useApp } from "../context.tsx";
 import { formatInstant } from "../format.ts";
 import { inviteUrl } from "../invite.ts";
-import type { CreatedInvite, InviteState, InviteView, MemberView } from "../source/types.ts";
+import type { CreatedInvite, InviteState, InviteView, MemberView, Role } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 
 const STATE_LABELS: Record<InviteState, string> = {
@@ -17,7 +18,11 @@ const STATE_LABELS: Record<InviteState, string> = {
   expired: "期限切れ",
 };
 
-const ROLE_LABELS = { admin: "管理者", viewer: "閲覧者" } as const;
+const ROLE_LABELS: Record<Role, string> = {
+  admin: "運営者",
+  worker: "作業者",
+  viewer: "閲覧者",
+};
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -106,15 +111,20 @@ function MemberRow({
   member,
   isSelf,
   onRemove,
+  onRoleChange,
 }: {
   member: MemberView;
   isSelf: boolean;
   onRemove: () => Promise<void>;
+  onRoleChange: (role: "worker" | "viewer") => Promise<void>;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const removable = member.role === "viewer" && !isSelf;
+  // 運営者は画面からは切り替えない・外さない（決定記録 0032）
+  const editable = member.role !== "admin" && !isSelf;
+  const removable = editable;
+  const name = member.displayName ?? "（名前なし）";
   return (
     <li className="member-row">
       <div className="member-main">
@@ -131,9 +141,29 @@ function MemberRow({
           </span>
         )}
       </div>
-      <span className={`tag ${member.role === "admin" ? "role-admin" : ""}`}>
-        {ROLE_LABELS[member.role]}
-      </span>
+      {editable ? (
+        <select
+          className="member-role"
+          aria-label={`${name} の役割`}
+          value={member.role}
+          disabled={busy}
+          onChange={(e) => {
+            const role = e.target.value === "worker" ? "worker" : "viewer";
+            setBusy(true);
+            setError(null);
+            onRoleChange(role)
+              .catch((err: unknown) => setError(message(err)))
+              .finally(() => setBusy(false));
+          }}
+        >
+          <option value="worker">作業者</option>
+          <option value="viewer">閲覧者</option>
+        </select>
+      ) : (
+        <span className={`tag ${member.role === "admin" ? "role-admin" : ""}`}>
+          {ROLE_LABELS[member.role]}
+        </span>
+      )}
       {removable &&
         (confirming ? (
           <span className="member-confirm">
@@ -175,7 +205,7 @@ export function MembersPage() {
   const [createError, setCreateError] = useState<string | null>(null);
 
   if (!viewer.isAdmin) {
-    return <p>利用者管理は管理者だけが使えます。</p>;
+    return <p>利用者管理は運営者だけが使えます。</p>;
   }
 
   const create = () => {
@@ -223,7 +253,7 @@ export function MembersPage() {
         </form>
         <p className="field-hint">
           {
-            "1 回だけ・7 日まで使えるリンクです。開いて Discord でログインした人が閲覧者になります。管理者にするのは運営者が行います。"
+            "1 回だけ・7 日まで使えるリンクです。開いて Discord でログインした人は閲覧者になります。作業を任せる人は、入った後に下の一覧で作業者にしてください。"
           }
         </p>
         {createError && (
@@ -274,11 +304,17 @@ export function MembersPage() {
                 member={member}
                 isSelf={member.discordUserId === viewer.discordUserId}
                 onRemove={() => source.removeMember(member.discordUserId).then(reloadMembers)}
+                onRoleChange={(role) =>
+                  source.setMemberRole(member.discordUserId, role).then(reloadMembers)
+                }
               />
             ))}
           </ul>
         )}
-        <p className="field-hint">閲覧者は外せます。管理者を外すのは運営者が行います。</p>
+        <p className="field-hint">
+          作業者は承認・振り分け・出来事の作成ができ、閲覧者は見るだけです。作業者と閲覧者はここで切り替え・外せます。運営者にする・外すのは、運営者が
+          SQL で行います。
+        </p>
       </div>
     </>
   );

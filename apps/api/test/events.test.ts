@@ -11,9 +11,9 @@ async function subject(ctx: Ctx): Promise<string> {
 }
 
 async function participant(ctx: Ctx): Promise<string> {
-  const user = await discordUser(ctx.c, "33333333-3333-4333-8333-333333333333", "viewer");
+  const user = await discordUser(ctx.c, "33333333-3333-4333-8333-333333333333", "worker");
   await ctx.c.query(
-    "update app.user_profiles set display_name = '試験の参加者' where role = 'viewer'",
+    "update app.user_profiles set display_name = '試験の参加者' where role = 'worker'",
   );
   return tokenFor(user);
 }
@@ -264,7 +264,7 @@ describe("出来事を作る・直す", () => {
       const hanako = await subject(ctx);
       const owner = await participant(ctx);
       const other = await tokenFor(
-        await discordUser(ctx.c, "44444444-4444-4444-8444-444444444444", "viewer"),
+        await discordUser(ctx.c, "44444444-4444-4444-8444-444444444444", "worker"),
       );
       const admin = await tokenFor(
         await discordUser(ctx.c, "55555555-5555-4555-8555-555555555555", "admin"),

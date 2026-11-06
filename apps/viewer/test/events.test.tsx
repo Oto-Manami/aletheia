@@ -11,9 +11,10 @@ import type { Viewer } from "../src/source/types.ts";
 afterEach(cleanup);
 
 const member: Viewer = {
-  name: "試験の参加者",
+  name: "試験の作業者",
   isMember: true,
   isAdmin: false,
+  canWork: true,
   discordUserId: null,
 };
 
@@ -172,6 +173,22 @@ describe("出来事", () => {
     const list = within(materials.parentElement as HTMLElement).getAllByRole("listitem");
     expect(list.length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /紐付いている素材 \d+ 件/ })).toBeTruthy();
+  });
+
+  it("閲覧者は出来事を見られるが、作る・直す・消すはできない", async () => {
+    const reader: Viewer = { ...member, canWork: false };
+    open("/events/e1000000-0000-4000-8000-000000000011", reader);
+    expect(await screen.findByRole("heading", { name: "出来事" })).toBeTruthy();
+    expect(screen.getByText("閲覧者は見るだけです。直すのは作業者・運営者です。")).toBeTruthy();
+    // 直す欄は、まとめて触れないようにしてある（fieldset ごと無効）
+    expect(screen.getByRole("textbox", { name: "題名" }).matches(":disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: "直す" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "この出来事を消す" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /作る/ })).toBeNull();
+    cleanup();
+
+    open("/events/new", reader);
+    expect(await screen.findByText("出来事を作れるのは、作業者と運営者です。")).toBeTruthy();
   });
 
   it("参加者として登録されていない人には、出来事の画面もメニューも出さない", async () => {

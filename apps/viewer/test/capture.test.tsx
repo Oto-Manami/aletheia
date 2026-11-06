@@ -30,7 +30,7 @@ function open(path: string) {
     <Ctx.Provider
       value={{
         source,
-        viewer: { name: "試験", isMember: true, isAdmin: true, discordUserId: null },
+        viewer: { name: "試験", isMember: true, isAdmin: true, canWork: true, discordUserId: null },
       }}
     >
       <RouterProvider router={router} />

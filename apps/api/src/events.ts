@@ -6,10 +6,11 @@
 // | GET      | /events/:id   | 出来事 1 件（出演・作品・会場・親子・紐付いた素材・作った人と直した人） |
 // | POST     | /events       | 出来事を作る                                               |
 // | POST     | /events/:id   | 出来事を直す（出演は送ったものに合わせる）                 |
-// | POST     | /events/:id/delete | 出来事を消す（管理者と作った本人。素材が紐付いていないときだけ） |
+// | POST     | /events/:id/delete | 出来事を消す（運営者と作った本人。素材が紐付いていないときだけ） |
 // | POST     | /entities     | 作品・相手を作る（同じ種類・同じ名前があればそれを返す）   |
 //
-// 参加者みんなが作り・直せる。消せるのは管理者と作った本人で、素材が紐付いていない出来事だけ
+// 作業者・運営者が作り・直せる（閲覧者は見るだけ。決定記録 0032）。消せるのは運営者と作った本人で、
+// 素材が紐付いていない出来事だけ
 // （設計書 決定記録 0030）。消した・外したものは変更履歴に残る。
 // 人が作ったものは人の判断として、承認を経ずにそのまま入る。
 
@@ -184,9 +185,10 @@ async function usageOf(db: Kysely<DB>, eventId: string) {
   };
 }
 
-/** 消してよい人か（管理者・Bot と、作った本人） */
+/** 消してよい人か（運営者・Bot と、作った本人の作業者。閲覧者は消せない。決定記録 0032） */
 function mayDelete(actor: Actor, createdBy: string | null): boolean {
   if (actor.kind === "service") return true;
+  if (actor.role === "viewer") return false;
   return actor.role === "admin" || (createdBy !== null && createdBy === actor.userId);
 }
 
@@ -604,7 +606,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       if (!event) throw new HTTPException(404, { message: "見つかりません" });
       if (!mayDelete(actor, event.created_by)) {
         throw new HTTPException(403, {
-          message: "消せるのは、管理者とこの出来事を作った人だけです",
+          message: "消せるのは、運営者とこの出来事を作った人だけです",
         });
       }
       const usage = await usageOf(trx, id.data);

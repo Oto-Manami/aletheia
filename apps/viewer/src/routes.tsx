@@ -13,7 +13,9 @@ import { TriagePage } from "./pages/Triage.tsx";
 
 function Home() {
   const { viewer } = useApp();
-  return <Navigate to={viewer.isMember ? "/intake" : "/search"} replace />;
+  // 作業者・運営者は承認から、閲覧者はアセットから、登録の無い人は検索から（決定記録 0032）
+  const home = viewer.canWork ? "/intake" : viewer.isMember ? "/assets" : "/search";
+  return <Navigate to={home} replace />;
 }
 
 function NotFound() {
