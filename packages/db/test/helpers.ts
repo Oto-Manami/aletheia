@@ -54,7 +54,7 @@ export function fakeDiscordId(): string {
  */
 export async function createUser(
   c: Client,
-  profile?: { role?: "admin" | "viewer" },
+  profile?: { role?: "admin" | "worker" | "viewer" },
   discordId: string = fakeDiscordId(),
 ): Promise<string> {
   const id = randomUUID();

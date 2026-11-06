@@ -43,7 +43,15 @@ import { sql } from "kysely";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { FileStore } from "@aletheia/storage";
-import { type Actor, assertAdmin, type AuthEnv, type AuthOptions, requireMember } from "./auth.ts";
+import {
+  type Actor,
+  assertAdmin,
+  assertWorker,
+  type AuthEnv,
+  type AuthOptions,
+  requireMember,
+  writesNeedWorker,
+} from "./auth.ts";
 import { registerEventRoutes } from "./events.ts";
 import { listTriage, triageListQuery } from "./triage-list.ts";
 import { finalizeApprovedFiles, moveRejectedFiles, removeStagedFiles, stageFile } from "./files.ts";
@@ -149,7 +157,7 @@ const reviewerName = sql<string | null>`(
   limit 1
 )`.as("reviewed_by_name");
 
-/** 誰の判断として記録するか。ログインした管理者ならその人、Bot なら伝えられた人 */
+/** 誰の判断として記録するか。ログインした利用者ならその人、Bot なら伝えられた人 */
 function reviewerOf(actor: Actor, body: { reviewer_id?: string | undefined }): string | undefined {
   return actor.kind === "user" ? actor.userId : body.reviewer_id;
 }
@@ -204,13 +212,14 @@ export function createApp(
 
   app.get("/health", (c) => c.json({ ok: true }));
 
-  app.use("/intake/*", requireMember(db, auth));
-  app.use("/intake", requireMember(db, auth));
-  app.use("/resolve", requireMember(db, auth));
-  app.use("/files/*", requireMember(db, auth));
-  app.use("/events", requireMember(db, auth));
-  app.use("/events/*", requireMember(db, auth));
-  app.use("/entities", requireMember(db, auth));
+  // 閲覧者は見るだけ。変更（POST）は作業者・運営者だけ（決定記録 0032）
+  app.use("/intake/*", requireMember(db, auth), writesNeedWorker);
+  app.use("/intake", requireMember(db, auth), writesNeedWorker);
+  app.use("/resolve", requireMember(db, auth), writesNeedWorker);
+  app.use("/files/*", requireMember(db, auth), writesNeedWorker);
+  app.use("/events", requireMember(db, auth), writesNeedWorker);
+  app.use("/events/*", requireMember(db, auth), writesNeedWorker);
+  app.use("/entities", requireMember(db, auth), writesNeedWorker);
   registerEventRoutes(app, db);
 
   app.post("/files/staging", async (c) => {
@@ -290,9 +299,9 @@ export function createApp(
     return c.json({ items, total: Number(total) });
   });
 
-  /** 言及なしの置き場（直近 10 件。決定記録 0031）。本文は返さず、題名・URL・判断した人だけ */
+  /** 言及なしの置き場（直近 10 件。決定記録 0031）。本文は返さず、題名・URL・判断した人だけ。作業者・運営者 */
   app.get("/intake/discarded", async (c) => {
-    assertAdmin(c.get("actor"));
+    assertWorker(c.get("actor"));
     const items = await db
       .selectFrom("intake_items as i")
       .innerJoin("channels as ch", "ch.id", "i.channel_id")
@@ -583,7 +592,7 @@ export function createApp(
    * 置き場から押し出された古い下書きの仮置きのファイルは後から消す
    */
   app.post("/intake/no-mention", async (c) => {
-    assertAdmin(c.get("actor"));
+    assertWorker(c.get("actor"));
     const body = await parseBody(c.req.raw, bulkNoMentionBody);
     const reviewerId = reviewerOf(c.get("actor"), body);
     const done: string[] = [];
@@ -605,7 +614,7 @@ export function createApp(
   });
 
   app.post("/intake/:id/no-mention", async (c) => {
-    assertAdmin(c.get("actor"));
+    assertWorker(c.get("actor"));
     const id = idParam(c.req.param("id"));
     const body = await parseBody(c.req.raw, decisionBody);
     const reviewerId = reviewerOf(c.get("actor"), body);
@@ -619,7 +628,7 @@ export function createApp(
 
   /** 言及なしを取り消し、振り分け待ちに戻す（置き場にある直近 10 件だけ。決定記録 0031） */
   app.post("/intake/:id/restore", async (c) => {
-    assertAdmin(c.get("actor"));
+    assertWorker(c.get("actor"));
     const id = idParam(c.req.param("id"));
     await restoreDiscarded(db, id);
     return c.json({ ok: true });

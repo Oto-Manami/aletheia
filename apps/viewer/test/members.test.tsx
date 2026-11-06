@@ -19,6 +19,7 @@ const admin: Viewer = {
   name: "デモの運営者",
   isMember: true,
   isAdmin: true,
+  canWork: true,
   discordUserId: "100000000000000001",
 };
 
@@ -66,7 +67,7 @@ describe("招待リンク", () => {
 });
 
 describe("利用者", () => {
-  it("閲覧者は確かめてから外せる。管理者と自分には外すボタンが無い", async () => {
+  it("閲覧者は確かめてから外せる。運営者と自分には外すボタンが無い", async () => {
     const user = userEvent.setup();
     open();
     const list = await screen.findByRole("list", { name: "利用者の一覧" });
@@ -79,13 +80,40 @@ describe("利用者", () => {
     await waitFor(() =>
       expect(
         within(screen.getByRole("list", { name: "利用者の一覧" })).getAllByRole("listitem"),
-      ).toHaveLength(1),
+      ).toHaveLength(2),
     );
   });
 
-  it("管理者でない利用者には、利用者管理を出さない", async () => {
+  it("作業者と閲覧者を切り替えられる。運営者と自分は切り替えない", async () => {
+    const user = userEvent.setup();
+    const source = open();
+    const list = await screen.findByRole("list", { name: "利用者の一覧" });
+    const rows = within(list).getAllByRole("listitem");
+    // 運営者（自分）は役割の表示だけ
+    expect(within(rows[0]!).queryByRole("combobox")).toBeNull();
+    expect(within(rows[0]!).getByText("運営者")).toBeTruthy();
+
+    const role = within(rows[1]!).getByRole<HTMLSelectElement>("combobox", {
+      name: "試験 花子 の役割",
+    });
+    expect(role.value).toBe("viewer");
+    await user.selectOptions(role, "worker");
+    await waitFor(async () =>
+      expect((await source.listMembers()).find((m) => m.displayName === "試験 花子")?.role).toBe(
+        "worker",
+      ),
+    );
+    expect(
+      within(screen.getByRole("list", { name: "利用者の一覧" })).getByRole<HTMLSelectElement>(
+        "combobox",
+        { name: "試験 花子 の役割" },
+      ).value,
+    ).toBe("worker");
+  });
+
+  it("運営者でない利用者には、利用者管理を出さない", async () => {
     open({ ...admin, isAdmin: false });
-    expect(await screen.findByText("利用者管理は管理者だけが使えます。")).toBeTruthy();
+    expect(await screen.findByText("利用者管理は運営者だけが使えます。")).toBeTruthy();
     const tabs = screen.getByRole("navigation", { name: "設定の項目" });
     expect(within(tabs).queryByRole("link", { name: "利用者管理" })).toBeNull();
   });

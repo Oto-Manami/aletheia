@@ -109,6 +109,12 @@ export class DemoSource implements ArchiveSource {
       displayName: "試験 花子",
       createdAt: "2026-10-26T21:15:00+09:00",
     },
+    {
+      discordUserId: "100000000000000003",
+      role: "worker",
+      displayName: "見本 作業者",
+      createdAt: "2026-10-27T20:00:00+09:00",
+    },
   ];
 
   constructor(private readonly latencyMs = 120) {
@@ -177,6 +183,7 @@ export class DemoSource implements ArchiveSource {
       name: "デモの運営者",
       isMember: true,
       isAdmin: true,
+      canWork: true,
       discordUserId: null,
     });
   }
@@ -409,9 +416,20 @@ export class DemoSource implements ArchiveSource {
     await this.delay();
     const before = this.members.length;
     this.members = this.members.filter(
-      (m) => !(m.discordUserId === discordUserId && m.role === "viewer"),
+      (m) => !(m.discordUserId === discordUserId && m.role !== "admin"),
     );
-    if (this.members.length === before) throw new SourceError("外せる閲覧者がいません");
+    if (this.members.length === before) throw new SourceError("外せる利用者がいません");
+  }
+
+  async setMemberRole(discordUserId: string, role: "worker" | "viewer"): Promise<void> {
+    await this.delay();
+    const member = this.members.find((m) => m.discordUserId === discordUserId);
+    if (!member || member.role === "admin") {
+      throw new SourceError(
+        "切り替えられる利用者がいません（運営者は画面からは切り替えられません）",
+      );
+    }
+    member.role = role;
   }
 
   async listTriage(

@@ -27,11 +27,13 @@ export function IntakePage() {
   const detail = useMatch("/intake/:id");
   const [list] = useLoad(() => source.listIntake(state), [source, state, layout.version]);
 
-  if (!viewer.isMember) {
+  if (!viewer.canWork) {
     return (
       <section className="page narrow">
         <h1 className="page-title">承認</h1>
-        <p>承認の画面は、参加者として登録された人だけが使えます。</p>
+        <p>
+          承認の画面は、作業者と運営者が使えます。作業を手伝うときは、運営者に作業者にしてもらってください。
+        </p>
       </section>
     );
   }

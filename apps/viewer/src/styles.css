@@ -1931,6 +1931,14 @@ a.tab {
   overflow-wrap: anywhere;
 }
 
+.member-role {
+  flex: none;
+  width: auto;
+  height: 30px;
+  padding: 0 28px 0 10px;
+  font-size: 13px;
+}
+
 .member-confirm {
   display: inline-flex;
   gap: 6px;
@@ -2688,6 +2696,11 @@ details.more[open] > summary {
 .event-form-head {
   display: grid;
   gap: 4px;
+}
+
+.event-readonly {
+  margin: 0;
+  font-size: 13px;
 }
 
 .event-stamp {

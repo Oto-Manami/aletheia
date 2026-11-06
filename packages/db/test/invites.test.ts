@@ -257,4 +257,48 @@ describe("招待と利用者の管理", () => {
       const { rows: me } = await c.query("select * from public.my_profile()");
       expect(me).toEqual([]);
     }));
+
+  it("運営者は利用者を作業者・閲覧者に切り替えられる。運営者は画面からは付けない・変えない", () =>
+    withRollback(async (c) => {
+      const admin = await createUser(c, { role: "admin" });
+      const otherAdmin = fakeDiscordId();
+      await createUser(c, { role: "admin" }, otherAdmin);
+      const memberDiscord = fakeDiscordId();
+      const member = await createUser(c, { role: "viewer" }, memberDiscord);
+      const roleOf = async () => {
+        await c.query("reset role");
+        const { rows } = await c.query<{ role: string }>(
+          "select role from app.user_profiles where discord_user_id = $1",
+          [memberDiscord],
+        );
+        return rows[0]?.role;
+      };
+
+      // 作業者・閲覧者は切り替えられない
+      await actAs(c, "authenticated", member);
+      expect(
+        await expectError(c, "select public.set_member_role($1, 'worker')", [memberDiscord]),
+      ).toBe("42501");
+
+      await actAs(c, "authenticated", admin);
+      await c.query("select public.set_member_role($1, 'worker')", [memberDiscord]);
+      expect(await roleOf()).toBe("worker");
+      await actAs(c, "authenticated", admin);
+      await c.query("select public.set_member_role($1, 'viewer')", [memberDiscord]);
+      expect(await roleOf()).toBe("viewer");
+
+      // 運営者にはできず、運営者の役割も変えられない
+      await actAs(c, "authenticated", admin);
+      expect(
+        await expectError(c, "select public.set_member_role($1, 'admin')", [memberDiscord]),
+      ).toBe("42501");
+      expect(
+        await expectError(c, "select public.set_member_role($1, 'viewer')", [otherAdmin]),
+      ).toBe("P0002");
+
+      // 作業者も外せる
+      await c.query("select public.set_member_role($1, 'worker')", [memberDiscord]);
+      await c.query("select public.remove_member($1)", [memberDiscord]);
+      expect(await roleOf()).toBeUndefined();
+    }));
 });

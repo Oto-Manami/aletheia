@@ -45,13 +45,13 @@ export function Layout() {
   const changed = useCallback(() => setVersion((v) => v + 1), []);
   // 件数だけを数える（一覧の上限に関わらない本当の件数）
   const [pending] = useLoad(
-    () => (viewer.isMember ? source.countIntake("pending") : Promise.resolve(0)),
-    [source, viewer.isMember, version],
+    () => (viewer.canWork ? source.countIntake("pending") : Promise.resolve(0)),
+    [source, viewer.canWork, version],
   );
   const pendingCount = pending.status === "ready" ? pending.data : null;
   const [triage] = useLoad(
-    () => (viewer.isMember ? source.countIntake("triage") : Promise.resolve(0)),
-    [source, viewer.isMember, version],
+    () => (viewer.canWork ? source.countIntake("triage") : Promise.resolve(0)),
+    [source, viewer.canWork, version],
   );
   const triageCount = triage.status === "ready" ? triage.data : null;
   const close = () => setMenuOpen(false);
@@ -79,7 +79,7 @@ export function Layout() {
           </NavLink>
         </div>
         <nav className="sidebar-nav" aria-label="画面">
-          {viewer.isMember && (
+          {viewer.canWork && (
             <NavLink to="/intake" className="nav-item" onClick={close}>
               <Inbox size={16} aria-hidden="true" />
               承認
@@ -90,7 +90,7 @@ export function Layout() {
               )}
             </NavLink>
           )}
-          {viewer.isMember && (
+          {viewer.canWork && (
             <NavLink to="/triage" className="nav-item" onClick={close}>
               <Filter size={16} aria-hidden="true" />
               振り分け

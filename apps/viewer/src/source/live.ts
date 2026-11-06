@@ -205,6 +205,7 @@ export class LiveSource implements ArchiveSource {
       name: profile?.display_name ?? meta?.full_name ?? meta?.name ?? "ログイン中",
       isMember: profile !== undefined,
       isAdmin: profile?.role === "admin",
+      canWork: profile?.role === "admin" || profile?.role === "worker",
       discordUserId,
     };
   }
@@ -570,6 +571,15 @@ export class LiveSource implements ArchiveSource {
       displayName: r.display_name,
       createdAt: r.created_at,
     }));
+  }
+
+  async setMemberRole(discordUserId: string, role: "worker" | "viewer"): Promise<void> {
+    rpcRows(
+      await this.supabase.rpc("set_member_role", {
+        member_discord_user_id: discordUserId,
+        new_role: role,
+      }),
+    );
   }
 
   async removeMember(discordUserId: string): Promise<void> {

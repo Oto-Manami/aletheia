@@ -11,7 +11,13 @@ import type { Viewer } from "../src/source/types.ts";
 
 afterEach(cleanup);
 
-const admin: Viewer = { name: "試験 運営者", isMember: true, isAdmin: true, discordUserId: null };
+const admin: Viewer = {
+  name: "試験 運営者",
+  isMember: true,
+  isAdmin: true,
+  canWork: true,
+  discordUserId: null,
+};
 
 function open(path: string, viewer: Viewer = admin) {
   const source = new DemoSource(0);
@@ -95,16 +101,20 @@ describe("承認の画面", () => {
     expect(within(checklist).getByText("すべて確認済み")).toBeTruthy();
   });
 
-  it("参加者として登録されていない人には、承認の画面もメニューも出さない", async () => {
-    open("/intake", { ...admin, isAdmin: false, isMember: false });
-    expect(
-      await screen.findByText("承認の画面は、参加者として登録された人だけが使えます。"),
-    ).toBeTruthy();
-    const nav = screen.getByRole("navigation", { name: "画面" });
-    expect(within(nav).queryByRole("link", { name: /承認/ })).toBeNull();
+  it("閲覧者と、登録されていない人には、承認の画面もメニューも出さない", async () => {
+    for (const viewer of [
+      { ...admin, isAdmin: false, canWork: false },
+      { ...admin, isAdmin: false, canWork: false, isMember: false },
+    ]) {
+      open("/intake", viewer);
+      expect(await screen.findByText(/承認の画面は、作業者と運営者が使えます。/)).toBeTruthy();
+      const nav = screen.getByRole("navigation", { name: "画面" });
+      expect(within(nav).queryByRole("link", { name: /承認/ })).toBeNull();
+      cleanup();
+    }
   });
 
-  it("参加者は承認の画面を使え、承認済みの一覧に判断した日時と人が出る", async () => {
+  it("作業者は承認の画面を使え、承認済みの一覧に判断した日時と人が出る", async () => {
     const user = userEvent.setup();
     const { source } = open("/intake", { ...admin, isAdmin: false });
     const nav = await screen.findByRole("navigation", { name: "画面" });

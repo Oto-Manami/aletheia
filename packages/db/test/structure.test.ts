@@ -205,6 +205,7 @@ describe("関数", () => {
       "public.list_members",
       "public.remove_member",
       "public.revoke_invite",
+      "public.set_member_role",
     ]);
   });
 });

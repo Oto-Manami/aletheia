@@ -146,48 +146,56 @@ describe("振り分け", () => {
       expect(body.failed.map((f) => f.id)).toEqual([b.id]);
     }));
 
-  it("参加者は残すことと承認ができ、言及なしは管理者だけができる。判断した人の名前が一覧に出る", () =>
+  it("作業者は残す・承認・言及なし・戻すができ、閲覧者は見るだけ。言及の印の付け直しは運営者だけ", () =>
     withApi(async (ctx) => {
       const d = await seed(ctx.c);
-      const admin = await discordUser(ctx.c, "11111111-1111-4111-8111-111111111111", "admin");
+      const worker = await discordUser(ctx.c, "11111111-1111-4111-8111-111111111111", "worker");
       const viewer = await discordUser(ctx.c, "22222222-2222-4222-8222-222222222222", "viewer");
       await ctx.c.query(
-        "update app.user_profiles set display_name = '参加者' where role = 'viewer'",
+        "update app.user_profiles set display_name = '作業者' where role = 'worker'",
       );
+      const asWorker = await tokenFor(worker);
       const asViewer = await tokenFor(viewer);
       const kept = await triageDraft(ctx, d, "301");
       const other = await triageDraft(ctx, d, "302");
 
-      expect((await ctx.call("POST", `/intake/${other.id}/no-mention`, {}, asViewer)).status).toBe(
-        403,
-      );
-      expect(
-        (await ctx.call("POST", "/intake/no-mention", { ids: [other.id] }, asViewer)).status,
-      ).toBe(403);
-      expect((await ctx.call("POST", "/intake/redetect", {}, asViewer)).status).toBe(403);
-      expect(
-        (await ctx.call("POST", `/intake/${other.id}/no-mention`, {}, await tokenFor(admin)))
-          .status,
-      ).toBe(200);
-      // 言及なしの置き場を見る・戻すのも管理者だけ
+      // 閲覧者は見るだけ（決定記録 0032）
+      for (const [path, body] of [
+        [`/intake/${other.id}/no-mention`, {}],
+        ["/intake/no-mention", { ids: [other.id] }],
+        [`/intake/${kept.id}/keep`, {}],
+      ] as const) {
+        expect((await ctx.call("POST", path, body, asViewer)).status).toBe(403);
+      }
       expect((await ctx.call("GET", "/intake/discarded", undefined, asViewer)).status).toBe(403);
+      // 言及の印の付け直しは運営者だけ
+      expect((await ctx.call("POST", "/intake/redetect", {}, asWorker)).status).toBe(403);
+
+      // 作業者は言及なしにでき、置き場を見て戻せる
+      expect((await ctx.call("POST", `/intake/${other.id}/no-mention`, {}, asWorker)).status).toBe(
+        200,
+      );
+      const held = (await (
+        await ctx.call("GET", "/intake/discarded", undefined, asWorker)
+      ).json()) as { items: { id: string; reviewed_by_name: string | null }[] };
+      expect(held.items[0]).toMatchObject({ id: other.id, reviewed_by_name: "作業者" });
       expect((await ctx.call("POST", `/intake/${other.id}/restore`, {}, asViewer)).status).toBe(
         403,
       );
-      const held = (await (
-        await ctx.call("GET", "/intake/discarded", undefined, await tokenFor(admin))
-      ).json()) as { items: { id: string; reviewed_by_name: string | null }[] };
-      expect(held.items[0]).toMatchObject({ id: other.id });
+      expect((await ctx.call("POST", `/intake/${other.id}/restore`, {}, asWorker)).status).toBe(
+        200,
+      );
 
-      expect((await ctx.call("POST", `/intake/${kept.id}/keep`, {}, asViewer)).status).toBe(200);
-      expect((await ctx.call("POST", `/intake/${kept.id}/approve`, {}, asViewer)).status).toBe(200);
+      expect((await ctx.call("POST", `/intake/${kept.id}/keep`, {}, asWorker)).status).toBe(200);
+      expect((await ctx.call("POST", `/intake/${kept.id}/approve`, {}, asWorker)).status).toBe(200);
+      // 閲覧者も、承認の履歴は見られる
       const list = (await (
         await ctx.call("GET", "/intake?state=approved", undefined, asViewer)
       ).json()) as {
         items: { id: string; reviewed_by_name: string | null; reviewed_at: string }[];
       };
       const row = list.items.find((i) => i.id === kept.id);
-      expect(row?.reviewed_by_name).toBe("参加者");
+      expect(row?.reviewed_by_name).toBe("作業者");
       expect(row?.reviewed_at).toBeTruthy();
     }));
 

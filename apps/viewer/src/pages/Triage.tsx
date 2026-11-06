@@ -1,4 +1,4 @@
-// 振り分け（管理者だけ。設計書 決定記録 0021）
+// 振り分け（作業者・運営者。設計書 決定記録 0021・0032）
 //
 // 全件を取り込んだメンバーのブログを、1 記事ずつ「残す」か「言及なし」に分ける。
 // - 言及の有無（本文で見つかった別名の数）と、本文の該当箇所を印つきで見せる
@@ -63,7 +63,7 @@ function TriageCard({
   appears: Record<string, boolean>;
   onToggleImage: (ref: string) => void;
   onKeep: () => Promise<void>;
-  /** 言及なしにする（管理者だけ。参加者には出さない） */
+  /** 言及なしにする（作業者・運営者。決定記録 0032） */
   onDiscard: (() => Promise<void>) | null;
   /** ニュースを出来事に紐付けて保存する（出来事への紐付けを足した下書き） */
   onToEvents: (draft: DraftInput) => Promise<void>;
@@ -439,11 +439,13 @@ export function TriagePage() {
   const [discardVersion, setDiscardVersion] = useState(0);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
 
-  if (!viewer.isMember) {
+  if (!viewer.canWork) {
     return (
       <section className="page narrow">
         <h1 className="page-title">振り分け</h1>
-        <p>振り分けの画面は、参加者として登録された人だけが使えます。</p>
+        <p>
+          振り分けの画面は、作業者と運営者が使えます。作業を手伝うときは、運営者に作業者にしてもらってください。
+        </p>
       </section>
     );
   }
@@ -547,7 +549,8 @@ export function TriagePage() {
       <div className="page-head">
         <h1 className="page-title">振り分け</h1>
         <p className="page-sub">
-          メンバーのブログと公式サイトのニュースです。言及があるもの・本人が写っているもの・本人に関係する告知を残し、それ以外は運営者が「言及なし」として確認済みにします（本文と画像は残しません）。
+          メンバーのブログと公式サイトのニュースです。言及があるもの・本人が写っているもの・本人に関係する告知を残し、それ以外は「言及なし」として確認済みにします（本文と画像は残しません。直近
+          10 件は戻せます）。
         </p>
       </div>
 
@@ -622,44 +625,38 @@ export function TriagePage() {
             </select>
           </span>
         </div>
-        {viewer.isAdmin ? (
-          <div className="triage-bulk">
-            <button
-              type="button"
-              className="button"
-              onClick={() =>
-                setSelected(
-                  new Set(items.filter((i) => !hasSignal(i, appearsOf(i.id))).map((i) => i.id)),
+        <div className="triage-bulk">
+          <button
+            type="button"
+            className="button"
+            onClick={() =>
+              setSelected(
+                new Set(items.filter((i) => !hasSignal(i, appearsOf(i.id))).map((i) => i.id)),
+              )
+            }
+          >
+            言及も写真の選択も無いものを選ぶ
+          </button>
+          <button
+            type="button"
+            className="button danger"
+            disabled={picked.length === 0 || bulkBusy}
+            onClick={() => {
+              setBulkBusy(true);
+              setMessage(null);
+              discard(picked)
+                .then((n) => setMessage({ text: `${n} 件を言及なしにしました`, error: false }))
+                .catch((e: unknown) =>
+                  setMessage({ text: e instanceof Error ? e.message : String(e), error: true }),
                 )
-              }
-            >
-              言及も写真の選択も無いものを選ぶ
-            </button>
-            <button
-              type="button"
-              className="button danger"
-              disabled={picked.length === 0 || bulkBusy}
-              onClick={() => {
-                setBulkBusy(true);
-                setMessage(null);
-                discard(picked)
-                  .then((n) => setMessage({ text: `${n} 件を言及なしにしました`, error: false }))
-                  .catch((e: unknown) =>
-                    setMessage({ text: e instanceof Error ? e.message : String(e), error: true }),
-                  )
-                  .finally(() => setBulkBusy(false));
-              }}
-            >
-              {progress
-                ? `言及なしにしています（${progress.done} / ${progress.total} 件）`
-                : `選んだ ${picked.length} 件を言及なしにする`}
-            </button>
-          </div>
-        ) : (
-          <p className="quiet triage-bulk">
-            「言及なし」は運営者が判断します。言及や本人の写っている写真があれば「残す」を押してください。
-          </p>
-        )}
+                .finally(() => setBulkBusy(false));
+            }}
+          >
+            {progress
+              ? `言及なしにしています（${progress.done} / ${progress.total} 件）`
+              : `選んだ ${picked.length} 件を言及なしにする`}
+          </button>
+        </div>
       </div>
       {counts && total !== null && (
         <p className="quiet triage-total">
@@ -677,7 +674,7 @@ export function TriagePage() {
           {message.text}
         </p>
       )}
-      {viewer.isAdmin && (
+      {viewer.canWork && (
         <RecentlyDiscarded
           refresh={discardVersion}
           onRestored={(item) => {
@@ -740,7 +737,7 @@ export function TriagePage() {
                 .keepTriage(item.id, withAppears(item.draft, appearsOf(item.id)))
                 .then(() => finish([item.id]))
             }
-            onDiscard={viewer.isAdmin ? () => discard([item.id]).then(() => undefined) : null}
+            onDiscard={viewer.canWork ? () => discard([item.id]).then(() => undefined) : null}
             onToEvents={async (draft) => {
               // 残すと承認を 1 回で行う。失敗したら振り分け待ちのまま（ニュースは承認の一覧に回さない）
               await source.keepAndApprove(item.id, draft);
