@@ -1,5 +1,6 @@
 import { Navigate, type RouteObject } from "react-router";
 import { useApp } from "./context.tsx";
+import { AssetsPage } from "./pages/Assets.tsx";
 import { EventEditPage, EventsEmpty, EventsPage } from "./pages/Events.tsx";
 import { IntakeDetailPage } from "./pages/IntakeDetail.tsx";
 import { IntakePage } from "./pages/IntakeList.tsx";
@@ -45,6 +46,7 @@ export const routes: RouteObject[] = [
           { path: ":id", element: <EventEditPage /> },
         ],
       },
+      { path: "assets", element: <AssetsPage /> },
       { path: "search", element: <SearchPage /> },
       { path: "posts/:id", element: <PostPage /> },
       {

@@ -8,6 +8,8 @@ import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import { triageItemOf } from "./triage.ts";
 import {
   type ArchiveSource,
+  type AssetCard,
+  type AssetFilter,
   type AssetView,
   type Classification,
   type Decision,
@@ -373,6 +375,80 @@ export class LiveSource implements ArchiveSource {
         snippetHtml: h.snippet,
       };
     });
+  }
+
+  async listAssets(
+    filter: AssetFilter,
+    page: { offset: number; limit: number },
+  ): Promise<{ items: AssetCard[]; hasMore: boolean }> {
+    const type = filter.mediaType ?? "image";
+    let ids: string[] | null = null;
+    let hasMoreLinks = false;
+    if (filter.personId) {
+      // 写っている人で絞るときは、紐付けを新しい順に区切って取り、そのアセットを読む
+      const links = rowsOf<{ from_id: string }>(
+        await this.supabase
+          .from("links")
+          .select("from_id")
+          .eq("from_type", "asset")
+          .eq("to_type", "entity")
+          .eq("to_id", filter.personId)
+          .eq("role", "appears")
+          .eq("review_state", "accepted")
+          .order("created_at", { ascending: false })
+          .range(page.offset, page.offset + page.limit),
+      );
+      hasMoreLinks = links.length > page.limit;
+      ids = links.slice(0, page.limit).map((l) => l.from_id);
+      if (ids.length === 0) return { items: [], hasMore: false };
+    }
+    let q = this.supabase
+      .from("assets")
+      .select(
+        "id, media_type, title, attributes, posts!inner(id, title, published_at, published_date, channel_id, channels(name)), asset_files(variant, provider, storage_key)",
+      )
+      .neq("file_policy", "reference_only")
+      .order("created_at", { ascending: false });
+    if (type !== "all") q = q.eq("media_type", type);
+    if (filter.channelId) q = q.eq("posts.channel_id", filter.channelId);
+    q = ids ? q.in("id", ids) : q.range(page.offset, page.offset + page.limit);
+    const rows = rowsOf<{
+      id: string;
+      media_type: string;
+      title: string | null;
+      attributes: Record<string, unknown> | null;
+      posts: {
+        id: string;
+        title: string | null;
+        published_at: string | null;
+        published_date: string | null;
+        channels: { name: string } | null;
+      } | null;
+      asset_files: { variant: string; provider: string; storage_key: string }[];
+    }>(await q);
+    const hasMore = ids ? hasMoreLinks : rows.length > page.limit;
+    const items = (ids ? rows : rows.slice(0, page.limit)).map((a) => {
+      const source = a.attributes?.["source_url"];
+      return {
+        id: a.id,
+        postId: a.posts?.id ?? null,
+        postTitle: a.posts?.title ?? null,
+        channelName: a.posts?.channels?.name ?? "",
+        publishedAt: a.posts?.published_at ?? null,
+        publishedDate: a.posts?.published_date ?? null,
+        mediaType: a.media_type,
+        title: a.title,
+        imageUrl: a.media_type === "image" && typeof source === "string" ? source : null,
+        openUrl: openUrlOf(a.asset_files.find((f) => f.variant === "original")),
+      };
+    });
+    return { items, hasMore };
+  }
+
+  async listChannels(): Promise<{ id: string; name: string }[]> {
+    return rowsOf<{ id: string; name: string }>(
+      await this.supabase.from("channels").select("id, name").order("name"),
+    );
   }
 
   async getPost(id: string): Promise<PostView> {

@@ -97,6 +97,31 @@ export interface AssetView {
   inlineHtml: string | null;
 }
 
+/** アセットの一覧の 1 枚 */
+export interface AssetCard {
+  id: string;
+  postId: string | null;
+  postTitle: string | null;
+  channelName: string;
+  /** 投稿の日時（または日付） */
+  publishedAt: string | null;
+  publishedDate: string | null;
+  mediaType: string;
+  title: string | null;
+  /** 一覧に出す画像の URL（元のページの画像。無ければ出さない） */
+  imageUrl: string | null;
+  /** 保存した原本を開く URL */
+  openUrl: string | null;
+}
+
+export interface AssetFilter {
+  /** 種類（image など）。all ですべて。既定は image */
+  mediaType?: string;
+  channelId?: string;
+  /** 写っている人（appears で紐付いた人物） */
+  personId?: string;
+}
+
 export interface PostView {
   id: string;
   title: string | null;
@@ -367,6 +392,13 @@ export interface ArchiveSource {
   listTagCandidates(): Promise<RefLabel[]>;
   search(query: string): Promise<SearchHit[]>;
   getPost(id: string): Promise<PostView>;
+  /** アセットの一覧（保存した新しい順。同じファイルの重複は除く）。offset から limit 件 */
+  listAssets(
+    filter: AssetFilter,
+    page: { offset: number; limit: number },
+  ): Promise<{ items: AssetCard[]; hasMore: boolean }>;
+  /** 情報源の一覧（絞り込みの選択肢） */
+  listChannels(): Promise<{ id: string; name: string }[]>;
   /** 振り分け待ちの記事（決定記録 0021）。条件に当てはまるものを上限 200 件。件数は本当の数 */
   listTriage(options?: {
     mention?: TriageMentionFilter;
