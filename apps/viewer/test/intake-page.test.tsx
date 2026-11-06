@@ -218,23 +218,37 @@ describe("承認の画面のタグ付け", () => {
     expect(within(article).getByText("本文をすべて読む")).toBeTruthy();
   });
 
-  it("日付の近い出来事を押すか、題名で探して紐付ける。出来事はここでは作らない", async () => {
+  it("候補のプルダウンから選ぶか、題名で探して紐付ける。承認の画面では出来事を作らない", async () => {
     const user = userEvent.setup();
     const { source } = open("/intake/d2000000-0000-4000-8000-000000000001");
     const events = await screen.findByRole("region", { name: /出来事/ });
-    const around = await within(events).findByRole("group", { name: "日付の近い出来事" });
-    await user.click(within(around).getByRole("button", { name: /ラジオ「仮の時間」第 12 回/ }));
+    const combo = within(events).getByRole("combobox", { name: "出来事を選ぶ・題名で探す" });
+    // 押すと、日付の近い出来事が関連の高い順に開く
+    await user.click(combo);
+    const list = await within(events).findByRole("listbox", { name: "出来事の候補" });
+    await user.click(
+      await within(list).findByRole("option", { name: /ラジオ「仮の時間」第 12 回/ }),
+    );
     expect(
       within(events).getByRole("button", { name: "ラジオ「仮の時間」第 12 回 の紐付けを外す" }),
     ).toBeTruthy();
 
-    await user.type(within(events).getByRole("searchbox", { name: "出来事を題名で探す" }), "冬の");
-    await user.click(await within(events).findByRole("button", { name: /冬の試験公演 1 日目/ }));
+    // 打つと絞り込める。キーボードでも選べる
+    await user.type(combo, "冬の");
+    await within(events).findByRole("option", { name: /冬の試験公演 1 日目/ });
+    while (
+      within(events).getByRole("option", { selected: true }).textContent?.includes("1 日目") !==
+      true
+    ) {
+      await user.keyboard("{ArrowDown}");
+    }
+    await user.keyboard("{Enter}");
     expect(
       within(events).getByRole("button", { name: "冬の試験公演 1 日目 の紐付けを外す" }),
     ).toBeTruthy();
-    // 出来事は出来事の画面で作る（設計書 決定記録 0030）
-    expect(within(events).queryByRole("group", { name: "出来事をその場で作る" })).toBeNull();
+    // 承認の画面では作らない（設計書 決定記録 0030・0033）
+    await user.type(combo, "まだ無い出来事");
+    expect(within(events).queryByRole("option", { name: /で新しく作る/ })).toBeNull();
     expect(
       within(events)
         .getByRole("link", { name: /出来事の画面で作って/ })
