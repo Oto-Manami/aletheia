@@ -1520,6 +1520,56 @@ select:disabled {
   font-size: 13px;
 }
 
+/* 直近に言及なしにしたもの（戻せる。決定記録 0031） */
+.triage-discarded {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+
+.triage-discarded summary {
+  cursor: pointer;
+  color: var(--muted);
+  width: fit-content;
+}
+
+.triage-discarded ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.triage-discarded li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 8px 10px;
+}
+
+.triage-discarded li + li {
+  border-top: 1px solid var(--border);
+}
+
+.triage-discarded-title {
+  flex: 1 1 16em;
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.triage-discarded-when {
+  font-size: 12px;
+}
+
+.triage-discarded .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .triage-bulk {
   display: flex;
   flex-wrap: wrap;

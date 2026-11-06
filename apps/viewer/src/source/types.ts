@@ -7,6 +7,16 @@ import type { DraftInput } from "@aletheia/intake/draft";
 
 export type Classification = "public" | "private";
 export type IntakeState = "triage" | "pending" | "on_hold" | "approved" | "rejected";
+
+/** 言及なしにした直近の記事（戻せる間。設計書 決定記録 0031） */
+export interface DiscardedItem {
+  id: string;
+  channelName: string;
+  title: string | null;
+  url: string | null;
+  discardedAt: string | null;
+  discardedByName: string | null;
+}
 export type Decision = "approve" | "reject" | "hold";
 
 /** 承認待ちなどの一覧の 1 行 */
@@ -401,10 +411,18 @@ export interface ArchiveSource {
   }>;
   /** 残す。写っている画像の選択などを直した下書きを送り、承認待ちへ進める */
   keepTriage(id: string, draft: DraftInput): Promise<void>;
+  /**
+   * 残して、そのまま承認する（ニュースを出来事に紐付けるとき）。1 回の処理で行い、失敗したら振り分け待ちのまま
+   */
+  keepAndApprove(id: string, draft: DraftInput): Promise<void>;
   /** 言及なしにする（まとめて）。確認済みの記録だけを残し、下書きと仮置きのファイルを消す */
   discardTriage(
     ids: string[],
   ): Promise<{ done: string[]; failed: { id: string; error: string }[] }>;
+  /** 言及なしの置き場（直近 10 件。新しい順。管理者だけ。決定記録 0031） */
+  listDiscarded(): Promise<DiscardedItem[]>;
+  /** 言及なしを取り消し、振り分け待ちに戻す（管理者だけ） */
+  restoreDiscarded(id: string): Promise<void>;
   /** 招待リンクを作る（管理者だけ。決定記録 0019） */
   createInvite(note?: string): Promise<CreatedInvite>;
   listInvites(): Promise<InviteView[]>;

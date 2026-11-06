@@ -12,8 +12,10 @@
 // | POST     | /intake/:id/reject        | 却下する                           |
 // | POST     | /intake/:id/hold          | 保留する                           |
 // | POST     | /intake/:id/keep          | 振り分け: 残す（承認待ちへ）       |
-// | POST     | /intake/:id/no-mention    | 振り分け: 言及なし（記録して消す） |
+// | POST     | /intake/:id/no-mention    | 振り分け: 言及なし（記録して置き場へ） |
 // | POST     | /intake/no-mention        | 振り分け: まとめて言及なし         |
+// | GET      | /intake/discarded         | 言及なしの置き場（直近 10 件）     |
+// | POST     | /intake/:id/restore       | 言及なしを取り消して振り分け待ちへ |
 // | POST     | /resolve                  | URL から情報源と外部 ID を判定する |
 // | POST     | /files/staging            | ファイルを承認待ちの場所に保存する |
 // | GET/POST | /events・/entities        | 出来事と作品・相手を作る・直す（events.ts） |
@@ -28,8 +30,10 @@ import {
   holdIntake,
   IntakeError,
   isCheckedNoMention,
+  keepAndApprove,
   keepTriage,
   rejectIntake,
+  restoreDiscarded,
   type Subject,
   withoutAliasMatches,
 } from "@aletheia/intake";
@@ -74,6 +78,9 @@ const decisionBody = z.object({
 });
 
 const approveBody = decisionBody.extend({ draft: z.unknown().optional() });
+
+/** 残す。approve を付けると、そのまま承認する（ニュースを出来事に紐付けるとき） */
+const keepBody = approveBody.extend({ approve: z.boolean().optional() });
 
 const bulkNoMentionBody = decisionBody.extend({ ids: z.array(uuid).min(1).max(200) });
 
@@ -281,6 +288,26 @@ export function createApp(
       .where("state", "=", q.data.state)
       .executeTakeFirstOrThrow();
     return c.json({ items, total: Number(total) });
+  });
+
+  /** 言及なしの置き場（直近 10 件。決定記録 0031）。本文は返さず、題名・URL・判断した人だけ */
+  app.get("/intake/discarded", async (c) => {
+    assertAdmin(c.get("actor"));
+    const items = await db
+      .selectFrom("intake_items as i")
+      .innerJoin("channels as ch", "ch.id", "i.channel_id")
+      .select([
+        "i.id",
+        "ch.name as channel_name",
+        sql<string | null>`i.draft -> 'post' ->> 'title'`.as("title"),
+        sql<string | null>`i.draft -> 'post' ->> 'url'`.as("url"),
+        "i.reviewed_at",
+        reviewerName,
+      ])
+      .where("i.state", "=", "discarded")
+      .orderBy("i.reviewed_at", "desc")
+      .execute();
+    return c.json({ items });
   });
 
   app.get("/intake/:id", async (c) => {
@@ -516,8 +543,17 @@ export function createApp(
   // 振り分け（設計書 決定記録 0021）
   app.post("/intake/:id/keep", async (c) => {
     const id = idParam(c.req.param("id"));
-    const body = await parseBody(c.req.raw, approveBody);
+    const body = await parseBody(c.req.raw, keepBody);
     const reviewerId = reviewerOf(c.get("actor"), body);
+    if (body.approve) {
+      // 残すと承認を 1 つのトランザクションで行う。失敗したら振り分け待ちのまま（決定記録 0030）
+      const result = await keepAndApprove(db, id, {
+        ...(reviewerId ? { reviewerId } : {}),
+        ...(body.draft !== undefined ? { draft: body.draft } : {}),
+      });
+      const filesReport = files ? await finalizeApprovedFiles(db, files, id, result.postId) : null;
+      return c.json({ ...result, files: filesReport });
+    }
     await keepTriage(db, id, {
       ...(reviewerId ? { reviewerId } : {}),
       ...(body.draft !== undefined ? { draft: body.draft } : {}),
@@ -526,16 +562,25 @@ export function createApp(
     return c.json({ ok: true });
   });
 
-  /** 言及なし: 記録して下書きを消してから、仮置きのファイルを消す（失敗してもやり直せるよう報告する） */
-  async function noMention(id: string, options: { reviewerId?: string; note?: string }) {
-    const { stagedFiles } = await discardTriage(db, id, options);
-    return files ? removeStagedFiles(files, stagedFiles) : null;
+  /**
+   * 言及なしで置き場から押し出された下書きの、仮置きのファイルを後から消す。ファイルの削除を待つと
+   * 問い合わせが長くなり、途中で切れると画面とデータベースが食い違うため。消せなかったファイルは
+   * ログに残す（仮置きの場所に残るだけで、記録には影響しない）
+   */
+  function removeLater(staged: unknown[]) {
+    if (!files || staged.length === 0) return;
+    const store = files;
+    void (async () => {
+      const report = await removeStagedFiles(store, staged);
+      for (const f of report.failed) {
+        console.error(`仮置きのファイルを消せませんでした: ${f.storage_key}: ${f.error}`);
+      }
+    })();
   }
 
   /**
-   * まとめて言及なし。データベース（記録と下書きの削除）を先に済ませて返し、仮置きのファイルは後から消す。
-   * ファイルの削除を待つと問い合わせが長くなり、途中で切れると画面とデータベースが食い違うため。
-   * 消せなかったファイルはログに残す（仮置きの場所に残るだけで、記録には影響しない）
+   * まとめて言及なし。記録を残して下書きを置き場に移し（直近 10 件まで。決定記録 0031）、
+   * 置き場から押し出された古い下書きの仮置きのファイルは後から消す
    */
   app.post("/intake/no-mention", async (c) => {
     assertAdmin(c.get("actor"));
@@ -549,23 +594,13 @@ export function createApp(
         const { stagedFiles } = await discardTriage(db, id, {
           ...(reviewerId ? { reviewerId } : {}),
         });
-        staged.push(stagedFiles);
+        staged.push(...stagedFiles);
         done.push(id);
       } catch (e) {
         failed.push({ id, error: e instanceof Error ? e.message : String(e) });
       }
     }
-    if (files && staged.length > 0) {
-      const store = files;
-      void (async () => {
-        for (const s of staged) {
-          const report = await removeStagedFiles(store, s);
-          for (const f of report.failed) {
-            console.error(`仮置きのファイルを消せませんでした: ${f.storage_key}: ${f.error}`);
-          }
-        }
-      })();
-    }
+    removeLater(staged);
     return c.json({ done, failed });
   });
 
@@ -574,11 +609,20 @@ export function createApp(
     const id = idParam(c.req.param("id"));
     const body = await parseBody(c.req.raw, decisionBody);
     const reviewerId = reviewerOf(c.get("actor"), body);
-    const filesReport = await noMention(id, {
+    const { stagedFiles } = await discardTriage(db, id, {
       ...(reviewerId ? { reviewerId } : {}),
       ...(body.note ? { note: body.note } : {}),
     });
-    return c.json({ ok: true, files: filesReport });
+    removeLater(stagedFiles);
+    return c.json({ ok: true });
+  });
+
+  /** 言及なしを取り消し、振り分け待ちに戻す（置き場にある直近 10 件だけ。決定記録 0031） */
+  app.post("/intake/:id/restore", async (c) => {
+    assertAdmin(c.get("actor"));
+    const id = idParam(c.req.param("id"));
+    await restoreDiscarded(db, id);
+    return c.json({ ok: true });
   });
 
   app.onError((err, c) => {

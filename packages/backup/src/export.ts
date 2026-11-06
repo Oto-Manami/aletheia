@@ -19,7 +19,8 @@ export const SCHEMAS = ["public", "app"] as const;
 
 /** 書き出さない行の条件（表ごと）。件数の照合も同じ条件で行う */
 export const ROW_FILTERS: Record<string, string> = {
-  "public.intake_items": "state <> 'triage'",
+  // 振り分け待ちと、言及なしの置き場（直近 10 件）の下書きは書き出さない（設計書 決定記録 0021・0031）
+  "public.intake_items": "state not in ('triage', 'discarded')",
 };
 
 function whereOf(schema: string, name: string): string {
