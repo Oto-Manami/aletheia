@@ -6,6 +6,7 @@ import type { Database } from "@aletheia/db/client";
 import type { DB } from "@aletheia/db/database";
 import type { Transaction } from "kysely";
 import { type Draft, draftSchema } from "./draft.ts";
+import { onlyChosenImages } from "./images.ts";
 
 export type IntakeErrorCode = "not_found" | "already_decided" | "invalid_draft";
 
@@ -177,7 +178,17 @@ export async function approveIntakeIn(
   options: ApproveOptions = {},
 ): Promise<ApproveResult> {
   const intake = await lockUndecided(trx, intakeId);
-  const draft = parseDraft(options.draft ?? intake.draft);
+  // 振り分けで「言及あり」として残したもの（記録がある）は、写っている人を付けた画像だけを素材にする
+  // （決定記録 0035・0037）
+  const triaged = await trx
+    .selectFrom("coverage_checks")
+    .select("id")
+    .where("channel_id", "=", intake.channel_id)
+    .where("external_id", "=", intake.external_id)
+    .where("result", "=", "mention")
+    .executeTakeFirst();
+  const parsed = parseDraft(options.draft ?? intake.draft);
+  const draft = triaged ? onlyChosenImages(parsed) : parsed;
   const reviewedBy = options.reviewerId ?? null;
   const inherit = draft.post.classification;
 

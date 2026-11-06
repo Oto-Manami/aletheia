@@ -220,7 +220,7 @@ function TriageCard({
           )}
           {item.images.length > 0 && !news && (
             <span className="quiet triage-picked">
-              写っている {picked} / {item.images.length} 枚
+              写っている {picked} / {item.images.length} 枚（選んだ画像だけを保存します）
             </span>
           )}
           {onDiscard && (

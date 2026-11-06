@@ -90,6 +90,8 @@ export interface DemoIntake {
   reviewNote: string | null;
   /** 承認・却下・保留した日時 */
   reviewedAt?: string | null;
+  /** 振り分けで残したもの（写っている人を付けた画像だけを素材にする） */
+  triaged?: boolean;
   draft: DraftInput;
 }
 

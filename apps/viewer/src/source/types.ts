@@ -57,6 +57,11 @@ export interface IntakeDetail extends IntakeSummary {
   pageHtml: Record<string, string>;
   /** 情報源の有料・無料の既定（無料の情報源なら、承認の画面で公開区分を選ばせない） */
   channelAvailability: string | null;
+  /**
+   * 写っている人を付けた画像だけを素材にするか（振り分けで残したもの。設計書 決定記録 0037）。
+   * 付けていない画像は、承認しても保存しない
+   */
+  chosenImagesOnly: boolean;
 }
 
 /** 下書きが指している人物・出来事などの表示名 */

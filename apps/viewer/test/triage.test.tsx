@@ -55,7 +55,9 @@ describe("振り分けの画面", () => {
     expect(within(first).getByText("はなちゃん").tagName).toBe("MARK");
 
     await user.click(within(first).getByRole("button", { name: "画像 2" }));
-    expect(within(first).getByText("写っている 1 / 3 枚")).toBeTruthy();
+    expect(
+      within(first).getByText("写っている 1 / 3 枚（選んだ画像だけを保存します）"),
+    ).toBeTruthy();
     await user.click(within(first).getByRole("button", { name: "残す" }));
     await waitFor(() => expect(cards()).toHaveLength(8));
 

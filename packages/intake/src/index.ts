@@ -18,6 +18,7 @@ export {
   withoutAliasMatches,
 } from "./collect.ts";
 export { type Draft, type DraftInput, draftSchema } from "./draft.ts";
+export { onlyChosenImages } from "./images.ts";
 export {
   type AliasMatch,
   findAliases,
