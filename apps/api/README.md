@@ -41,6 +41,10 @@ sudo systemctl enable --now aletheia-api
 curl http://127.0.0.1:8787/health   # {"ok":true}
 ```
 
+### 自動で更新する
+
+`main` への取り込みで、GitHub Actions が API を最新にする（設計書 決定記録 0036。設定と、新しいマイグレーションがあるときの手順は [ops/deploy/README.md](../../ops/deploy/README.md)）。
+
 ### インターネットから届くようにする（Tailscale Funnel）
 
 作業者が家の外から承認できるよう、API に公開の住所（`https://<機械の名前>.<tailnet>.ts.net`）を付ける（設計書 決定記録 0026）。API 自体は同じ機械からだけ受け付けたまま（`HOST=127.0.0.1`）で、Funnel が 443 番を 8787 番に渡す。SSH などほかの入口は公開しない。
