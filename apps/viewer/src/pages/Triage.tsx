@@ -6,7 +6,7 @@
 // - 言及も写っている画像も無い記事は、まとめて「言及なし」にできる
 
 import { Check, ExternalLink, Undo2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type MouseEvent, useMemo, useState } from "react";
 import type { DraftInput } from "@aletheia/intake/draft";
 import { useSearchParams } from "react-router";
 import { EventLinks } from "../components/EventLinks.tsx";
@@ -83,11 +83,23 @@ function TriageCard({
   };
   const picked = item.images.filter((img) => appears[img.ref] ?? img.appears).length;
 
+  // 言及なしにするものを選ぶとき、記事のどこを押しても選べるようにする（チェックの箱は小さいため）。
+  // 画像・リンク・ボタン・入力欄・出来事に紐付ける欄と、文字を選んでいるときは除く
+  const selectByCard = (e: MouseEvent<HTMLLIElement>) => {
+    if (!onDiscard) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("a, button, input, select, textarea, label, .news-events")) return;
+    if (window.getSelection()?.toString()) return;
+    onSelect(!selected);
+  };
+
   return (
+    // キーボードでは、記事の頭のチェックの箱で選ぶ（ここは押す範囲を広げるだけ）
     <li
       className={`panel triage-card ${hasSignal(item, appears) ? "has-signal" : ""} ${
         item.subjectMentions === 0 && item.groupMentions > 0 ? "is-group-only" : ""
-      }`}
+      } ${onDiscard ? "is-selectable" : ""} ${selected ? "is-selected" : ""}`}
+      onClick={selectByCard}
     >
       <div className="triage-head">
         <input
