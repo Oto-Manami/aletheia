@@ -1392,7 +1392,9 @@ function news(
   code: string,
   title: string,
   text: string,
+  photos: number[] = [],
 ): DemoTriage {
+  const refs = photos.map((_, i) => `image-${i + 1}`);
   return {
     id: `f1000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
     channelName: "公式サイト ニュース（架空）",
@@ -1408,10 +1410,13 @@ function news(
         classification: "public",
         availability: "free",
       },
-      assets: [{ ref: "body", media_type: "text", texts: [{ text_type: "body", content: text }] }],
+      assets: [
+        { ref: "body", media_type: "text", texts: [{ text_type: "body", content: text }] },
+        ...refs.map((ref) => ({ ref, media_type: "image" as const })),
+      ],
       context: { collector: "demo_news", news_category: category, news_category_code: code },
     },
-    photos: {},
+    photos: Object.fromEntries(refs.map((r, i) => [r, photos[i]!])),
   };
 }
 
@@ -1472,6 +1477,7 @@ export function demoTriage(): DemoTriage[] {
       "media",
       "10月30日(金)ラジオ「仮の時間」に試験 花子が出演！",
       "10月30日(金)21:00〜ラジオ「仮の時間」に試験花子が出演いたします！ ぜひお聴きください。",
+      [210, 40],
     ),
     news(
       8,

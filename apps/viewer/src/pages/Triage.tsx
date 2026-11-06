@@ -15,7 +15,12 @@ import { useApp } from "../context.tsx";
 import { formatInstant } from "../format.ts";
 import { newsDates } from "../source/news-dates.ts";
 import { confirmPeopleTags, eventsOf } from "../source/tags.ts";
-import { matchesMention, TRIAGE_FILTERS, withAppears } from "../source/triage.ts";
+import {
+  matchesMention,
+  newsDraftWithImages,
+  TRIAGE_FILTERS,
+  withAppears,
+} from "../source/triage.ts";
 import type {
   DiscardedItem,
   TriageCounts,
@@ -199,6 +204,8 @@ function TriageCard({
       {toEvents && (
         <NewsEvents
           item={item}
+          appears={appears}
+          picked={picked}
           onCancel={() => setToEvents(false)}
           onSave={(draft) => onToEvents(draft)}
         />
@@ -256,10 +263,16 @@ function bodyOf(draft: DraftInput): string {
  */
 function NewsEvents({
   item,
+  appears,
+  picked,
   onCancel,
   onSave,
 }: {
   item: TriageItem;
+  /** 画像ごとに、本人が写っているとして選んだか（選んだ画像だけを素材として残す。決定記録 0035） */
+  appears: Record<string, boolean>;
+  /** 選んだ画像の枚数 */
+  picked: number;
   onCancel: () => void;
   onSave: (draft: DraftInput) => Promise<void>;
 }) {
@@ -301,6 +314,10 @@ function NewsEvents({
           {linked.length > 0
             ? `出来事 ${linked.length} 件に、このニュースを出典として紐付けます`
             : "出来事を選ぶと、保存できます"}
+          {item.images.length > 0 &&
+            (picked > 0
+              ? `。選んだ画像 ${picked} 枚を、本人が写っている画像として残します`
+              : "。画像は選ばれていないので、記事のページと本文だけを残します")}
         </span>
         <button type="button" className="button" disabled={busy} onClick={onCancel}>
           やめる
@@ -312,7 +329,8 @@ function NewsEvents({
           onClick={() => {
             setBusy(true);
             setError(null);
-            onSave(confirmPeopleTags(draft)).catch((e: unknown) => {
+            // 選んだ画像（本人が写っている）だけを素材として残し、出来事にもつなぐ（決定記録 0035）
+            onSave(newsDraftWithImages(confirmPeopleTags(draft), appears)).catch((e: unknown) => {
               setBusy(false);
               setError(e instanceof Error ? e.message : String(e));
             });

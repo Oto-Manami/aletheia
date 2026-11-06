@@ -121,6 +121,40 @@ describe("承認・却下の後の移動", () => {
       );
     }));
 
+  it("下書きの素材から外した画像（ニュースで選ばなかった画像）は、却下の場所へ移す（削除しない）", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const kept = await stage(ctx, "3003", 1);
+      const dropped = await ctx.upload(
+        `/files/staging?route=discord&ref=3003&index=2&name=photo.jpg`,
+        new TextEncoder().encode("選ばなかった画像"),
+        "image/jpeg",
+      );
+      const droppedFile = (await dropped.json()) as StagedFile;
+      const id = await intakeWith(ctx, d, [kept, droppedFile]);
+      // 承認するときの下書きには、選んだ画像だけを残す（決定記録 0035）
+      const res = await ctx.call("POST", `/intake/${id}/approve`, {
+        draft: {
+          version: 1,
+          post: { published_at: "2026-10-12T21:30:00+09:00", classification: "public" },
+          assets: [{ ref: "a0", media_type: "image", sha256: kept.sha256 }],
+          links: [
+            { from: "post", to_type: "entity", to_id: d.person, role: "author", origin: "rule" },
+          ],
+        },
+      });
+      expect(((await res.json()) as { files: unknown }).files).toEqual({
+        stored: 1,
+        duplicates: 0,
+        unselected: 1,
+        failed: [],
+      });
+      expect(ctx.files.pathOf(droppedFile.storage_key)).toBe(
+        "_rejected/discord/unselected_3003_02.jpg",
+      );
+      expect(ctx.files.files.size).toBe(2);
+    }));
+
   it("却下すると、却下の場所へ移す（削除しない）", () =>
     withApi(async (ctx) => {
       const d = await seed(ctx.c);

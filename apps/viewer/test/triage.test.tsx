@@ -288,6 +288,50 @@ describe("振り分けの画面", () => {
     expect(event.materials.map((m) => m.title)).toContain(approved.title);
   });
 
+  it("ニュースは、選んだ画像（本人が写っている）だけを素材として残し、写っている人と出来事につなぐ", async () => {
+    const user = userEvent.setup();
+    const source = open();
+    await screen.findByText("リハーサルの日");
+    await user.selectOptions(screen.getByLabelText("情報源"), "news");
+    await waitFor(() => expect(cards()).toHaveLength(3));
+    const card = cards().find((c) => c.textContent?.includes("ラジオ「仮の時間」に試験 花子"))!;
+    // 画像 1 だけを選ぶ
+    await user.click(within(card).getByRole("button", { name: "画像 1" }));
+    await user.click(within(card).getByRole("button", { name: "出来事に紐付ける" }));
+    const suggested = await within(card).findByRole("group", { name: "関連が高そうな出来事" });
+    await user.click(within(suggested).getByRole("button", { name: /ラジオ「仮の時間」第 12 回/ }));
+    expect(
+      within(card).getByText(/選んだ画像 1 枚を、本人が写っている画像として残します/),
+    ).toBeTruthy();
+    await user.click(within(card).getByRole("button", { name: "紐付けて保存" }));
+    await waitFor(() => expect(cards()).toHaveLength(2));
+
+    const approved = (await source.listIntake("approved")).find((i) =>
+      i.title?.includes("ラジオ「仮の時間」に試験 花子"),
+    )!;
+    const { draft } = await source.getIntake(approved.id);
+    // 選ばなかった画像 2 は素材に残さない（設計書 決定記録 0035）
+    expect((draft.assets ?? []).map((a) => a.ref)).toEqual(["body", "image-1"]);
+    const fromImage = (draft.links ?? []).filter(
+      (l) => typeof l.from === "object" && "asset" in l.from && l.from.asset === "image-1",
+    );
+    expect(fromImage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "appears", origin: "human", accepted: true }),
+        expect.objectContaining({
+          role: "about",
+          to_type: "event",
+          to_id: "e1000000-0000-4000-8000-000000000004",
+        }),
+      ]),
+    );
+    expect(
+      (draft.links ?? []).some(
+        (l) => typeof l.from === "object" && "asset" in l.from && l.from.asset === "image-2",
+      ),
+    ).toBe(false);
+  });
+
   it("合う出来事が無ければ、ニュースの振り分けで題名・種類・日付だけ入れて作れる", async () => {
     const user = userEvent.setup();
     const source = open();
