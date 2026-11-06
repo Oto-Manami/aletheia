@@ -53,6 +53,8 @@ export const eventInput = z
     work_id: z.uuid().nullish(),
     venue_id: z.uuid().nullish(),
     episode_number: z.number().int().min(0).max(100000).nullish(),
+    /** 部（1 部・昼公演など。日程のとき） */
+    part: z.string().trim().max(40).nullish(),
     starts_on: date.nullish(),
     ends_on: date.nullish(),
     date_precision: z.enum(["year", "month", "day"]).nullish(),
@@ -108,8 +110,22 @@ const entityInput = z.object({
   classification,
 });
 
+/**
+ * 日程（まとまりの各日・各部）になる親の種類（設計書 決定記録 0034）。この種類の親を持つ子は、閲覧サイトでは
+ * 親の画面の「日程」として扱う。番組の各回（episode）は日程にしない
+ */
+export const SCHEDULE_PARENT_KINDS = ["live", "meet_greet", "event"] as const;
+
+/** e が日程か（親が日程になる種類で、自分は番組の回でない） */
+const isSchedule = sql<boolean>`(e.parent_id is not null and e.kind <> 'episode' and exists (
+  select 1 from public.events sp
+  where sp.id = e.parent_id and sp.kind in (${sql.join(SCHEDULE_PARENT_KINDS.map((k) => sql`${k}`))})
+))`;
+
 const listQuery = z.object({
   q: z.string().trim().max(100).optional(),
+  /** hide: 日程を出さない（出来事の一覧）。include: 日程も出す（素材を紐付ける候補） */
+  schedule: z.enum(["hide", "include"]).default("include"),
   kind: key.optional(),
   /** この期間（JST の暦日）に重なる出来事だけ。承認の画面で、投稿日の前後の出来事を候補に出す */
   from: date.optional(),
@@ -269,6 +285,8 @@ function eventColumns(input: EventInput, attributes: Record<string, unknown>) {
   else delete next["event_type"];
   if (input.sources.length > 0) next["sources"] = input.sources;
   else delete next["sources"];
+  if (input.part) next["part"] = input.part;
+  else delete next["part"];
   return {
     kind: input.kind,
     title: input.title,
@@ -420,15 +438,24 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
   app.get("/events", async (c) => {
     const q = listQuery.safeParse(c.req.query());
     if (!q.success) badRequest("条件が正しくありません");
-    const { q: text, kind, from, to, limit } = q.data;
+    const { q: text, kind, from, to, limit, schedule } = q.data;
     let query = db
       .selectFrom("events as e")
       .leftJoin("entities as w", "w.id", "e.work_id")
+      .leftJoin("events as pe", "pe.id", "e.parent_id")
       .select([
         "e.id",
         "e.kind",
         "e.title",
         "e.parent_id",
+        "pe.title as parent_title",
+        sql<string | null>`e.attributes ->> 'part'`.as("part"),
+        // 日程の件数（まとまりのとき）
+        sql<number>`(
+          select count(*)::int from public.events c
+          where c.parent_id = e.id and c.kind <> 'episode'
+            and e.kind in (${sql.join(SCHEDULE_PARENT_KINDS.map((k) => sql`${k}`))})
+        )`.as("schedule_count"),
         "e.starts_on",
         "e.ends_on",
         "e.date_precision",
@@ -452,6 +479,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       .orderBy("e.created_at", "desc")
       .limit(limit);
     if (kind) query = query.where("e.kind", "=", kind);
+    if (schedule === "hide") query = query.where(sql<boolean>`not ${isSchedule}`);
     if (to) query = query.where("e.starts_on", "<=", to);
     if (from) {
       query = query.where(sql<boolean>`coalesce(e.ends_on, e.starts_on) >= ${from}`);
@@ -462,10 +490,11 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
         eb.or([eb("e.title", "ilike", pattern), eb("w.canonical_name", "ilike", pattern)]),
       );
     }
-    const { total } = await db
-      .selectFrom("events")
-      .select((eb) => eb.fn.countAll<string>().as("total"))
-      .executeTakeFirstOrThrow();
+    let totalQuery = db
+      .selectFrom("events as e")
+      .select((eb) => eb.fn.countAll<string>().as("total"));
+    if (schedule === "hide") totalQuery = totalQuery.where(sql<boolean>`not ${isSchedule}`);
+    const { total } = await totalQuery.executeTakeFirstOrThrow();
     return c.json({ items: await query.execute(), total: Number(total) });
   });
 
@@ -482,6 +511,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
         "w.canonical_name as work_name",
         "v.canonical_name as venue_name",
         "p.title as parent_title",
+        "p.kind as parent_kind",
         userName("e.created_by", "created_by_name"),
         userName("e.updated_by", "updated_by_name"),
       ])
@@ -503,11 +533,31 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       .where("ep.event_id", "=", id.data)
       .orderBy("ep.created_at")
       .execute();
+    // 下の出来事（日程など）。日程の表に、会場・部・本人の出演も出す（決定記録 0034）
     const children = await db
-      .selectFrom("events")
-      .select(["id", "kind", "title", "starts_on", "date_precision"])
-      .where("parent_id", "=", id.data)
-      .orderBy(sql`starts_on asc nulls last`)
+      .selectFrom("events as c")
+      .leftJoin("entities as cv", "cv.id", "c.venue_id")
+      .select([
+        "c.id",
+        "c.kind",
+        "c.title",
+        "c.starts_on",
+        "c.ends_on",
+        "c.starts_at",
+        "c.date_precision",
+        "cv.canonical_name as venue_name",
+        sql<string | null>`c.attributes ->> 'part'`.as("part"),
+        sql<string | null>`(
+          select ep.status from public.event_participants ep
+          join public.entities s on s.id = ep.entity_id
+          where ep.event_id = c.id and s.type = 'person' and s.attributes @> '{"archive_subject": true}'
+          order by ep.created_at limit 1
+        )`.as("subject_status"),
+      ])
+      .where("c.parent_id", "=", id.data)
+      .orderBy(sql`c.starts_on asc nulls last`)
+      .orderBy(sql`c.starts_at asc nulls last`)
+      .orderBy("c.created_at")
       .execute();
     // この出来事に紐付いた素材（ニュース・ブログなど）。投稿から、または投稿の中の素材から紐付いたもの
     const { rows: materials } = await sql<{

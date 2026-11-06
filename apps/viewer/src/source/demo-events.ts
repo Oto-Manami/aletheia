@@ -23,6 +23,9 @@ const WORKS = {
 
 const PERFORMANCE = "e1000000-0000-4000-8000-000000000011";
 
+/** 日程になる親の種類（設計書 決定記録 0034） */
+const SCHEDULE_PARENT_KINDS: readonly string[] = ["live", "meet_greet", "event"];
+
 type DemoEntity = EntityOption & { classification: "public" | "private"; archiveSubject?: boolean };
 
 function demoEntities(): DemoEntity[] {
@@ -78,6 +81,8 @@ function event(
     eventType: null,
     parentId: null,
     parentTitle: null,
+    parentKind: null,
+    part: null,
     workId: null,
     workName: null,
     venueId: null,
@@ -154,6 +159,7 @@ function demoEvents(): EventDetail[] {
       title: "冬の試験公演 1 日目",
       parentId: EVENTS.live,
       parentTitle: "冬の試験公演（架空ホール）",
+      parentKind: "live",
       startsOn: "2026-12-01",
       datePrecision: "day",
       venueId: WORKS.hall,
@@ -185,41 +191,69 @@ export class DemoEvents {
     return `${prefix}-0000-4000-8000-${String(this.seq).padStart(12, "0")}`;
   }
 
-  private summary(e: EventDetail, linked: ReadonlySet<string>): EventSummary {
-    const subject = e.participants.find((p) =>
-      this.entities.some((x) => x.id === p.entityId && x.archiveSubject),
+  /** 蓄積対象の人物の出演の状態 */
+  private subjectStatus(e: EventDetail) {
+    return (
+      e.participants.find((p) => this.entities.some((x) => x.id === p.entityId && x.archiveSubject))
+        ?.status ?? null
     );
+  }
+
+  /** 日程か（親がライブ・ミーグリ・イベントで、自分は番組の回でない。決定記録 0034） */
+  private isSchedule(e: EventDetail): boolean {
+    if (!e.parentId || e.kind === "episode") return false;
+    const parent = this.events.find((x) => x.id === e.parentId);
+    return parent !== undefined && SCHEDULE_PARENT_KINDS.includes(parent.kind);
+  }
+
+  private summary(e: EventDetail, linked: ReadonlySet<string>): EventSummary {
     return {
       id: e.id,
       kind: e.kind,
       eventType: e.eventType,
       title: e.title,
       parentId: e.parentId,
+      parentTitle: e.parentTitle,
+      part: e.part,
+      scheduleCount: SCHEDULE_PARENT_KINDS.includes(e.kind)
+        ? this.events.filter((c) => c.parentId === e.id && c.kind !== "episode").length
+        : 0,
       startsOn: e.startsOn,
       endsOn: e.endsOn,
       datePrecision: e.datePrecision,
       workName: e.workName,
       // 出典は、手で入れた URL か、紐付いた素材のどちらか
       hasSources: e.sources.length > 0 || linked.has(e.id),
-      subjectStatus: subject?.status ?? null,
+      subjectStatus: this.subjectStatus(e),
       classification: e.classification,
     };
   }
 
   list(
-    filter: { query?: string; kind?: string; from?: string; to?: string } = {},
+    filter: {
+      query?: string;
+      kind?: string;
+      from?: string;
+      to?: string;
+      schedule?: "hide" | "include";
+    } = {},
     linked: ReadonlySet<string> = new Set(),
   ) {
     const q = filter.query?.trim() ?? "";
     const { from, to } = filter;
     const items = this.events
       .filter((e) => !filter.kind || e.kind === filter.kind)
+      .filter((e) => filter.schedule !== "hide" || !this.isSchedule(e))
       .filter((e) => !to || (e.startsOn !== null && e.startsOn <= to))
       .filter((e) => !from || (e.endsOn ?? e.startsOn ?? "") >= from)
       .filter((e) => !q || e.title.includes(q) || (e.workName ?? "").includes(q))
       .sort((a, b) => (b.startsOn ?? "").localeCompare(a.startsOn ?? ""))
       .map((e) => this.summary(e, linked));
-    return { items, total: this.events.length };
+    const total =
+      filter.schedule === "hide"
+        ? this.events.filter((e) => !this.isSchedule(e)).length
+        : this.events.length;
+    return { items, total };
   }
 
   get(id: string, materials: EventMaterial[] = []): EventDetail {
@@ -235,12 +269,18 @@ export class DemoEvents {
       canDelete: linked === 0 && children === 0,
       children: this.events
         .filter((c) => c.parentId === id)
+        .sort((a, b) => (a.startsOn ?? "").localeCompare(b.startsOn ?? ""))
         .map((c) => ({
           id: c.id,
           kind: c.kind,
           title: c.title,
           startsOn: c.startsOn,
+          endsOn: c.endsOn,
+          startsAt: c.startsAt,
           datePrecision: c.datePrecision,
+          venueName: c.venueName,
+          part: c.part,
+          subjectStatus: this.subjectStatus(c),
         })),
     };
   }
@@ -267,6 +307,10 @@ export class DemoEvents {
       parentTitle: input.parentId
         ? (this.events.find((x) => x.id === input.parentId)?.title ?? null)
         : null,
+      parentKind: input.parentId
+        ? (this.events.find((x) => x.id === input.parentId)?.kind ?? null)
+        : null,
+      part: input.part?.trim() || null,
       workId: input.workId,
       workName: this.nameOf(input.workId),
       venueId: input.venueId,

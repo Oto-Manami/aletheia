@@ -2731,6 +2731,65 @@ details.more[open] > summary {
   flex: 0 0 120px !important;
 }
 
+/* 日程（まとまりの各日・各部。設計書 決定記録 0034） */
+.event-schedule {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.event-schedule li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 8px 12px;
+}
+
+.event-schedule li + li {
+  border-top: 1px solid var(--border);
+}
+
+.event-schedule-date {
+  display: inline-flex;
+  gap: 8px;
+  min-width: 11em;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.event-schedule-date span {
+  font-weight: 400;
+}
+
+.event-schedule-venue {
+  flex: 1 1 8em;
+  font-size: 13px;
+}
+
+.event-schedule-add {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+}
+
+.event-schedule-add .button {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.event-schedule-of {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .event-children {
   list-style: none;
   margin: 0;

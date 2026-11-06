@@ -659,8 +659,17 @@ export class LiveSource implements ArchiveSource {
     );
   }
 
-  async listEvents(filter: { query?: string; kind?: string; from?: string; to?: string } = {}) {
+  async listEvents(
+    filter: {
+      query?: string;
+      kind?: string;
+      from?: string;
+      to?: string;
+      schedule?: "hide" | "include";
+    } = {},
+  ) {
     const params = new URLSearchParams({ limit: "200" });
+    if (filter.schedule === "hide") params.set("schedule", "hide");
     if (filter.query?.trim()) params.set("q", filter.query.trim());
     if (filter.kind) params.set("kind", filter.kind);
     if (filter.from) params.set("from", filter.from);
@@ -677,6 +686,9 @@ export class LiveSource implements ArchiveSource {
         eventType: r.event_type,
         title: r.title ?? "（題名なし）",
         parentId: r.parent_id,
+        parentTitle: r.parent_title ?? null,
+        part: r.part ?? null,
+        scheduleCount: r.schedule_count ?? 0,
         startsOn: r.starts_on,
         endsOn: r.ends_on,
         datePrecision: r.date_precision,
@@ -710,6 +722,8 @@ export class LiveSource implements ArchiveSource {
       title: e.title ?? "",
       parentId: e.parent_id,
       parentTitle: e.parent_title,
+      parentKind: e.parent_kind ?? null,
+      part: typeof attributes["part"] === "string" ? attributes["part"] : null,
       workId: e.work_id,
       workName: e.work_name,
       venueId: e.venue_id,
@@ -734,7 +748,12 @@ export class LiveSource implements ArchiveSource {
         kind: c.kind,
         title: c.title ?? "（題名なし）",
         startsOn: c.starts_on,
+        endsOn: c.ends_on ?? null,
+        startsAt: c.starts_at ?? null,
         datePrecision: c.date_precision,
+        venueName: c.venue_name ?? null,
+        part: c.part ?? null,
+        subjectStatus: c.subject_status ?? null,
       })),
       createdAt: e.created_at,
       updatedAt: e.updated_at,
@@ -764,6 +783,7 @@ export class LiveSource implements ArchiveSource {
       work_id: input.workId,
       venue_id: input.venueId,
       episode_number: input.episodeNumber,
+      part: input.part ?? null,
       starts_on: input.startsOn,
       ends_on: input.endsOn,
       date_precision: input.datePrecision,
@@ -881,6 +901,9 @@ interface EventRow {
   event_type: string | null;
   title: string | null;
   parent_id: string | null;
+  parent_title?: string | null;
+  part?: string | null;
+  schedule_count?: number;
   starts_on: string | null;
   ends_on: string | null;
   date_precision: string | null;
@@ -897,6 +920,7 @@ interface EventDetailResponse {
     title: string | null;
     parent_id: string | null;
     parent_title: string | null;
+    parent_kind?: string | null;
     work_id: string | null;
     work_name: string | null;
     venue_id: string | null;
@@ -926,7 +950,12 @@ interface EventDetailResponse {
     kind: string;
     title: string | null;
     starts_on: string | null;
+    ends_on?: string | null;
+    starts_at?: string | null;
     date_precision: string | null;
+    venue_name?: string | null;
+    part?: string | null;
+    subject_status?: ParticipantStatus | null;
   }[];
   usage: { links: number; drafts: number; children: number };
   can_delete: boolean;

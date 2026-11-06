@@ -530,7 +530,13 @@ export class DemoSource implements ArchiveSource {
     };
   }
 
-  async listEvents(filter?: { query?: string; kind?: string; from?: string; to?: string }) {
+  async listEvents(filter?: {
+    query?: string;
+    kind?: string;
+    from?: string;
+    to?: string;
+    schedule?: "hide" | "include";
+  }) {
     await this.delay();
     const linked = new Set(
       this.intakes.flatMap((i) =>

@@ -340,6 +340,67 @@ describe("出来事を作る・直す", () => {
       expect((await ctx.call("POST", `/events/${parent}/delete`, {}, owner)).status).toBe(409);
     }));
 
+  it("ライブの公演は日程として扱い、一覧では隠してまとまりに件数を出す。部も残せる", () =>
+    withApi(async (ctx) => {
+      const hanako = await subject(ctx);
+      const make = async (body: Record<string, unknown>) =>
+        (await json<{ id: string }>(ctx.call("POST", "/events", { ...base, ...body }))).id;
+      const tour = await make({
+        kind: "live",
+        title: "試験のツアー",
+        starts_on: "2026-12-01",
+        ends_on: "2026-12-02",
+      });
+      const day1 = await make({
+        kind: "performance",
+        title: "試験のツアー 12/1 昼公演",
+        parent_id: tour,
+        starts_on: "2026-12-01",
+        part: "昼公演",
+        participants: [{ entity_id: hanako, role: "performer", status: "scheduled" }],
+      });
+      await make({
+        kind: "performance",
+        title: "試験のツアー 12/2",
+        parent_id: tour,
+        starts_on: "2026-12-02",
+      });
+      // 番組のシリーズの各回は、日程にしない
+      const series = await make({ kind: "episode", title: "試験の番組（放送期間）" });
+      const episode = await make({ title: "試験の番組 第 2 回", parent_id: series });
+
+      type Row = {
+        id: string;
+        schedule_count: number;
+        parent_title: string | null;
+        part: string | null;
+      };
+      const hidden = await json<{ items: Row[]; total: number }>(
+        ctx.call("GET", "/events?schedule=hide"),
+      );
+      const ids = hidden.items.map((r) => r.id);
+      expect(ids).toEqual(expect.arrayContaining([tour, series, episode]));
+      expect(ids).not.toContain(day1);
+      expect(hidden.items.find((r) => r.id === tour)?.schedule_count).toBe(2);
+      expect(hidden.total).toBe(3);
+
+      // 素材を紐付ける候補では日程も出し、まとまりの題名と部を添える
+      const all = await json<{ items: Row[] }>(
+        ctx.call("GET", "/events?from=2026-12-01&to=2026-12-01"),
+      );
+      expect(all.items.find((r) => r.id === day1)).toMatchObject({
+        parent_title: "試験のツアー",
+        part: "昼公演",
+      });
+
+      const detail = await json<{
+        event: { attributes: Record<string, unknown> };
+        children: { id: string; part: string | null; subject_status: string | null }[];
+      }>(ctx.call("GET", `/events/${tour}`));
+      expect(detail.children.map((c) => c.id)[0]).toBe(day1);
+      expect(detail.children[0]).toMatchObject({ part: "昼公演", subject_status: "scheduled" });
+    }));
+
   it("出典の URL の見出しを、取り込み済みの素材（保存済み・振り分け待ち）から返す。外には取りに行かない", () =>
     withApi(async (ctx) => {
       const token = await participant(ctx);

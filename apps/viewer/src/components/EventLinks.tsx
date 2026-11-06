@@ -51,7 +51,9 @@ function postText(draft: DraftInput): string {
 }
 
 function eventMeta(e: EventSummary): string {
-  return `${EVENT_KIND_SHORT[e.kind] ?? e.kind}・${eventDateLabel(e.startsOn, e.endsOn, e.datePrecision)}`;
+  // 日程は、まとまりの題名を添える（設計書 決定記録 0034）
+  const of = e.parentTitle && e.kind !== "episode" ? `「${e.parentTitle}」の日程・` : "";
+  return `${of}${EVENT_KIND_SHORT[e.kind] ?? e.kind}・${eventDateLabel(e.startsOn, e.endsOn, e.datePrecision)}${e.part ? ` ${e.part}` : ""}`;
 }
 
 function EventChip({ event, onAdd }: { event: EventSummary; onAdd: () => void }) {
@@ -59,10 +61,7 @@ function EventChip({ event, onAdd }: { event: EventSummary; onAdd: () => void })
     <button type="button" className="event-candidate" onClick={onAdd}>
       <Plus size={12} aria-hidden="true" />
       <span className="event-candidate-title">{event.title}</span>
-      <span className="quiet">
-        {EVENT_KIND_SHORT[event.kind] ?? event.kind}・
-        {eventDateLabel(event.startsOn, event.endsOn, event.datePrecision)}
-      </span>
+      <span className="quiet">{eventMeta(event)}</span>
     </button>
   );
 }
