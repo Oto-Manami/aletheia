@@ -61,6 +61,35 @@ describe("振り分けの画面", () => {
     expect(appears[1]).toMatchObject({ origin: "human", confidence: 1 });
   });
 
+  it("記事の画像・リンク・ボタン以外のところを押しても、言及なしにするものとして選べる", async () => {
+    const user = userEvent.setup();
+    open();
+    await screen.findByText("リハーサルの日");
+    const card = cards().find((c) => c.textContent?.includes("リハーサルの日"))!;
+    const box = within(card).getByRole<HTMLInputElement>("checkbox");
+    // 本文を押すと選ばれ、もう一度押すと外れる
+    await user.click(card.querySelector(".triage-snippet") ?? card);
+    expect(box.checked).toBe(true);
+    expect(screen.getByRole("button", { name: "選んだ 1 件を言及なしにする" })).toBeTruthy();
+    await user.click(card.querySelector(".triage-snippet") ?? card);
+    expect(box.checked).toBe(false);
+    // 画像（写っているかの選択）と元の記事のリンクを押しても、選ばない
+    await user.click(within(card).getAllByRole("button", { name: /^画像 1/ })[0]!);
+    expect(box.checked).toBe(false);
+    // チェックの箱そのものでも選べる（二重に切り替わらない）
+    await user.click(box);
+    expect(box.checked).toBe(true);
+  });
+
+  it("言及なしを選べない参加者は、記事を押しても何も選ばない", async () => {
+    const user = userEvent.setup();
+    open({ ...admin, isAdmin: false });
+    await screen.findByText("リハーサルの日");
+    const card = cards().find((c) => c.textContent?.includes("リハーサルの日"))!;
+    await user.click(card.querySelector(".triage-snippet") ?? card);
+    expect(card.className).not.toContain("is-selected");
+  });
+
   it("言及も写真の選択も無いものを選び、まとめて言及なしにできる", async () => {
     const user = userEvent.setup();
     open();
