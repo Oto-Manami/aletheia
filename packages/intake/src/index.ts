@@ -8,8 +8,10 @@ export {
   IntakeError,
   type IntakeErrorCode,
   parseDraft,
+  REJECT_KEEP,
   rejectIntake,
   rejectIntakeIn,
+  reopenRejected,
 } from "./approve.ts";
 export {
   applyCollectionRules,

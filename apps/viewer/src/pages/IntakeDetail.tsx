@@ -106,7 +106,7 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
   const [params] = useSearchParams();
   const [draft, setDraft] = useState<DraftInput>(detail.draft);
   const [note, setNote] = useState("");
-  const [busy, setBusy] = useState<Decision | null>(null);
+  const [busy, setBusy] = useState<Decision | "reopen" | null>(null);
   const [failure, setFailure] = useState<{ message: string; issues: IntakeIssue[] } | null>(null);
   // 前の下書きを判断して、この下書きに進んできたときは、その結果を見せる
   const location = useLocation();
@@ -146,6 +146,27 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
   );
   const decidable = detail.state === "pending" || detail.state === "on_hold";
   const readOnly = !decidable || busy !== null;
+
+  /** 却下を取り消し、承認待ちに戻す（却下した直近 10 件だけ。決定記録 0043） */
+  const reopen = async () => {
+    setBusy("reopen");
+    setFailure(null);
+    try {
+      await source.reopenIntake(detail.id);
+      layout.changed();
+      void navigate(
+        { pathname: `/intake/${detail.id}` },
+        { replace: true, state: { done: "承認待ちに戻しました" } },
+      );
+    } catch (e) {
+      setFailure({
+        message: e instanceof Error ? e.message : String(e),
+        issues: e instanceof SourceError ? e.issues : [],
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const decide = async (decision: Decision) => {
     setBusy(decision);
@@ -305,6 +326,27 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
             onLabel={(ref) => setLabels((prev) => new Map(prev).set(ref.id, ref.label))}
             readOnly={readOnly}
           />
+          {detail.state === "rejected" && (
+            <div className="decision">
+              <p className="decision-summary">
+                却下したものは、直近 10
+                件まで置いておきます。それより古いものは、下書きとファイルを削除します。
+              </p>
+              <button
+                type="button"
+                className="button block"
+                disabled={busy !== null}
+                onClick={() => void reopen()}
+              >
+                {busy === "reopen" ? "戻しています" : "承認待ちに戻す"}
+              </button>
+              {failure && (
+                <p className="error" role="alert">
+                  {failure.message}
+                </p>
+              )}
+            </div>
+          )}
           {decidable && (
             <div className="decision">
               <p className="decision-summary">{approvalSentence(draft, detail.chosenImagesOnly)}</p>

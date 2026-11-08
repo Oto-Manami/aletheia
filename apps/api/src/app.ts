@@ -9,7 +9,8 @@
 // | POST     | /intake/known             | 取り込み済み・確認済みの投稿を返す |
 // | POST     | /intake/redetect          | 振り分け待ちの言及の印を付け直す   |
 // | POST     | /intake/:id/approve       | 承認して事実の層に反映する         |
-// | POST     | /intake/:id/reject        | 却下する                           |
+// | POST     | /intake/:id/reject        | 却下する（直近 10 件まで置いておく） |
+// | POST     | /intake/:id/reopen        | 却下を取り消して承認待ちへ         |
 // | POST     | /intake/:id/hold          | 保留する                           |
 // | POST     | /intake/:id/keep          | 振り分け: 残す（承認待ちへ）       |
 // | POST     | /intake/:id/no-mention    | 振り分け: 言及なし（記録して置き場へ） |
@@ -34,6 +35,7 @@ import {
   keepAndApprove,
   keepTriage,
   rejectIntake,
+  reopenRejected,
   restoreDiscarded,
   type Subject,
   usesChosenImagesOnly,
@@ -56,7 +58,7 @@ import {
 } from "./auth.ts";
 import { registerEventRoutes } from "./events.ts";
 import { listTriage, SOURCE_KINDS, triageListQuery } from "./triage-list.ts";
-import { finalizeApprovedFiles, moveRejectedFiles, removeStagedFiles, stageFile } from "./files.ts";
+import { finalizeApprovedFiles, removeStagedFiles, stageFile } from "./files.ts";
 
 const uuid = z.uuid();
 
@@ -539,8 +541,18 @@ export function createApp(
       .returning("id")
       .executeTakeFirst();
     // 同じ経路の下書きが却下済みなら、新しい内容で取り込み直す（設計書 決定記録 0042）。却下の前の内容は
-    // 変更履歴に残り、却下の場所へ移したファイルもそのまま残る
-    const reopened = created
+    // 変更履歴に残る。却下の前の仮置きのファイルは、新しいファイルに置き換わるので後から消す（決定記録 0043）
+    const before = created
+      ? undefined
+      : await db
+          .selectFrom("intake_items")
+          .select("staged_files")
+          .where("channel_id", "=", channel.id)
+          .where("external_id", "=", body.external_id)
+          .where("route", "=", body.route)
+          .where("state", "=", "rejected")
+          .executeTakeFirst();
+    const reopened = !before
       ? undefined
       : await db
           .updateTable("intake_items")
@@ -561,6 +573,11 @@ export function createApp(
           .returning("id")
           .executeTakeFirst();
     const id = created?.id ?? reopened?.id;
+    if (reopened && before && Array.isArray(before.staged_files)) {
+      const keyOf = (f: unknown) => (f as { storage_key?: unknown } | null)?.storage_key;
+      const keep = new Set(body.staged_files.map(keyOf));
+      removeLater(before.staged_files.filter((f) => !keep.has(keyOf(f))));
+    }
     if (!id) {
       throw new HTTPException(409, { message: "同じ経路から、同じ投稿の下書きが既にあります" });
     }
@@ -591,23 +608,40 @@ export function createApp(
     return c.json({ ...result, files: filesReport });
   });
 
-  for (const [action, run] of [
-    ["reject", rejectIntake],
-    ["hold", holdIntake],
-  ] as const) {
-    app.post(`/intake/:id/${action}`, async (c) => {
-      const id = idParam(c.req.param("id"));
-      const body = await parseBody(c.req.raw, decisionBody);
-      const reviewerId = reviewerOf(c.get("actor"), body);
-      await run(db, id, {
-        ...(reviewerId ? { reviewerId } : {}),
-        ...(body.note ? { note: body.note } : {}),
-      });
-      const filesReport =
-        action === "reject" && files ? await moveRejectedFiles(db, files, id) : null;
-      return c.json({ ok: true, files: filesReport });
+  /**
+   * 却下する。却下したものは直近 10 件まで置いておき（仮置きのファイルもそのまま。承認待ちに戻せる）、
+   * 押し出された古い下書きの仮置きのファイルは後から消す（設計書 決定記録 0043）
+   */
+  app.post("/intake/:id/reject", async (c) => {
+    const id = idParam(c.req.param("id"));
+    const body = await parseBody(c.req.raw, decisionBody);
+    const reviewerId = reviewerOf(c.get("actor"), body);
+    const { stagedFiles } = await rejectIntake(db, id, {
+      ...(reviewerId ? { reviewerId } : {}),
+      ...(body.note ? { note: body.note } : {}),
     });
-  }
+    removeLater(stagedFiles);
+    return c.json({ ok: true });
+  });
+
+  app.post("/intake/:id/hold", async (c) => {
+    const id = idParam(c.req.param("id"));
+    const body = await parseBody(c.req.raw, decisionBody);
+    const reviewerId = reviewerOf(c.get("actor"), body);
+    await holdIntake(db, id, {
+      ...(reviewerId ? { reviewerId } : {}),
+      ...(body.note ? { note: body.note } : {}),
+    });
+    return c.json({ ok: true });
+  });
+
+  /** 却下を取り消し、承認待ちに戻す（置いてある直近 10 件だけ。決定記録 0043） */
+  app.post("/intake/:id/reopen", async (c) => {
+    assertWorker(c.get("actor"));
+    const id = idParam(c.req.param("id"));
+    await reopenRejected(db, id);
+    return c.json({ ok: true });
+  });
 
   // 振り分け（設計書 決定記録 0021）
   app.post("/intake/:id/keep", async (c) => {

@@ -1,7 +1,7 @@
 // ファイルの承認待ちへの保存と、承認・却下の後の移動
 import { createHash } from "node:crypto";
 import { seed } from "@aletheia/db/testing/fixtures";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { StagedFile } from "../src/files.ts";
 import { type Ctx, withApi } from "./helpers.ts";
 
@@ -228,14 +228,80 @@ describe("承認・却下の後の移動", () => {
       });
     }));
 
-  it("却下すると、却下の場所へ移す（削除しない）", () =>
+  it("却下しても、仮置きのファイルはそのまま置いておき、承認待ちに戻せる（決定記録 0043）", () =>
     withApi(async (ctx) => {
       const d = await seed(ctx.c);
       const staged = await stage(ctx, "1001");
       const id = await intakeWith(ctx, d, [staged]);
       expect((await ctx.call("POST", `/intake/${id}/reject`, {})).status).toBe(200);
-      expect(ctx.files.pathOf(staged.storage_key)).toBe("_rejected/discord/1001_01.jpg");
-      expect(ctx.files.files.size).toBe(1);
+      expect(ctx.files.pathOf(staged.storage_key)).toBe("_staging/discord/1001_01.jpg");
+
+      expect((await ctx.call("POST", `/intake/${id}/reopen`, {})).status).toBe(200);
+      const detail = (await (await ctx.call("GET", `/intake/${id}`)).json()) as {
+        item: { state: string; reviewed_at: string | null };
+      };
+      expect(detail.item).toMatchObject({ state: "pending", reviewed_at: null });
+      // 承認待ちのものは戻せない
+      expect((await ctx.call("POST", `/intake/${id}/reopen`, {})).status).toBe(409);
+      // 戻したものは、そのまま承認でき、ファイルは本来の場所へ移る
+      const approved = await ctx.call("POST", `/intake/${id}/approve`, {});
+      expect(((await approved.json()) as { files: { stored: number } }).files.stored).toBe(1);
+    }));
+
+  it("却下したものは直近 10 件まで置き、押し出された古い下書きは仮置きのファイルごと消す", () =>
+    withApi(async (ctx) => {
+      await seed(ctx.c);
+      const items: { id: string; key: string }[] = [];
+      for (let n = 0; n < 11; n++) {
+        const staged = await ctx.upload(
+          `/files/staging?route=discord&ref=${6000 + n}&index=1&name=photo.jpg`,
+          new TextEncoder().encode(`却下する画像 ${n}`),
+          "image/jpeg",
+        );
+        const file = (await staged.json()) as StagedFile;
+        const res = await ctx.call("POST", "/intake", {
+          channel_key: "sns:test_account",
+          external_id: String(6000 + n),
+          route: "discord",
+          captured_at: "2026-10-12T21:35:00+09:00",
+          staged_files: [file],
+          draft: {
+            version: 1,
+            post: { classification: "public" },
+            assets: [{ ref: "a0", media_type: "image", sha256: file.sha256 }],
+          },
+        });
+        items.push({ id: ((await res.json()) as { id: string }).id, key: file.storage_key });
+      }
+      for (const item of items) {
+        expect((await ctx.call("POST", `/intake/${item.id}/reject`, {})).status).toBe(200);
+      }
+      await vi.waitFor(() => expect(ctx.files.files.has(items[0]!.key)).toBe(false));
+      expect(ctx.files.files.has(items[1]!.key)).toBe(true);
+      expect((await ctx.call("GET", `/intake/${items[0]!.id}`)).status).toBe(404);
+      // 最も古いものは戻せない
+      expect((await ctx.call("POST", `/intake/${items[0]!.id}/reopen`, {})).status).toBe(404);
+      const list = (await (await ctx.call("GET", "/intake?state=rejected")).json()) as {
+        items: unknown[];
+      };
+      expect(list.items).toHaveLength(10);
+    }));
+
+  it("却下したものを取り込み直すと、却下の前の仮置きのファイルを後から消す", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const first = await stage(ctx, "7007");
+      const id = await intakeWith(ctx, d, [first]);
+      expect((await ctx.call("POST", `/intake/${id}/reject`, {})).status).toBe(200);
+      const second = await ctx.upload(
+        `/files/staging?route=discord&ref=7008&index=1&name=photo.jpg`,
+        new TextEncoder().encode("取り込み直した画像"),
+        "image/jpeg",
+      );
+      const secondFile = (await second.json()) as StagedFile;
+      expect((await intakeWith(ctx, d, [secondFile])) === id).toBe(true);
+      await vi.waitFor(() => expect(ctx.files.files.has(first.storage_key)).toBe(false));
+      expect(ctx.files.files.has(secondFile.storage_key)).toBe(true);
     }));
 
   it("移動に失敗しても承認は取り消さず、失敗を返す", () =>

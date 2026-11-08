@@ -82,7 +82,7 @@ export function stagingLocation(route: string, routeRef: string, index: number, 
   };
 }
 
-/** 却下・重複のため、却下の場所へ移すときの置き場所（元の名前のまま） */
+/** 重複のため、却下の場所へ移すときの置き場所（元の名前のまま） */
 export function rejectedLocation(route: string, name: string) {
   return { folder: [REJECTED, safeSegment(route)] as FolderPath, name: safeSegment(name) };
 }

@@ -4,7 +4,7 @@
 
 import type { Database } from "@aletheia/db/client";
 import type { DB } from "@aletheia/db/database";
-import type { Transaction } from "kysely";
+import { sql, type Transaction } from "kysely";
 import { type Draft, draftSchema } from "./draft.ts";
 import { onlyChosenImages, usesChosenImagesOnly } from "./images.ts";
 
@@ -414,20 +414,76 @@ async function decide(
     .set({
       state,
       reviewed_by: options.reviewerId ?? null,
-      reviewed_at: state === "rejected" ? new Date() : null,
+      // まとめて却下したときも順番が付くよう、時刻は文の実行時のものにする
+      reviewed_at: state === "rejected" ? sql<string>`clock_timestamp()` : null,
       review_note: options.note ?? null,
     })
     .where("id", "=", intakeId)
     .execute();
 }
 
-/** 下書きを却下する。事実の層には何も入れない（ファイルは削除せず却下の場所へ移す） */
-export function rejectIntakeIn(
+/** 却下した下書きを置いておく件数（設計書 決定記録 0043） */
+export const REJECT_KEEP = 10;
+
+/**
+ * 下書きを却下する。事実の層には何も入れない。却下したものは直近 {@link REJECT_KEEP} 件まで置いておき
+ * （承認待ちに戻せる）、それより古いものは下書きを削除する。削除した下書きの仮置きのファイルの一覧を返す
+ * （呼ぶ側が保存先から削除する。設計書 決定記録 0043）
+ */
+export async function rejectIntakeIn(
   trx: Trx,
   intakeId: string,
   options: { reviewerId?: string; note?: string } = {},
-): Promise<void> {
-  return decide(trx, intakeId, "rejected", options);
+): Promise<{ stagedFiles: unknown[] }> {
+  await decide(trx, intakeId, "rejected", options);
+  const old = await trx
+    .selectFrom("intake_items")
+    .select(["id", "staged_files"])
+    .where("state", "=", "rejected")
+    .orderBy("reviewed_at", "desc")
+    .orderBy("id")
+    .offset(REJECT_KEEP)
+    .limit(1000)
+    .forUpdate()
+    .execute();
+  if (old.length === 0) return { stagedFiles: [] };
+  await trx
+    .deleteFrom("intake_items")
+    .where(
+      "id",
+      "in",
+      old.map((o) => o.id),
+    )
+    .execute();
+  return {
+    stagedFiles: old.flatMap((o) => (Array.isArray(o.staged_files) ? o.staged_files : [])),
+  };
+}
+
+/** 却下を取り消し、承認待ちに戻す（置いてある直近 10 件だけ。設計書 決定記録 0043） */
+export function reopenRejected(db: Database, intakeId: string): Promise<void> {
+  return inTransaction(db, async (trx) => {
+    const intake = await trx
+      .selectFrom("intake_items")
+      .select(["id", "state"])
+      .where("id", "=", intakeId)
+      .forUpdate()
+      .executeTakeFirst();
+    if (!intake) {
+      throw new IntakeError(
+        "not_found",
+        "戻せる下書きが見つかりません（却下した直近 10 件より古いものは戻せません）",
+      );
+    }
+    if (intake.state !== "rejected") {
+      throw new IntakeError("already_decided", `この下書きは却下されていません（${intake.state}）`);
+    }
+    await trx
+      .updateTable("intake_items")
+      .set({ state: "pending", reviewed_by: null, reviewed_at: null, review_note: null })
+      .where("id", "=", intakeId)
+      .execute();
+  });
 }
 
 /** 判断を保留する。後から承認・却下できる */
@@ -444,7 +500,7 @@ export function rejectIntake(
   db: Database,
   intakeId: string,
   options: { reviewerId?: string; note?: string } = {},
-): Promise<void> {
+): Promise<{ stagedFiles: unknown[] }> {
   return inTransaction(db, (trx) => rejectIntakeIn(trx, intakeId, options));
 }
 

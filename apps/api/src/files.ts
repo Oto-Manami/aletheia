@@ -3,7 +3,8 @@
 // - 取り込みの時点で、ファイルを承認待ちの場所（_staging）に保存する
 // - 承認が確定した後に、本来の場所へ移して asset_files に記録する。失敗しても承認は取り消さず、
 //   データ品質の検査（原本のファイルの記録が無い素材）で見つけてやり直す
-// - 既に同じファイルが保存されている（重複）・却下した場合は、却下の場所（_rejected）へ移す（削除しない）
+// - 既に同じファイルが保存されている（重複）場合は、却下の場所（_rejected）へ移す（削除しない）
+// - 却下したものは、直近 10 件の間は仮置きの場所のまま置き、押し出されたら消す（決定記録 0043）
 // - 承認した下書きの素材に無いファイル（振り分けで選ばなかった画像など）は、保存せずに消す（決定記録 0037）
 
 import { createHash } from "node:crypto";
@@ -175,32 +176,6 @@ export async function finalizeApprovedFiles(
         .execute();
       asset.has_original = true;
       report.stored++;
-    } catch (e) {
-      report.failed.push({
-        storage_key: file.storage_key,
-        error: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
-  return report;
-}
-
-/** 却下の後: 承認待ちのファイルを却下の場所へ移す */
-export async function moveRejectedFiles(
-  db: Database,
-  files: FileStore,
-  intakeId: string,
-): Promise<FileReport> {
-  const report: FileReport = { stored: 0, duplicates: 0, failed: [] };
-  const intake = await db
-    .selectFrom("intake_items")
-    .select(["staged_files", "route"])
-    .where("id", "=", intakeId)
-    .executeTakeFirstOrThrow();
-  for (const file of stagedFilesOf(intake.staged_files, files.provider)) {
-    try {
-      const place = rejectedLocation(intake.route, file.staged_name);
-      await files.move(file.storage_key, place.folder, place.name);
     } catch (e) {
       report.failed.push({
         storage_key: file.storage_key,
