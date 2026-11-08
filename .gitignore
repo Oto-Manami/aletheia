@@ -14,3 +14,6 @@ coverage/
 supabase/.temp/
 supabase/.branches/
 .files/
+
+# CI が取ってくる道具（キャッシュ）
+.ci-tools/

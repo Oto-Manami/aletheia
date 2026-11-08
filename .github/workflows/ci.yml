@@ -32,7 +32,7 @@ jobs:
   rules:
     name: 規約（マイグレーション・ワークフロー・リンク）
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       ACTIONLINT_VERSION: 1.7.7
       LYCHEE_VERSION: 0.18.1
@@ -42,32 +42,55 @@ jobs:
           fetch-depth: 0
       - name: マイグレーションの規約（取り込み済みのものを書き換えていないか）
         run: sh scripts/check-migrations.sh "origin/${{ github.base_ref || 'main' }}"
+      # 道具は GitHub のリリースから取るが、取れないことがある（504 など）。一度取ったものは
+      # キャッシュに置いて使い回し、取るときは間を空けてやり直す
+      - name: 道具のキャッシュ
+        id: tools
+        uses: actions/cache@v4
+        with:
+          path: .ci-tools
+          key: rules-tools-actionlint-${{ env.ACTIONLINT_VERSION }}-lychee-${{ env.LYCHEE_VERSION }}
+      - name: 道具を用意する
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .ci-tools
+          fetch() { curl -sSfL --retry 6 --retry-all-errors --retry-delay 15 -o "$2" "$1"; }
+          fetch "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" actionlint.tgz
+          tar xzf actionlint.tgz -C .ci-tools actionlint
+          fetch "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz" lychee.tgz
+          tar xzf lychee.tgz -C .ci-tools
+          rm actionlint.tgz lychee.tgz
       - name: ワークフローの検査（actionlint）
-        run: |
-          curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" | tar xz actionlint
-          ./actionlint
+        run: ./.ci-tools/actionlint
       - name: ドキュメントのリンク切れ（リポジトリ内）
-        run: |
-          curl -sSfL "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz" | tar xz
-          ./lychee --offline --no-progress --include-fragments --exclude-path node_modules '**/*.md'
+        run: ./.ci-tools/lychee --offline --no-progress --include-fragments --exclude-path node_modules --exclude-path .ci-tools '**/*.md'
 
   secrets:
     name: 鍵の混入チェック
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       GITLEAKS_VERSION: 8.28.0
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # GitHub のリリースから取れないことがあるので、キャッシュに置いて使い回す（rules と同じ）
+      - name: gitleaks のキャッシュ
+        id: tools
+        uses: actions/cache@v4
+        with:
+          path: .ci-tools
+          key: secrets-tools-gitleaks-${{ env.GITLEAKS_VERSION }}
       - name: gitleaks を用意する
+        if: steps.tools.outputs.cache-hit != 'true'
         run: |
-          curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          tar xzf gitleaks.tgz gitleaks
+          mkdir -p .ci-tools
+          curl -sSfL --retry 6 --retry-all-errors --retry-delay 15 -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar xzf gitleaks.tgz -C .ci-tools gitleaks
           rm gitleaks.tgz
       - name: 履歴全体を検査する
-        run: ./gitleaks git --redact --no-banner --verbose .
+        run: ./.ci-tools/gitleaks git --redact --no-banner --verbose .
 
   db:
     name: データベースのテスト
