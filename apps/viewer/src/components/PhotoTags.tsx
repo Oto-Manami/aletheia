@@ -22,6 +22,7 @@ export function PhotoTags({
   name,
   previews,
   readOnly,
+  chosenOnly = false,
 }: {
   draft: DraftInput;
   onChange: (d: DraftInput) => void;
@@ -31,6 +32,8 @@ export function PhotoTags({
   name: (id: string) => string;
   previews: Record<string, string>;
   readOnly: boolean;
+  /** 写っている人を付けた写真だけを保存する（振り分けで残したもの。設計書 決定記録 0037） */
+  chosenOnly?: boolean;
 }) {
   const refs = imageRefsOf(draft);
   if (refs.length === 0) return null;
@@ -50,6 +53,8 @@ export function PhotoTags({
               <>
                 <strong>{subject.label}</strong> が写っている写真を押して印を付けます。
                 一緒に写っている人は、写真の下から選びます。
+                {chosenOnly &&
+                  " 写っている人を付けた写真だけを保存します（ほかの写真は保存しません）。"}
               </>
             ) : (
               "読み込んでいます"

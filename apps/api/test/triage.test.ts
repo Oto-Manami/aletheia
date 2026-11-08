@@ -308,6 +308,17 @@ describe("振り分け", () => {
           classification: "public",
         },
         assets: [{ ref: "photo-1", media_type: "image", sha256: sha }],
+        // 振り分けで残したものは、写っている人を付けた画像だけを保存する（決定記録 0037）
+        links: [
+          {
+            from: { asset: "photo-1" },
+            to_type: "entity",
+            to_id: d.person,
+            role: "appears",
+            origin: "human",
+            confidence: 1,
+          },
+        ],
       });
       const a = { sha: first.staged.sha256 };
       const res1 = await ctx.call("POST", `/intake/${first.id}/keep`, {
@@ -326,5 +337,29 @@ describe("振り分け", () => {
         [a.sha],
       );
       expect(assets.map((r) => r.file_policy)).toEqual(["stored", "reference_only"]);
+    }));
+
+  it("振り分けで残したものは、写っている人を付けていない画像を保存せず、仮置きのファイルも消す", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const item = await triageDraft(ctx, d, "303");
+      const res = await ctx.call("POST", `/intake/${item.id}/keep`, {
+        draft: {
+          version: 1,
+          post: { url: "https://example.com/blog/member/303", classification: "public" },
+          assets: [{ ref: "photo-1", media_type: "image", sha256: item.staged.sha256 }],
+        },
+      });
+      expect(res.status).toBe(200);
+      // 承認の画面に、写っている人を付けた画像だけを保存することを知らせる
+      const detail = await ctx.call("GET", `/intake/${item.id}`);
+      expect(((await detail.json()) as { chosen_images_only: boolean }).chosen_images_only).toBe(
+        true,
+      );
+      const approved = await ctx.call("POST", `/intake/${item.id}/approve`, {});
+      const body = (await approved.json()) as { counts: { assets: number }; files: unknown };
+      expect(body.counts.assets).toBe(0);
+      expect(body.files).toEqual({ stored: 0, duplicates: 0, unselected: 1, failed: [] });
+      expect(ctx.files.pathOf(item.staged.storage_key)).toBeUndefined();
     }));
 });

@@ -12,7 +12,7 @@ import { SourcePreview } from "../components/SourcePreview.tsx";
 import { useApp } from "../context.tsx";
 import { formatInstant } from "../format.ts";
 import { draftWarnings, reviewItems } from "../source/summarize.ts";
-import { authorsOf, confirmPeopleTags } from "../source/tags.ts";
+import { appearsOf, authorsOf, confirmPeopleTags } from "../source/tags.ts";
 import {
   type Decision,
   type IntakeDetail,
@@ -48,9 +48,17 @@ function issuesOf(draft: DraftInput): IntakeIssue[] {
 }
 
 /** 承認すると何を保存するかを、ふだんの言葉で（紐付ける人は右側の一覧に出ている） */
-function approvalSentence(draft: DraftInput): string {
+/**
+ * 承認すると保存するもの。chosenOnly（振り分けで残したもの）は、写っている人を付けた画像だけを保存する
+ * （設計書 決定記録 0037。承認の処理と同じ規則）
+ */
+function approvalSentence(draft: DraftInput, chosenOnly: boolean): string {
   const assets = draft.assets ?? [];
-  const photos = assets.filter((a) => a.media_type === "image").length;
+  const images = assets.filter((a) => a.media_type === "image");
+  const photos = chosenOnly
+    ? images.filter((a) => appearsOf(draft, a.ref).length > 0).length
+    : images.length;
+  const skipped = images.length - photos;
   const kept = [
     assets.some((a) => (a.texts ?? []).length > 0) ? "本文" : null,
     photos > 0 ? `写真 ${photos} 枚` : null,
@@ -60,7 +68,10 @@ function approvalSentence(draft: DraftInput): string {
     (a) => a.media_type !== "image" && a.media_type !== "webpage" && (a.texts ?? []).length === 0,
   ).length;
   if (other > 0) kept.push(`素材 ${other} 件`);
-  return `承認すると、${kept.join("・") || "投稿"}を保存します。`;
+  const sentence = `承認すると、${kept.join("・") || "投稿"}を保存します。`;
+  return skipped > 0
+    ? `${sentence}写っている人を付けていない写真 ${skipped} 枚は保存しません。`
+    : sentence;
 }
 
 function refsOf(draft: DraftInput): { id: string; type: RefLabel["type"] }[] {
@@ -257,6 +268,7 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
             name={name}
             previews={detail.previews}
             readOnly={readOnly}
+            chosenOnly={detail.chosenImagesOnly}
           />
           <MentionView draft={draft} ownPost={ownPost} />
           <details className="panel panel-pad more">
@@ -295,7 +307,7 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
           />
           {decidable && (
             <div className="decision">
-              <p className="decision-summary">{approvalSentence(draft)}</p>
+              <p className="decision-summary">{approvalSentence(draft, detail.chosenImagesOnly)}</p>
               <button
                 type="button"
                 className="button primary block"

@@ -4,6 +4,7 @@
 // - 承認が確定した後に、本来の場所へ移して asset_files に記録する。失敗しても承認は取り消さず、
 //   データ品質の検査（原本のファイルの記録が無い素材）で見つけてやり直す
 // - 既に同じファイルが保存されている（重複）・却下した場合は、却下の場所（_rejected）へ移す（削除しない）
+// - 承認した下書きの素材に無いファイル（振り分けで選ばなかった画像など）は、保存せずに消す（決定記録 0037）
 
 import { createHash } from "node:crypto";
 import type { Database } from "@aletheia/db/client";
@@ -67,7 +68,7 @@ export async function stageFile(
 export interface FileReport {
   stored: number;
   duplicates: number;
-  /** 下書きの素材に無かった（振り分けで選ばなかった画像など）ので、却下の場所へ移した数 */
+  /** 下書きの素材に無かった（振り分けで選ばなかった画像など）ので、保存せずに消した数 */
   unselected?: number;
   failed: { storage_key: string; error: string }[];
 }
@@ -141,9 +142,9 @@ export async function finalizeApprovedFiles(
           await files.move(file.storage_key, place.folder, `duplicate_${place.name}`);
           report.duplicates++;
         } else {
-          // 下書きの素材に無い（ニュースの振り分けで選ばなかった画像など。設計書 決定記録 0035）。
-          // 削除はせず、却下の場所へ移す
-          await files.move(file.storage_key, place.folder, `unselected_${place.name}`);
+          // 下書きの素材に無い（振り分けで写っている人を付けなかった画像など）。保存先には残さず、
+          // 仮置きのファイルを消す（設計書 決定記録 0037）
+          await files.remove(file.storage_key);
           report.unselected = (report.unselected ?? 0) + 1;
         }
         continue;
