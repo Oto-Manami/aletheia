@@ -43,6 +43,7 @@ import {
   type Role,
   type SearchHit,
   SourceError,
+  type MenuCounts,
   type TriageCounts,
   type TriageMentionFilter,
   type TriageSort,
@@ -203,9 +204,13 @@ export class DemoSource implements ArchiveSource {
     return this.intakes.filter((i) => i.state === state).length;
   }
 
-  async countTriage(source: "blog" | "news"): Promise<number> {
+  async menuCounts(): Promise<MenuCounts> {
     await this.delay();
-    return this.triage.filter((t) => (source === "news") === (t.channelKind === "web")).length;
+    const news = this.triage.filter((t) => t.channelKind === "web").length;
+    return {
+      pending: this.intakes.filter((i) => i.state === "pending").length,
+      triage: { blog: this.triage.length - news, news },
+    };
   }
 
   private find(id: string): DemoIntake {

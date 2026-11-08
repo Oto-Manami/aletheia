@@ -62,100 +62,133 @@ const tagCount = sql<number>`coalesce((
     and coalesce(l ->> 'accepted', 'true') <> 'false'
 ), 0)::int`;
 
-const SOURCE_KINDS = { blog: "blog", news: "web" } as const;
+/** 振り分けの画面の種類と、情報源の種類（channels.kind）の対応 */
+export const SOURCE_KINDS = { blog: "blog", news: "web" } as const;
 
+/** 言及の強さ（並べ替え・絞り込み・件数に使う） */
+interface Signal {
+  id: string;
+  captured_at: Date;
+  s: number;
+  g: number;
+  t: number;
+}
+
+function matches(mention: TriageListQuery["mention"], x: Signal): boolean {
+  switch (mention) {
+    case "any":
+      return x.s > 0 || x.g > 0;
+    case "subject":
+      return x.s > 0;
+    case "group_only":
+      return x.s === 0 && x.g > 0;
+    case "none":
+      return x.s === 0 && x.g === 0;
+    case "unnamed":
+      return x.s === 0 && x.g === 0 && x.t === 0;
+    case "others_only":
+      return x.s === 0 && x.g === 0 && x.t > 0;
+    default:
+      return true;
+  }
+}
+
+/** 古い順（同じ日時は id の順） */
+function byOldest(a: Signal, b: Signal): number {
+  return (
+    a.captured_at.getTime() - b.captured_at.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  );
+}
+
+/** 言及の強い順: 本人への言及、期への言及の多い順。言及の無いものは、ほかのメンバーの名前の無いものを先に */
+function bySignal(a: Signal, b: Signal): number {
+  return b.s - a.s || b.g - a.g || Number(a.t > 0) - Number(b.t > 0) || byOldest(a, b);
+}
+
+/**
+ * 振り分け待ちの一覧。下書きの中身（本文を含む）は大きく、件数も多いため、言及の強さは 1 回だけ
+ * 数え（下書きの紐付けから）、絞り込み・並べ替え・件数はその結果で行い、中身は画面に出す分だけ読む
+ */
 export async function listTriage(db: Database, q: TriageListQuery) {
-  const base = db
-    .selectFrom("intake_items as i")
-    .innerJoin("channels as ch", "ch.id", "i.channel_id")
-    .select([
-      "i.id",
-      "ch.key as channel_key",
-      "ch.name as channel_name",
-      "i.external_id",
-      "i.route",
-      "i.route_ref",
-      "i.captured_at",
-      "i.state",
-      "i.draft",
-      "i.reviewed_at",
-      "i.review_note",
-      mentionCount(true).as("subject_mentions"),
-      mentionCount(false).as("group_mentions"),
-      tagCount.as("tag_mentions"),
-      "ch.kind as channel_kind",
-    ])
-    .where("i.state", "=", "triage")
-    .$if(q.source !== "all", (qb) =>
-      qb.where("ch.kind", "=", SOURCE_KINDS[q.source as "blog" | "news"]),
-    );
+  const signals: Signal[] = (
+    await db
+      .selectFrom("intake_items as i")
+      .innerJoin("channels as ch", "ch.id", "i.channel_id")
+      .select([
+        "i.id",
+        "i.captured_at",
+        mentionCount(true).as("s"),
+        mentionCount(false).as("g"),
+        tagCount.as("t"),
+      ])
+      .where("i.state", "=", "triage")
+      .$if(q.source !== "all", (qb) =>
+        qb.where("ch.kind", "=", SOURCE_KINDS[q.source as "blog" | "news"]),
+      )
+      .execute()
+  ).map((r) => ({
+    id: r.id,
+    captured_at: new Date(r.captured_at),
+    s: Number(r.s),
+    g: Number(r.g),
+    t: Number(r.t),
+  }));
 
-  // 絞り込みと並べ替えは、数えた列を使うため外側の問い合わせで行う
-  let query = db.selectFrom(base.as("t")).selectAll("t");
-  if (q.mention === "any") {
-    query = query.where((eb) =>
-      eb.or([eb("t.subject_mentions", ">", 0), eb("t.group_mentions", ">", 0)]),
-    );
-  } else if (q.mention === "subject") {
-    query = query.where("t.subject_mentions", ">", 0);
-  } else if (q.mention === "group_only") {
-    query = query.where("t.subject_mentions", "=", 0).where("t.group_mentions", ">", 0);
-  } else if (q.mention === "none") {
-    query = query.where("t.subject_mentions", "=", 0).where("t.group_mentions", "=", 0);
-  } else if (q.mention === "unnamed") {
-    query = query
-      .where("t.subject_mentions", "=", 0)
-      .where("t.group_mentions", "=", 0)
-      .where("t.tag_mentions", "=", 0);
-  } else if (q.mention === "others_only") {
-    query = query
-      .where("t.subject_mentions", "=", 0)
-      .where("t.group_mentions", "=", 0)
-      .where("t.tag_mentions", ">", 0);
-  }
-  if (q.sort === "signal") {
-    query = query
-      .orderBy("t.subject_mentions", "desc")
-      .orderBy("t.group_mentions", "desc")
-      .orderBy(sql`t.tag_mentions > 0`, "asc");
-  }
-  const items = await query
-    .orderBy("t.captured_at", "asc")
-    .orderBy("t.id")
-    .limit(q.limit)
-    .execute();
-
-  const counted = await db
-    .selectFrom(
-      db
-        .selectFrom("intake_items as i")
-        .innerJoin("channels as ch", "ch.id", "i.channel_id")
-        .select([mentionCount(true).as("s"), mentionCount(false).as("g"), tagCount.as("t")])
-        .where("i.state", "=", "triage")
-        .$if(q.source !== "all", (qb) =>
-          qb.where("ch.kind", "=", SOURCE_KINDS[q.source as "blog" | "news"]),
-        )
-        .as("c"),
-    )
-    .select([
-      sql<string>`count(*)`.as("all"),
-      sql<string>`count(*) filter (where s > 0 or g > 0)`.as("any"),
-      sql<string>`count(*) filter (where s > 0)`.as("subject"),
-      sql<string>`count(*) filter (where s = 0 and g > 0)`.as("group_only"),
-      sql<string>`count(*) filter (where s = 0 and g = 0)`.as("none"),
-      sql<string>`count(*) filter (where s = 0 and g = 0 and t = 0)`.as("unnamed"),
-      sql<string>`count(*) filter (where s = 0 and g = 0 and t > 0)`.as("others_only"),
-    ])
-    .executeTakeFirstOrThrow();
   const counts = {
-    all: Number(counted.all),
-    any: Number(counted.any),
-    subject: Number(counted.subject),
-    group_only: Number(counted.group_only),
-    none: Number(counted.none),
-    unnamed: Number(counted.unnamed),
-    others_only: Number(counted.others_only),
+    all: signals.length,
+    any: 0,
+    subject: 0,
+    group_only: 0,
+    none: 0,
+    unnamed: 0,
+    others_only: 0,
   };
+  for (const key of ["any", "subject", "group_only", "none", "unnamed", "others_only"] as const) {
+    counts[key] = signals.filter((x) => matches(key, x)).length;
+  }
+
+  const picked = signals
+    .filter((x) => matches(q.mention, x))
+    .sort(q.sort === "signal" ? bySignal : byOldest)
+    .slice(0, q.limit);
+  const signalOf = new Map(picked.map((x) => [x.id, x]));
+  const rows =
+    picked.length === 0
+      ? []
+      : await db
+          .selectFrom("intake_items as i")
+          .innerJoin("channels as ch", "ch.id", "i.channel_id")
+          .select([
+            "i.id",
+            "ch.key as channel_key",
+            "ch.name as channel_name",
+            "i.external_id",
+            "i.route",
+            "i.route_ref",
+            "i.captured_at",
+            "i.state",
+            "i.draft",
+            "i.reviewed_at",
+            "i.review_note",
+            "ch.kind as channel_kind",
+          ])
+          .where(
+            "i.id",
+            "in",
+            picked.map((x) => x.id),
+          )
+          .execute();
+  const rowOf = new Map(rows.map((r) => [r.id, r]));
+  // 数えた後に別の画面で処理されたものは出さない
+  const items = picked.flatMap((x) => {
+    const row = rowOf.get(x.id);
+    if (!row || row.state !== "triage") return [];
+    const signal = signalOf.get(x.id)!;
+    return [
+      { ...row, subject_mentions: signal.s, group_mentions: signal.g, tag_mentions: signal.t },
+    ];
+  });
+
   // 画面で、言及ごとに本人へのものか期へのものかを見分けるため
   const subjects = await db
     .selectFrom("entities")
