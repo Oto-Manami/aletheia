@@ -32,7 +32,7 @@ export function PhotoTags({
   name: (id: string) => string;
   previews: Record<string, string>;
   readOnly: boolean;
-  /** 写っている人を付けた写真だけを保存する（振り分けで残したもの。設計書 決定記録 0037） */
+  /** 写っている人を付けた写真だけを保存する（振り分けで残したもの・情報源の設定があるもの。設計書 決定記録 0037・0040） */
   chosenOnly?: boolean;
 }) {
   const refs = imageRefsOf(draft);

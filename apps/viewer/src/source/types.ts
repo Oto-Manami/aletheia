@@ -58,7 +58,7 @@ export interface IntakeDetail extends IntakeSummary {
   /** 情報源の有料・無料の既定（無料の情報源なら、承認の画面で公開区分を選ばせない） */
   channelAvailability: string | null;
   /**
-   * 写っている人を付けた画像だけを素材にするか（振り分けで残したもの。設計書 決定記録 0037）。
+   * 写っている人を付けた画像だけを素材にするか（振り分けで残したもの・情報源の設定があるもの。設計書 決定記録 0037・0040）。
    * 付けていない画像は、承認しても保存しない
    */
   chosenImagesOnly: boolean;
