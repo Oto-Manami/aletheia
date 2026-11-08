@@ -1,14 +1,15 @@
 // 振り分け（作業者・運営者。設計書 決定記録 0021・0032）
 //
-// 全件を取り込んだメンバーのブログを、1 記事ずつ「残す」か「言及なし」に分ける。
+// 全件を取り込んだメンバーのブログ・公式サイトのニュースを、1 記事ずつ分ける。画像を選ぶ意味が違うため、
+// ブログ（/triage/blog）とニュース（/triage/news）で画面を分ける（決定記録 0038）。
 // - 言及の有無（本文で見つかった別名の数）と、本文の該当箇所を印つきで見せる
 // - 画像を並べ、本人が写っている画像をクリックで選ぶ（画像だけの登場は規則では見つけられない）
 // - 言及も写っている画像も無い記事は、まとめて「言及なし」にできる
 
-import { Check, ExternalLink, Undo2 } from "lucide-react";
+import { Check, ExternalLink, ImageIcon, Undo2 } from "lucide-react";
 import { type MouseEvent, useMemo, useState } from "react";
 import type { DraftInput } from "@aletheia/intake/draft";
-import { useSearchParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { EventLinks } from "../components/EventLinks.tsx";
 import { Snippet } from "../components/Snippet.tsx";
 import { useApp } from "../context.tsx";
@@ -27,8 +28,8 @@ import type {
   TriageItem,
   TriageMentionFilter,
   TriageSort,
-  TriageSource,
 } from "../source/types.ts";
+import { TRIAGE_ROUTES, triageRouteOf } from "../triage-routes.ts";
 import { useLoad } from "../use-load.ts";
 import { useLayout } from "./Layout.tsx";
 
@@ -41,12 +42,6 @@ const FILTER_LABELS: Record<TriageMentionFilter, string> = {
   unnamed: "メンバーの名前なし",
   others_only: "ほかのメンバーの名前だけ",
 };
-
-const SOURCES: { key: TriageSource; label: string }[] = [
-  { key: "all", label: "すべての情報源" },
-  { key: "blog", label: "メンバーのブログ" },
-  { key: "news", label: "公式サイトのニュース" },
-];
 
 function hasSignal(item: TriageItem, appears: Record<string, boolean>): boolean {
   return item.mentionCount > 0 || item.images.some((img) => appears[img.ref] ?? img.appears);
@@ -218,9 +213,11 @@ function TriageCard({
               {error}
             </span>
           )}
-          {item.images.length > 0 && !news && (
+          {item.images.length > 0 && (
             <span className="quiet triage-picked">
-              写っている {picked} / {item.images.length} 枚（選んだ画像だけを保存します）
+              {news
+                ? `保存する画像 ${picked} / ${item.images.length} 枚`
+                : `写っている ${picked} / ${item.images.length} 枚（承認の画面で確かめます）`}
             </span>
           )}
           {onDiscard && (
@@ -239,7 +236,7 @@ function TriageCard({
               disabled={busy}
               onClick={() => run(onKeep)}
             >
-              残す
+              承認待ちに残す
             </button>
           )}
         </div>
@@ -316,8 +313,8 @@ function NewsEvents({
             : "出来事を選ぶと、保存できます"}
           {item.images.length > 0 &&
             (picked > 0
-              ? `。選んだ画像 ${picked} 枚を、本人が写っている画像として残します`
-              : "。画像は選ばれていないので、記事のページと本文だけを残します")}
+              ? `。選んだ画像 ${picked} 枚を保存します`
+              : "。画像は保存せず、記事のページと本文だけを残します")}
         </span>
         <button type="button" className="button" disabled={busy} onClick={onCancel}>
           やめる
@@ -381,7 +378,9 @@ function RecentlyDiscarded({
 
   return (
     <details className="triage-discarded" onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary>直近に言及なしにしたもの（10 件まで戻せます）</summary>
+      <summary>
+        直近に言及なし・関係なしにしたもの（ブログとニュースあわせて 10 件まで戻せます）
+      </summary>
       {open && list.status === "loading" && <p className="quiet">読み込んでいます</p>}
       {open && list.status === "error" && (
         <p className="error" role="alert">
@@ -397,7 +396,7 @@ function RecentlyDiscarded({
         <p className="quiet">まだありません。</p>
       )}
       {open && list.status === "ready" && list.data.length > 0 && (
-        <ul aria-label="直近に言及なしにしたもの">
+        <ul aria-label="直近に言及なし・関係なしにしたもの">
           {list.data.map((item) => (
             <li key={item.id}>
               <span className="event-material-channel">{item.channelName}</span>
@@ -443,9 +442,11 @@ export function TriagePage() {
   const { source, viewer } = useApp();
   const layout = useLayout();
   const [params, setParams] = useSearchParams();
+  // ブログとニュースで画面を分ける（決定記録 0038）。不明なものは routes.tsx でブログへ送る
+  const from = triageRouteOf(useParams().route) ?? "blog";
+  const route = TRIAGE_ROUTES[from];
   const mention = TRIAGE_FILTERS.find((f) => f === params.get("mention")) ?? "all";
   const sort: TriageSort = params.get("sort") === "signal" ? "signal" : "oldest";
-  const from: TriageSource = SOURCES.find((x) => x.key === params.get("source"))?.key ?? "all";
   const [list, reload] = useLoad(
     () => source.listTriage({ mention, sort, source: from }),
     [source, mention, sort, from],
@@ -462,7 +463,7 @@ export function TriagePage() {
   if (!viewer.canWork) {
     return (
       <section className="page narrow">
-        <h1 className="page-title">振り分け</h1>
+        <h1 className="page-title">{route.title}</h1>
         <p>
           振り分けの画面は、作業者と運営者が使えます。作業を手伝うときは、運営者に作業者にしてもらってください。
         </p>
@@ -490,21 +491,14 @@ export function TriagePage() {
   const shown = new Set(items.map((i) => i.id));
   const picked = [...selected].filter((id) => shown.has(id));
 
-  const setView = (patch: {
-    mention?: TriageMentionFilter;
-    sort?: TriageSort;
-    source?: TriageSource;
-  }) => {
+  const setView = (patch: { mention?: TriageMentionFilter; sort?: TriageSort }) => {
     const next = new URLSearchParams(params);
     const m = patch.mention ?? mention;
     const so = patch.sort ?? sort;
-    const src = patch.source ?? from;
     if (m === "all") next.delete("mention");
     else next.set("mention", m);
     if (so === "oldest") next.delete("sort");
     else next.set("sort", so);
-    if (src === "all") next.delete("source");
-    else next.set("source", src);
     setSelected(new Set());
     setParams(next);
   };
@@ -537,7 +531,7 @@ export function TriagePage() {
       reload();
       const reason = e instanceof Error ? e.message : String(e);
       throw new Error(
-        `途中で止まりました（${reason}）。${done} 件は言及なしにしました。一覧を読み直しました`,
+        `途中で止まりました（${reason}）。${done} 件は${route.discard}にしました。一覧を読み直しました`,
         { cause: e },
       );
     } finally {
@@ -547,7 +541,7 @@ export function TriagePage() {
     if (failed.length > 0) {
       reload();
       throw new Error(
-        `${done} 件を言及なしにしました。${failed.length} 件はできませんでした（${failed[0]}）。一覧を読み直しました`,
+        `${done} 件を${route.discard}にしました。${failed.length} 件はできませんでした（${failed[0]}）。一覧を読み直しました`,
       );
     }
     return done;
@@ -567,10 +561,11 @@ export function TriagePage() {
   return (
     <section className="page wide">
       <div className="page-head">
-        <h1 className="page-title">振り分け</h1>
-        <p className="page-sub">
-          メンバーのブログと公式サイトのニュースです。言及があるもの・本人が写っているもの・本人に関係する告知を残し、それ以外は「言及なし」として確認済みにします（本文と画像は残しません。直近
-          10 件は戻せます）。
+        <h1 className="page-title">{route.title}</h1>
+        <p className="page-sub">{route.lead}</p>
+        <p className="triage-rule">
+          <ImageIcon size={16} aria-hidden="true" />
+          {route.images}
         </p>
       </div>
 
@@ -620,20 +615,6 @@ export function TriagePage() {
             </span>
           )}
           <span className="triage-select">
-            <label htmlFor="triage-source">情報源</label>
-            <select
-              id="triage-source"
-              value={from}
-              onChange={(e) => setView({ source: e.target.value as TriageSource })}
-            >
-              {SOURCES.map((x) => (
-                <option key={x.key} value={x.key}>
-                  {x.label}
-                </option>
-              ))}
-            </select>
-          </span>
-          <span className="triage-select">
             <label htmlFor="triage-sort">並び</label>
             <select
               id="triage-sort"
@@ -665,7 +646,9 @@ export function TriagePage() {
               setBulkBusy(true);
               setMessage(null);
               discard(picked)
-                .then((n) => setMessage({ text: `${n} 件を言及なしにしました`, error: false }))
+                .then((n) =>
+                  setMessage({ text: `${n} 件を${route.discard}にしました`, error: false }),
+                )
                 .catch((e: unknown) =>
                   setMessage({ text: e instanceof Error ? e.message : String(e), error: true }),
                 )
@@ -673,8 +656,8 @@ export function TriagePage() {
             }}
           >
             {progress
-              ? `言及なしにしています（${progress.done} / ${progress.total} 件）`
-              : `選んだ ${picked.length} 件を言及なしにする`}
+              ? `${route.discard}にしています（${progress.done} / ${progress.total} 件）`
+              : `選んだ ${picked.length} 件を${route.discard}にする`}
           </button>
         </div>
       </div>
@@ -719,7 +702,7 @@ export function TriagePage() {
         </p>
       )}
       {list.status === "ready" && items.length === 0 && !more && (
-        <p className="quiet">振り分け待ちの記事はありません。</p>
+        <p className="quiet">{route.empty}</p>
       )}
       {list.status === "ready" && items.length === 0 && more && (
         <p className="quiet">

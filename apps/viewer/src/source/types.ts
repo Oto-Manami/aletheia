@@ -447,6 +447,8 @@ export interface ArchiveSource {
   ): Promise<{ items: AssetCard[]; hasMore: boolean }>;
   /** 情報源の一覧（絞り込みの選択肢） */
   listChannels(): Promise<{ id: string; name: string }[]>;
+  /** 振り分け待ちの件数（ブログ・ニュースごと。決定記録 0038） */
+  countTriage(source: "blog" | "news"): Promise<number>;
   /** 振り分け待ちの記事（決定記録 0021）。条件に当てはまるものを上限 200 件。件数は本当の数 */
   listTriage(options?: {
     mention?: TriageMentionFilter;

@@ -36,6 +36,19 @@ describe("本番の窓口", () => {
     expect(JSON.parse(init?.body as string)).toEqual({ note: "確認済み", draft });
   });
 
+  it("振り分け待ちの件数は、ブログ・ニュースごとに数えてもらう（記事の中身は 1 件だけ受け取る）", async () => {
+    const fetchMock = respond({ items: [], total: 0, counts: { all: 42 }, subject_ids: [] });
+    vi.stubGlobal("fetch", fetchMock);
+    const source = new LiveSource(fakeSupabase("t"), "https://api.example.test");
+    expect(await source.countTriage("news")).toBe(42);
+    const [url] = fetchMock.mock.calls[0]!;
+    expect(Object.fromEntries(new URL(url.toString()).searchParams)).toEqual({
+      state: "triage",
+      source: "news",
+      limit: "1",
+    });
+  });
+
   it("却下・保留では下書きを送らない", async () => {
     const fetchMock = respond({});
     vi.stubGlobal("fetch", fetchMock);

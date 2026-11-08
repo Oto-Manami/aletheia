@@ -592,6 +592,21 @@ select:disabled {
   color: var(--muted);
 }
 
+/* 振り分けの画面で、画像を選ぶ意味（ブログとニュースで違う。決定記録 0038） */
+.triage-rule {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: 1px solid var(--info-border);
+  border-radius: var(--radius);
+  background: var(--info-bg);
+  color: var(--info-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .column-title {
   font-size: 13px;
   font-weight: 600;
