@@ -49,7 +49,7 @@ function issuesOf(draft: DraftInput): IntakeIssue[] {
 
 /** 承認すると何を保存するかを、ふだんの言葉で（紐付ける人は右側の一覧に出ている） */
 /**
- * 承認すると保存するもの。chosenOnly（振り分けで残したもの）は、写っている人を付けた画像だけを保存する
+ * 承認すると保存するもの。chosenOnly（振り分けで残したもの・情報源の設定があるもの）は、写っている人を付けた画像だけを保存する
  * （設計書 決定記録 0037。承認の処理と同じ規則）
  */
 function approvalSentence(draft: DraftInput, chosenOnly: boolean): string {

@@ -153,6 +153,81 @@ describe("承認・却下の後の移動", () => {
       expect(ctx.files.files.size).toBe(1);
     }));
 
+  it("情報源の設定がある情報源は、人が送った下書きでも、写っている人を付けた画像だけを保存する", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      await ctx.c.query(
+        `update public.channels set config = config || '{"chosen_images_only": true}'
+          where key = 'sns:test_account'`,
+      );
+      const chosen = await stage(ctx, "4004", 1);
+      const other = await ctx.upload(
+        `/files/staging?route=discord&ref=4004&index=2&name=photo.jpg`,
+        new TextEncoder().encode("写っていない画像"),
+        "image/jpeg",
+      );
+      const otherFile = (await other.json()) as StagedFile;
+      const res = await ctx.call("POST", "/intake", {
+        channel_key: "sns:test_account",
+        external_id: "4004",
+        route: "discord",
+        captured_at: "2026-10-12T21:35:00+09:00",
+        staged_files: [chosen, otherFile],
+        draft: {
+          version: 1,
+          post: { published_at: "2026-10-12T21:30:00+09:00", classification: "public" },
+          assets: [
+            { ref: "a0", media_type: "image", sha256: chosen.sha256 },
+            { ref: "a1", media_type: "image", sha256: otherFile.sha256 },
+            { ref: "body", media_type: "text", texts: [{ text_type: "body", content: "本文" }] },
+          ],
+          links: [
+            {
+              from: { asset: "a0" },
+              to_type: "entity",
+              to_id: d.person,
+              role: "appears",
+              origin: "human",
+              confidence: 1,
+            },
+          ],
+        },
+      });
+      const { id } = (await res.json()) as { id: string };
+      // 承認の画面に、写っている人を付けた画像だけを保存することを知らせる（決定記録 0040）
+      const detail = await ctx.call("GET", `/intake/${id}`);
+      expect(((await detail.json()) as { chosen_images_only: boolean }).chosen_images_only).toBe(
+        true,
+      );
+      const approved = await ctx.call("POST", `/intake/${id}/approve`, {});
+      const body = (await approved.json()) as {
+        counts: { assets: number };
+        files: unknown;
+        assetIds: Record<string, string>;
+      };
+      // 写っている人を付けた画像と本文は保存し、付けていない画像は保存せずに消す
+      expect(Object.keys(body.assetIds).sort()).toEqual(["a0", "body"]);
+      expect(body.files).toEqual({ stored: 1, duplicates: 0, unselected: 1, failed: [] });
+      expect(ctx.files.pathOf(otherFile.storage_key)).toBeUndefined();
+    }));
+
+  it("情報源の設定が無ければ、人が送った下書きの画像はすべて保存する", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const staged = await stage(ctx, "5005");
+      const id = await intakeWith(ctx, d, [staged]);
+      const detail = await ctx.call("GET", `/intake/${id}`);
+      expect(((await detail.json()) as { chosen_images_only: boolean }).chosen_images_only).toBe(
+        false,
+      );
+      const res = await ctx.call("POST", `/intake/${id}/approve`, {});
+      expect(((await res.json()) as { files: unknown }).files).toEqual({
+        stored: 1,
+        duplicates: 0,
+        failed: [],
+      });
+    }));
+
   it("却下すると、却下の場所へ移す（削除しない）", () =>
     withApi(async (ctx) => {
       const d = await seed(ctx.c);
