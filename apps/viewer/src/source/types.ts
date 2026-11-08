@@ -236,6 +236,12 @@ export type TriageMentionFilter =
   "all" | "any" | "subject" | "group_only" | "none" | "unnamed" | "others_only";
 /** 振り分けの情報源: すべて・メンバーのブログ・公式サイトのニュース */
 export type TriageSource = "all" | "blog" | "news";
+
+/** メニューに出す件数 */
+export interface MenuCounts {
+  pending: number;
+  triage: { blog: number; news: number };
+}
 /** 振り分けの並び: 取り込んだ古い順・言及の強い順（本人への言及の数 → 期への言及の数） */
 export type TriageSort = "oldest" | "signal";
 export type TriageCounts = Record<TriageMentionFilter, number>;
@@ -447,9 +453,9 @@ export interface ArchiveSource {
   ): Promise<{ items: AssetCard[]; hasMore: boolean }>;
   /** 情報源の一覧（絞り込みの選択肢） */
   listChannels(): Promise<{ id: string; name: string }[]>;
-  /** 振り分け待ちの件数（ブログ・ニュースごと。決定記録 0038） */
-  countTriage(source: "blog" | "news"): Promise<number>;
-  /** 振り分け待ちの記事（決定記録 0021）。条件に当てはまるものを上限 200 件。件数は本当の数 */
+  /** メニューに出す件数（承認待ち、ブログ・ニュースの振り分け待ち。決定記録 0038）。1 回で数える */
+  menuCounts(): Promise<MenuCounts>;
+  /** 振り分け待ちの記事（決定記録 0021）。条件に当てはまるものを上限 50 件（本番）。件数は本当の数 */
   listTriage(options?: {
     mention?: TriageMentionFilter;
     sort?: TriageSort;

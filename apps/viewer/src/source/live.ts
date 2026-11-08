@@ -33,6 +33,7 @@ import {
   type Role,
   type SearchHit,
   SourceError,
+  type MenuCounts,
   type TriageCounts,
   type TriageItem,
   type TriageMentionFilter,
@@ -158,6 +159,9 @@ function summarize(row: IntakeRow): IntakeSummary {
   };
 }
 
+/** 振り分け待ちを一度に読む件数 */
+const TRIAGE_PAGE = 50;
+
 export class LiveSource implements ArchiveSource {
   readonly demo = false;
 
@@ -226,12 +230,8 @@ export class LiveSource implements ArchiveSource {
     return total;
   }
 
-  async countTriage(source: "blog" | "news"): Promise<number> {
-    const { counts } = await this.api<{ counts: TriageCounts }>(
-      "GET",
-      `/intake?${new URLSearchParams({ state: "triage", source, limit: "1" }).toString()}`,
-    );
-    return counts.all;
+  menuCounts(): Promise<MenuCounts> {
+    return this.api<MenuCounts>("GET", "/intake/counts");
   }
 
   async getIntake(id: string): Promise<IntakeDetail> {
@@ -599,7 +599,8 @@ export class LiveSource implements ArchiveSource {
   async listTriage(
     options: { mention?: TriageMentionFilter; sort?: TriageSort; source?: TriageSource } = {},
   ) {
-    const params = new URLSearchParams({ state: "triage", limit: "200" });
+    // 1 件ずつ本文と画像を見て判断するため、一度に読むのは 50 件まで（多いと開くのが遅くなる）
+    const params = new URLSearchParams({ state: "triage", limit: String(TRIAGE_PAGE) });
     if (options.source && options.source !== "all") params.set("source", options.source);
     if (options.mention && options.mention !== "all") params.set("mention", options.mention);
     if (options.sort && options.sort !== "oldest") params.set("sort", options.sort);

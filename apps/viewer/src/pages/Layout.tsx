@@ -45,24 +45,14 @@ export function Layout() {
   const [version, setVersion] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const changed = useCallback(() => setVersion((v) => v + 1), []);
-  // 件数だけを数える（一覧の上限に関わらない本当の件数）
-  const [pending] = useLoad(
-    () => (viewer.canWork ? source.countIntake("pending") : Promise.resolve(0)),
+  // 件数だけを 1 回で数える（一覧の上限に関わらない本当の件数。振り分け待ちはブログとニュースで分ける）
+  const [counts] = useLoad(
+    () => (viewer.canWork ? source.menuCounts() : Promise.resolve(null)),
     [source, viewer.canWork, version],
   );
-  const pendingCount = pending.status === "ready" ? pending.data : null;
-  // 振り分け待ちは、ブログとニュースで分けて数える（決定記録 0038）
-  const [triage] = useLoad(
-    async (): Promise<Record<TriageRoute, number>> =>
-      viewer.canWork
-        ? {
-            blog: await source.countTriage("blog"),
-            news: await source.countTriage("news"),
-          }
-        : { blog: 0, news: 0 },
-    [source, viewer.canWork, version],
-  );
-  const triageCount = (route: TriageRoute) => (triage.status === "ready" ? triage.data[route] : 0);
+  const pendingCount = counts.status === "ready" && counts.data ? counts.data.pending : null;
+  const triageCount = (route: TriageRoute) =>
+    counts.status === "ready" && counts.data ? counts.data.triage[route] : 0;
   const close = () => setMenuOpen(false);
 
   return (

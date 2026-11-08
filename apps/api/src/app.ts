@@ -15,6 +15,7 @@
 // | POST     | /intake/:id/no-mention    | 振り分け: 言及なし（記録して置き場へ） |
 // | POST     | /intake/no-mention        | 振り分け: まとめて言及なし         |
 // | GET      | /intake/discarded         | 言及なしの置き場（直近 10 件）     |
+// | GET      | /intake/counts            | 承認待ち・振り分け待ちの件数（メニュー） |
 // | POST     | /intake/:id/restore       | 言及なしを取り消して振り分け待ちへ |
 // | POST     | /resolve                  | URL から情報源と外部 ID を判定する |
 // | POST     | /files/staging            | ファイルを承認待ちの場所に保存する |
@@ -53,7 +54,7 @@ import {
   writesNeedWorker,
 } from "./auth.ts";
 import { registerEventRoutes } from "./events.ts";
-import { listTriage, triageListQuery } from "./triage-list.ts";
+import { listTriage, SOURCE_KINDS, triageListQuery } from "./triage-list.ts";
 import { finalizeApprovedFiles, moveRejectedFiles, removeStagedFiles, stageFile } from "./files.ts";
 
 const uuid = z.uuid();
@@ -300,6 +301,28 @@ export function createApp(
   });
 
   /** 言及なしの置き場（直近 10 件。決定記録 0031）。本文は返さず、題名・URL・判断した人だけ。作業者・運営者 */
+  /**
+   * 画面のメニューに出す件数（承認待ち、ブログ・ニュースの振り分け待ち）。下書きの中身は読まず、
+   * 数えるだけにする（ページを開くたびに呼ぶため。決定記録 0038）
+   */
+  app.get("/intake/counts", async (c) => {
+    const rows = await db
+      .selectFrom("intake_items as i")
+      .innerJoin("channels as ch", "ch.id", "i.channel_id")
+      .select(["i.state", "ch.kind", (eb) => eb.fn.countAll<string>().as("n")])
+      .where("i.state", "in", ["pending", "triage"])
+      .groupBy(["i.state", "ch.kind"])
+      .execute();
+    const sum = (state: string, kind?: string) =>
+      rows
+        .filter((r) => r.state === state && (kind === undefined || r.kind === kind))
+        .reduce((total, r) => total + Number(r.n), 0);
+    return c.json({
+      pending: sum("pending"),
+      triage: { blog: sum("triage", SOURCE_KINDS.blog), news: sum("triage", SOURCE_KINDS.news) },
+    });
+  });
+
   app.get("/intake/discarded", async (c) => {
     assertWorker(c.get("actor"));
     const items = await db

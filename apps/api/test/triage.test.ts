@@ -293,6 +293,22 @@ describe("振り分け", () => {
       expect(onlyNews.items.map((i) => i.id)).toEqual([news]);
       expect(onlyNews.counts).toMatchObject({ all: 1, subject: 1 });
       expect((await list("source=blog")).items).toEqual([]);
+
+      // 上限の件数だけ中身を返し、件数は全体で数える
+      const first = await list("limit=2");
+      expect(first.items.map((i) => i.id)).toEqual([a, b]);
+      expect(first.counts.all).toBe(6);
+      const strong = await list("sort=signal&limit=1");
+      expect(strong.items.map((i) => i.id)).toEqual([dd]);
+      expect(strong.items[0]).toMatchObject({ subject_mentions: 2, group_mentions: 1 });
+
+      // メニューの件数は、中身を読まずに数える窓口から返す（ニュースは情報源の種類 web）
+      const counts = (await (await ctx.call("GET", "/intake/counts")).json()) as {
+        pending: number;
+        triage: { blog: number; news: number };
+      };
+      expect(counts.triage).toEqual({ blog: 0, news: 1 });
+      expect(typeof counts.pending).toBe("number");
     }));
 
   it("残すと承認を 1 回で行える。同じ画像が既にあっても承認でき、ファイルは二重に保存しない", () =>

@@ -171,8 +171,8 @@ describe("振り分けの画面", () => {
       return { ...r, total: r.total + 1225, counts: { ...r.counts, all: r.counts.all + 1225 } };
     });
     const count = vi
-      .spyOn(source, "countTriage")
-      .mockImplementation((route) => Promise.resolve(route === "blog" ? 1231 : 3));
+      .spyOn(source, "menuCounts")
+      .mockResolvedValue({ pending: 0, triage: { blog: 1231, news: 3 } });
     open(admin, source);
     expect(
       await screen.findByText("振り分け待ちは全 1,231 件です。古い順に 6 件を表示しています。"),

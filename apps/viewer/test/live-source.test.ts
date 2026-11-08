@@ -36,17 +36,24 @@ describe("本番の窓口", () => {
     expect(JSON.parse(init?.body as string)).toEqual({ note: "確認済み", draft });
   });
 
-  it("振り分け待ちの件数は、ブログ・ニュースごとに数えてもらう（記事の中身は 1 件だけ受け取る）", async () => {
-    const fetchMock = respond({ items: [], total: 0, counts: { all: 42 }, subject_ids: [] });
+  it("メニューの件数は、件数だけを返す窓口から 1 回で受け取る", async () => {
+    const counts = { pending: 3, triage: { blog: 40, news: 2 } };
+    const fetchMock = respond(counts);
     vi.stubGlobal("fetch", fetchMock);
     const source = new LiveSource(fakeSupabase("t"), "https://api.example.test");
-    expect(await source.countTriage("news")).toBe(42);
-    const [url] = fetchMock.mock.calls[0]!;
-    expect(Object.fromEntries(new URL(url.toString()).searchParams)).toEqual({
-      state: "triage",
-      source: "news",
-      limit: "1",
-    });
+    expect(await source.menuCounts()).toEqual(counts);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]![0].toString()).toBe("https://api.example.test/intake/counts");
+  });
+
+  it("振り分け待ちは、一度に 50 件まで読む", async () => {
+    const fetchMock = respond({ items: [], total: 0, counts: { all: 0 }, subject_ids: [] });
+    vi.stubGlobal("fetch", fetchMock);
+    const source = new LiveSource(fakeSupabase("t"), "https://api.example.test");
+    await source.listTriage({ source: "blog" });
+    const url = new URL(fetchMock.mock.calls[0]![0].toString());
+    expect(url.searchParams.get("limit")).toBe("50");
+    expect(url.searchParams.get("source")).toBe("blog");
   });
 
   it("却下・保留では下書きを送らない", async () => {
