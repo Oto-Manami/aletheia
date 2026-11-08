@@ -1776,6 +1776,26 @@ select:disabled {
   gap: 8px;
 }
 
+.triage-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.triage-search label {
+  color: var(--muted);
+}
+.triage-search input {
+  width: 14em;
+  max-width: 100%;
+}
+.tag.triage-hit {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  color: var(--warn-ink);
+}
+
 .triage-picked {
   font-size: 12px;
   margin-right: auto;

@@ -20,7 +20,16 @@ import { onlyChosenImages } from "@aletheia/intake/images";
 import { proposeSubjectLinks } from "@aletheia/intake/mentions";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import { DemoEvents } from "./demo-events.ts";
-import { bySignal, matchesMention, TRIAGE_FILTERS, triageItemOf } from "./triage.ts";
+import {
+  byNewest,
+  byOldest,
+  bySignal,
+  matchesMention,
+  queryHitsOf,
+  queryWords,
+  TRIAGE_FILTERS,
+  triageItemOf,
+} from "./triage.ts";
 import {
   type ArchiveSource,
   type AssetCard,
@@ -448,11 +457,17 @@ export class DemoSource implements ArchiveSource {
   }
 
   async listTriage(
-    options: { mention?: TriageMentionFilter; sort?: TriageSort; source?: TriageSource } = {},
+    options: {
+      mention?: TriageMentionFilter;
+      sort?: TriageSort;
+      source?: TriageSource;
+      query?: string;
+    } = {},
   ) {
     await this.delay();
     const subjects = new Set([DEMO_SUBJECT.id]);
     const source = options.source ?? "all";
+    const words = queryWords(options.query);
     const inSource = this.triage.filter(
       (t) => source === "all" || (source === "news") === (t.channelKind === "web"),
     );
@@ -464,6 +479,7 @@ export class DemoSource implements ArchiveSource {
           capturedAt: t.capturedAt,
           draft: t.draft,
           channelKind: t.channelKind ?? "blog",
+          queryHits: queryHitsOf(t.draft, words),
           previews: Object.fromEntries(
             Object.entries(t.photos).map(([ref, hue]) => [ref, placeholderImage(ref, hue)]),
           ),
@@ -476,8 +492,17 @@ export class DemoSource implements ArchiveSource {
     ) as TriageCounts;
     const mention = options.mention ?? "all";
     const items = all.filter((i) => matchesMention(i, mention));
+    // API と同じく記事の日付で並べ、言及の強い順は同じ強さの中を古い順にする
+    items.sort(options.sort === "newest" ? byNewest : byOldest);
     if (options.sort === "signal") items.sort(bySignal);
-    return { items, total: counts[mention], counts };
+    // 言葉を含むもの（多く含むもの）を先に。並べ替えは安定なので、その中はいまの並びのまま
+    items.sort((a, b) => b.queryHits - a.queryHits);
+    return {
+      items,
+      total: counts[mention],
+      counts,
+      queryMatches: words.length > 0 ? items.filter((i) => i.queryHits > 0).length : null,
+    };
   }
 
   async keepAndApprove(id: string, draft: DraftInput): Promise<void> {

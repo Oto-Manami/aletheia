@@ -203,6 +203,8 @@ export interface TriageSnippet {
 /** 振り分け待ちの記事 1 本（設計書 決定記録 0021） */
 export interface TriageItem {
   id: string;
+  /** 探す言葉のうち、題名か本文に含むものの数（探していなければ 0） */
+  queryHits: number;
   channelName: string;
   capturedAt: string;
   title: string | null;
@@ -242,8 +244,8 @@ export interface MenuCounts {
   pending: number;
   triage: { blog: number; news: number };
 }
-/** 振り分けの並び: 取り込んだ古い順・言及の強い順（本人への言及の数 → 期への言及の数） */
-export type TriageSort = "oldest" | "signal";
+/** 振り分けの並び: 記事の古い順・新しい順・言及の強い順（本人への言及の数 → 期への言及の数） */
+export type TriageSort = "oldest" | "newest" | "signal";
 export type TriageCounts = Record<TriageMentionFilter, number>;
 
 /** 出来事（仕事と公式の発表。設計書 決定記録 0020・0027） */
@@ -460,10 +462,14 @@ export interface ArchiveSource {
     mention?: TriageMentionFilter;
     sort?: TriageSort;
     source?: TriageSource;
+    /** 言葉で探す（空白で区切ると複数）。含むものを先に並べ、その後は sort の順 */
+    query?: string;
   }): Promise<{
     items: TriageItem[];
     total: number;
     counts: TriageCounts;
+    /** 探す言葉を含む記事の数（探していなければ null） */
+    queryMatches: number | null;
   }>;
   /** 残す。写っている画像の選択などを直した下書きを送り、承認待ちへ進める */
   keepTriage(id: string, draft: DraftInput): Promise<void>;

@@ -70,6 +70,8 @@ export function triageItemOf(
     draft: DraftInput;
     previews?: Record<string, string>;
     channelKind?: string | null;
+    /** 探す言葉のうち、題名か本文に含むものの数 */
+    queryHits?: number;
   },
   /** 蓄積対象の人物（本人）の ID。ほかの対象（期など）への言及と分ける */
   subjectIds: ReadonlySet<string> = new Set(),
@@ -143,6 +145,7 @@ export function triageItemOf(
 
   return {
     id: row.id,
+    queryHits: row.queryHits ?? 0,
     channelName: row.channelName,
     capturedAt: row.capturedAt,
     title: draft.post.title ?? null,
@@ -238,6 +241,40 @@ export function matchesMention(item: TriageItem, filter: TriageMentionFilter): b
   if (filter === "unnamed") return !s && !g && item.otherNames.length === 0;
   if (filter === "others_only") return !s && !g && item.otherNames.length > 0;
   return true;
+}
+
+/** 探す言葉（空白で区切る。5 語まで。API と同じ） */
+export function queryWords(query: string | undefined): string[] {
+  return [...new Set((query ?? "").trim().split(/\s+/).filter(Boolean))].slice(0, 5);
+}
+
+/** 探す言葉のうち、下書きの題名か本文に含むものの数（大文字・小文字は区別しない。API と同じ） */
+export function queryHitsOf(draft: DraftInput, words: string[]): number {
+  if (words.length === 0) return 0;
+  const doc = [
+    draft.post.title ?? "",
+    ...(draft.assets ?? []).flatMap((a) => (a.texts ?? []).map((t) => t.content)),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return words.filter((w) => doc.includes(w.toLowerCase())).length;
+}
+
+/** 記事の日時（公開日時 → 公開日の JST 0 時 → 取り込んだ日時）。並べ替えに使う */
+function datedAt(item: TriageItem): number {
+  const value = item.publishedAt;
+  const at = value ? Date.parse(value.length > 10 ? value : `${value}T00:00:00+09:00`) : Number.NaN;
+  return Number.isNaN(at) ? Date.parse(item.capturedAt) : at;
+}
+
+/** 記事の古い順 */
+export function byOldest(a: TriageItem, b: TriageItem): number {
+  return datedAt(a) - datedAt(b);
+}
+
+/** 記事の新しい順 */
+export function byNewest(a: TriageItem, b: TriageItem): number {
+  return datedAt(b) - datedAt(a);
 }
 
 /**
