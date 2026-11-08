@@ -19,8 +19,8 @@ const admin: Viewer = {
   discordUserId: null,
 };
 
-function open(viewer: Viewer = admin, source = new DemoSource(0)) {
-  const router = createMemoryRouter(routes, { initialEntries: ["/triage"] });
+function open(viewer: Viewer = admin, source = new DemoSource(0), path = "/triage/blog") {
+  const router = createMemoryRouter(routes, { initialEntries: [path] });
   render(
     <Ctx.Provider value={{ source, viewer }}>
       <RouterProvider router={router} />
@@ -28,6 +28,8 @@ function open(viewer: Viewer = admin, source = new DemoSource(0)) {
   );
   return source;
 }
+
+const openNews = (viewer: Viewer = admin) => open(viewer, new DemoSource(0), "/triage/news");
 
 const cards = () =>
   within(screen.getByRole("list", { name: "振り分け待ちの記事" })).queryAllByRole("listitem");
@@ -49,17 +51,15 @@ describe("振り分けの画面", () => {
     const user = userEvent.setup();
     const source = open();
     await screen.findByText("リハーサルの日");
-    expect(cards()).toHaveLength(9);
+    expect(cards()).toHaveLength(6);
     const first = cards()[0]!;
     expect(within(first).getByText("試験 花子 2")).toBeTruthy();
     expect(within(first).getByText("はなちゃん").tagName).toBe("MARK");
 
     await user.click(within(first).getByRole("button", { name: "画像 2" }));
-    expect(
-      within(first).getByText("写っている 1 / 3 枚（選んだ画像だけを保存します）"),
-    ).toBeTruthy();
-    await user.click(within(first).getByRole("button", { name: "残す" }));
-    await waitFor(() => expect(cards()).toHaveLength(8));
+    expect(within(first).getByText("写っている 1 / 3 枚（承認の画面で確かめます）")).toBeTruthy();
+    await user.click(within(first).getByRole("button", { name: "承認待ちに残す" }));
+    await waitFor(() => expect(cards()).toHaveLength(5));
 
     const pending = await source.listIntake("pending");
     const kept = pending.find((i) => i.title === "リハーサルの日")!;
@@ -94,9 +94,9 @@ describe("振り分けの画面", () => {
     open();
     await screen.findByText("リハーサルの日");
     await user.click(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" }));
-    await user.click(screen.getByRole("button", { name: "選んだ 5 件を言及なしにする" }));
-    expect(await screen.findByText("5 件を言及なしにしました")).toBeTruthy();
-    expect(cards()).toHaveLength(4);
+    await user.click(screen.getByRole("button", { name: "選んだ 3 件を言及なしにする" }));
+    expect(await screen.findByText("3 件を言及なしにしました")).toBeTruthy();
+    expect(cards()).toHaveLength(3);
     expect(screen.getByRole("tab", { name: "言及なし 0" })).toBeTruthy();
   });
 
@@ -117,13 +117,13 @@ describe("振り分けの画面", () => {
     await screen.findByText("リハーサルの日");
     const calls = list.mock.calls.length;
     await user.click(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" }));
-    await user.click(screen.getByRole("button", { name: "選んだ 5 件を言及なしにする" }));
+    await user.click(screen.getByRole("button", { name: "選んだ 3 件を言及なしにする" }));
     expect((await screen.findByRole("alert")).textContent).toBe(
-      "1 件を言及なしにしました。4 件はできませんでした（振り分け待ちではありません）。一覧を読み直しました",
+      "1 件を言及なしにしました。2 件はできませんでした（振り分け待ちではありません）。一覧を読み直しました",
     );
     await waitFor(() => expect(list.mock.calls.length).toBeGreaterThan(calls));
     // 一覧から消えたものは、選んだ数に入れない
-    expect(await screen.findByRole("button", { name: "選んだ 4 件を言及なしにする" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "選んだ 2 件を言及なしにする" })).toBeTruthy();
   });
 
   it("言及なしにした直近のものは、開くと並び、振り分け待ちに戻せる", async () => {
@@ -132,27 +132,31 @@ describe("振り分けの画面", () => {
     await screen.findByText("リハーサルの日");
     const list = vi.spyOn(source, "listDiscarded");
     await user.click(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" }));
-    await user.click(screen.getByRole("button", { name: "選んだ 5 件を言及なしにする" }));
-    expect(await screen.findByText("5 件を言及なしにしました")).toBeTruthy();
-    expect(cards()).toHaveLength(4);
+    await user.click(screen.getByRole("button", { name: "選んだ 3 件を言及なしにする" }));
+    expect(await screen.findByText("3 件を言及なしにしました")).toBeTruthy();
+    expect(cards()).toHaveLength(3);
     // 開くまでは読み込まない
     expect(list).not.toHaveBeenCalled();
 
-    await user.click(screen.getByText("直近に言及なしにしたもの（10 件まで戻せます）"));
-    const held = await screen.findByRole("list", { name: "直近に言及なしにしたもの" });
+    await user.click(
+      screen.getByText(
+        "直近に言及なし・関係なしにしたもの（ブログとニュースあわせて 10 件まで戻せます）",
+      ),
+    );
+    const held = await screen.findByRole("list", { name: "直近に言及なし・関係なしにしたもの" });
     const rows = within(held).getAllByRole("listitem");
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(3);
     const title = rows[0]!.querySelector(".triage-discarded-title")?.textContent ?? "";
     await user.click(within(rows[0]!).getByRole("button", { name: /を振り分け待ちに戻す/ }));
     expect(await screen.findByText(`「${title}」を振り分け待ちに戻しました`)).toBeTruthy();
-    await waitFor(() => expect(cards()).toHaveLength(5));
+    await waitFor(() => expect(cards()).toHaveLength(4));
     // 読み直した一覧から消える
     await waitFor(() =>
       expect(
-        within(screen.getByRole("list", { name: "直近に言及なしにしたもの" })).getAllByRole(
-          "listitem",
-        ),
-      ).toHaveLength(4),
+        within(
+          screen.getByRole("list", { name: "直近に言及なし・関係なしにしたもの" }),
+        ).getAllByRole("listitem"),
+      ).toHaveLength(2),
     );
     expect((await source.listDiscarded()).map((d) => d.title)).not.toContain(title);
   });
@@ -160,46 +164,50 @@ describe("振り分けの画面", () => {
   it("本当の件数を出し、表示した分を終えたら続きを読み込める", async () => {
     const user = userEvent.setup();
     const source = new DemoSource(0);
-    // 振り分け待ちが表示の上限より多い場合（画面に出ているのは 9 件）
+    // 振り分け待ちが表示の上限より多い場合（画面に出ているのは 6 件）
     const original = source.listTriage.bind(source);
     const list = vi.spyOn(source, "listTriage").mockImplementation(async (options) => {
       const r = await original(options);
       return { ...r, total: r.total + 1225, counts: { ...r.counts, all: r.counts.all + 1225 } };
     });
-    const count = vi.spyOn(source, "countIntake").mockResolvedValue(1234);
+    const count = vi
+      .spyOn(source, "countTriage")
+      .mockImplementation((route) => Promise.resolve(route === "blog" ? 1231 : 3));
     open(admin, source);
     expect(
-      await screen.findByText("振り分け待ちは全 1,234 件です。古い順に 9 件を表示しています。"),
+      await screen.findByText("振り分け待ちは全 1,231 件です。古い順に 6 件を表示しています。"),
     ).toBeTruthy();
+    // メニューの件数は、ブログとニュースで分けて出す
     const nav = screen.getByRole("navigation", { name: "画面" });
-    expect(within(nav).getByLabelText("振り分け待ち 1234 件")).toBeTruthy();
+    const blog = within(nav).getByRole("link", { name: /ブログの振り分け/ });
+    expect(within(blog).getByLabelText("振り分け待ち 1231 件")).toBeTruthy();
+    const news = within(nav).getByRole("link", { name: /ニュースの振り分け/ });
+    expect(within(news).getByLabelText("振り分け待ち 3 件")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" }));
-    await user.click(screen.getByRole("button", { name: "選んだ 5 件を言及なしにする" }));
-    expect(await screen.findByText(/全 1,229 件です。古い順に 4 件/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "選んだ 3 件を言及なしにする" }));
+    expect(await screen.findByText(/全 1,228 件です。古い順に 3 件/)).toBeTruthy();
 
     list.mockRestore();
     count.mockRestore();
     for (const card of cards()) {
-      // ニュースは「残す」の代わりに「出来事にする」なので、ここでは関係なしにする
-      const keep = within(card).queryByRole("button", { name: "残す" });
-      await user.click(keep ?? within(card).getByRole("button", { name: "関係なし" }));
+      await user.click(within(card).getByRole("button", { name: "承認待ちに残す" }));
     }
     await user.click(await screen.findByRole("button", { name: "続きを読み込む" }));
-    expect(await screen.findByText("振り分け待ちの記事はありません。")).toBeTruthy();
+    expect(await screen.findByText("振り分け待ちのブログはありません。")).toBeTruthy();
   });
 
   it("言及ありの中を本人への言及・期への言及だけで絞り込み、言及の強い順に並べられる", async () => {
     const user = userEvent.setup();
     open();
     await screen.findByText("リハーサルの日");
-    await user.click(screen.getByRole("tab", { name: "言及あり 4" }));
-    await waitFor(() => expect(cards()).toHaveLength(4));
+    await user.click(screen.getByRole("tab", { name: "言及あり 3" }));
+    await waitFor(() => expect(cards()).toHaveLength(3));
 
     const target = screen.getByLabelText("言及の対象");
     await user.selectOptions(target, "subject");
-    await waitFor(() => expect(cards()).toHaveLength(3));
-    expect(screen.getByText(/このうち「本人への言及」は 3 件。/)).toBeTruthy();
+    await waitFor(() => expect(cards()).toHaveLength(2));
+    expect(screen.getByText(/このうち「本人への言及」は 2 件。/)).toBeTruthy();
 
     await user.selectOptions(screen.getByLabelText("言及の対象"), "group_only");
     await waitFor(() => expect(cards()).toHaveLength(1));
@@ -207,22 +215,18 @@ describe("振り分けの画面", () => {
     expect(within(group).getByText("後輩たちへ")).toBeTruthy();
     expect(within(group).getByText("試験 2 期生 2").className).toContain("is-group");
 
-    await user.click(screen.getByRole("tab", { name: "すべて 9" }));
+    await user.click(screen.getByRole("tab", { name: "すべて 6" }));
     await user.selectOptions(screen.getByLabelText("並び"), "signal");
     await waitFor(() => expect(cards()[0]?.textContent).toContain("リハーサルの日"));
     expect(cards()[1]?.textContent).toContain("ラジオありがとうございました");
-    expect(cards()[2]?.textContent).toContain("ラジオ「仮の時間」に試験 花子が出演");
-    expect(cards()[3]?.textContent).toContain("後輩たちへ");
-    // 言及の無いものは、メンバーの名前の無いものを先に、ほかのメンバーの名前だけのものを最後に
-    expect(cards().at(-1)?.textContent).toContain("見本 さくらが出演");
+    expect(cards()[2]?.textContent).toContain("後輩たちへ");
   });
 
-  it("ニュースに絞り、言及なしの中をメンバーの名前の無いもの・ほかのメンバーの名前だけのものに分けられる", async () => {
+  it("ニュースの振り分けで、言及なしの中をメンバーの名前の無いもの・ほかのメンバーの名前だけのものに分け、言及の強い順に並べられる", async () => {
     const user = userEvent.setup();
-    open();
-    await screen.findByText("リハーサルの日");
-    await user.selectOptions(screen.getByLabelText("情報源"), "news");
+    openNews();
     await waitFor(() => expect(cards()).toHaveLength(3));
+    expect(screen.queryByText("リハーサルの日")).toBeNull();
     expect(within(cards()[0]!).getByText("メディア")).toBeTruthy();
 
     await user.click(screen.getByRole("tab", { name: "言及なし 2" }));
@@ -232,14 +236,58 @@ describe("振り分けの画面", () => {
     expect(within(other).getByText("見本 さくら")).toBeTruthy();
     await user.selectOptions(screen.getByLabelText("名前の出方"), "unnamed");
     await waitFor(() => expect(cards()[0]?.textContent).toContain("新しいシングルの発売が決定"));
+
+    await user.click(screen.getByRole("tab", { name: "すべて 3" }));
+    await user.selectOptions(screen.getByLabelText("並び"), "signal");
+    await waitFor(() =>
+      expect(cards()[0]?.textContent).toContain("ラジオ「仮の時間」に試験 花子が出演"),
+    );
+    // 言及の無いものは、メンバーの名前の無いものを先に、ほかのメンバーの名前だけのものを最後に
+    expect(cards().at(-1)?.textContent).toContain("見本 さくらが出演");
   });
 
   it("作業者は、残すも言及なしも選べる（運営者でなくてよい）", async () => {
     open({ ...admin, isAdmin: false, canWork: true });
     const list = await screen.findByRole("list", { name: "振り分け待ちの記事" });
-    expect(within(list).getAllByRole("button", { name: "残す" }).length).toBeGreaterThan(0);
+    expect(within(list).getAllByRole("button", { name: "承認待ちに残す" }).length).toBeGreaterThan(
+      0,
+    );
     expect(within(list).getAllByRole("button", { name: "言及なし" }).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" })).toBeTruthy();
+  });
+
+  it("ブログとニュースで画面を分け、画像を選ぶ意味をそれぞれに出す", async () => {
+    open();
+    expect(await screen.findByRole("heading", { name: "ブログの振り分け" })).toBeTruthy();
+    expect(screen.getByText("選んだ画像は、承認の画面で確かめてから保存します。")).toBeTruthy();
+    await screen.findByText("リハーサルの日");
+    // ブログの画面にはニュースを出さない
+    expect(cards().every((c) => !c.textContent?.includes("出演！"))).toBe(true);
+    cleanup();
+
+    openNews();
+    expect(await screen.findByRole("heading", { name: "ニュースの振り分け" })).toBeTruthy();
+    expect(
+      screen.getByText("選んだ画像だけが、そのまま保存されます（承認の画面は通りません）。"),
+    ).toBeTruthy();
+    const card = (await screen.findByText(/ラジオ「仮の時間」に試験 花子が出演/)).closest("li")!;
+    expect(within(card).getByText("保存する画像 0 / 2 枚")).toBeTruthy();
+    // ニュースは「言及なし」ではなく「関係なし」と呼ぶ
+    expect(screen.getByRole("button", { name: "選んだ 0 件を関係なしにする" })).toBeTruthy();
+  });
+
+  it("/triage はブログの振り分けへ、分ける前の ?source=news はニュースの振り分けへ送る", async () => {
+    open(admin, new DemoSource(0), "/triage");
+    expect(await screen.findByRole("heading", { name: "ブログの振り分け" })).toBeTruthy();
+    cleanup();
+    open(admin, new DemoSource(0), "/triage?source=news&mention=none");
+    expect(await screen.findByRole("heading", { name: "ニュースの振り分け" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /言及なし/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    cleanup();
+    open(admin, new DemoSource(0), "/triage/unknown");
+    expect(await screen.findByRole("heading", { name: "ブログの振り分け" })).toBeTruthy();
   });
 
   it("閲覧者と、登録されていない人には、振り分けの画面もメニューも出さない", async () => {
@@ -257,12 +305,10 @@ describe("振り分けの画面", () => {
 
   it("ニュースは関連が高そうな出来事を押して紐付け、出典として保存する", async () => {
     const user = userEvent.setup();
-    const source = open();
-    await screen.findByText("リハーサルの日");
-    await user.selectOptions(screen.getByLabelText("情報源"), "news");
+    const source = openNews();
     await waitFor(() => expect(cards()).toHaveLength(3));
     const card = cards().find((c) => c.textContent?.includes("ラジオ「仮の時間」に試験 花子"))!;
-    expect(within(card).queryByRole("button", { name: "残す" })).toBeNull();
+    expect(within(card).queryByRole("button", { name: "承認待ちに残す" })).toBeNull();
     await user.click(within(card).getByRole("button", { name: "出来事に紐付ける" }));
 
     const save = within(card).getByRole("button", { name: "紐付けて保存" });
@@ -292,9 +338,7 @@ describe("振り分けの画面", () => {
 
   it("ニュースは、選んだ画像（本人が写っている）だけを素材として残し、写っている人と出来事につなぐ", async () => {
     const user = userEvent.setup();
-    const source = open();
-    await screen.findByText("リハーサルの日");
-    await user.selectOptions(screen.getByLabelText("情報源"), "news");
+    const source = openNews();
     await waitFor(() => expect(cards()).toHaveLength(3));
     const card = cards().find((c) => c.textContent?.includes("ラジオ「仮の時間」に試験 花子"))!;
     // 画像 1 だけを選ぶ
@@ -302,9 +346,7 @@ describe("振り分けの画面", () => {
     await user.click(within(card).getByRole("button", { name: "出来事に紐付ける" }));
     const suggested = await within(card).findByRole("group", { name: "関連が高そうな出来事" });
     await user.click(within(suggested).getByRole("button", { name: /ラジオ「仮の時間」第 12 回/ }));
-    expect(
-      within(card).getByText(/選んだ画像 1 枚を、本人が写っている画像として残します/),
-    ).toBeTruthy();
+    expect(within(card).getByText(/選んだ画像 1 枚を保存します/)).toBeTruthy();
     await user.click(within(card).getByRole("button", { name: "紐付けて保存" }));
     await waitFor(() => expect(cards()).toHaveLength(2));
 
@@ -336,9 +378,7 @@ describe("振り分けの画面", () => {
 
   it("合う出来事が無ければ、ニュースの振り分けで題名・種類・日付だけ入れて作れる", async () => {
     const user = userEvent.setup();
-    const source = open();
-    await screen.findByText("リハーサルの日");
-    await user.selectOptions(screen.getByLabelText("情報源"), "news");
+    const source = openNews();
     await waitFor(() => expect(cards()).toHaveLength(3));
     const card = cards().find((c) => c.textContent?.includes("「ミホンの番組」に見本 さくら"))!;
     await user.click(within(card).getByRole("button", { name: "出来事に紐付ける" }));

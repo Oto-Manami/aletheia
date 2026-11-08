@@ -1,4 +1,4 @@
-import { Navigate, type RouteObject } from "react-router";
+import { Navigate, type RouteObject, useParams, useSearchParams } from "react-router";
 import { useApp } from "./context.tsx";
 import { AssetsPage } from "./pages/Assets.tsx";
 import { EventEditPage, EventsEmpty, EventsPage } from "./pages/Events.tsx";
@@ -10,12 +10,33 @@ import { DisplaySettings, SettingsPage } from "./pages/Settings.tsx";
 import { PostPage } from "./pages/Post.tsx";
 import { SearchPage } from "./pages/Search.tsx";
 import { TriagePage } from "./pages/Triage.tsx";
+import { triageRouteOf } from "./triage-routes.ts";
 
 function Home() {
   const { viewer } = useApp();
   // 作業者・運営者は承認から、閲覧者はアセットから、登録の無い人は検索から（決定記録 0032）
   const home = viewer.canWork ? "/intake" : viewer.isMember ? "/assets" : "/search";
   return <Navigate to={home} replace />;
+}
+
+/**
+ * 振り分けは、ブログとニュースで画面を分ける（決定記録 0038）。/triage と、分ける前の ?source=news は
+ * それぞれの画面へ送る
+ */
+function TriageIndex() {
+  const [params] = useSearchParams();
+  const next = new URLSearchParams(params);
+  next.delete("source");
+  const query = next.toString();
+  const route = params.get("source") === "news" ? "news" : "blog";
+  return <Navigate to={`/triage/${route}${query ? `?${query}` : ""}`} replace />;
+}
+
+function TriageRouteGuard() {
+  const { route } = useParams();
+  // ルートを移ったら、選んだものなどの状態を持ち越さない
+  if (triageRouteOf(route)) return <TriagePage key={route} />;
+  return <Navigate to="/triage/blog" replace />;
 }
 
 function NotFound() {
@@ -38,7 +59,13 @@ export const routes: RouteObject[] = [
         element: <IntakePage />,
         children: [{ path: ":id", element: <IntakeDetailPage /> }],
       },
-      { path: "triage", element: <TriagePage /> },
+      {
+        path: "triage",
+        children: [
+          { index: true, element: <TriageIndex /> },
+          { path: ":route", element: <TriageRouteGuard /> },
+        ],
+      },
       {
         path: "events",
         element: <EventsPage />,

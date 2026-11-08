@@ -203,6 +203,11 @@ export class DemoSource implements ArchiveSource {
     return this.intakes.filter((i) => i.state === state).length;
   }
 
+  async countTriage(source: "blog" | "news"): Promise<number> {
+    await this.delay();
+    return this.triage.filter((t) => (source === "news") === (t.channelKind === "web")).length;
+  }
+
   private find(id: string): DemoIntake {
     const item = this.intakes.find((i) => i.id === id);
     if (!item) throw new SourceError("下書きが見つかりません", 404);

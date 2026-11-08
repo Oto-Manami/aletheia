@@ -226,6 +226,14 @@ export class LiveSource implements ArchiveSource {
     return total;
   }
 
+  async countTriage(source: "blog" | "news"): Promise<number> {
+    const { counts } = await this.api<{ counts: TriageCounts }>(
+      "GET",
+      `/intake?${new URLSearchParams({ state: "triage", source, limit: "1" }).toString()}`,
+    );
+    return counts.all;
+  }
+
   async getIntake(id: string): Promise<IntakeDetail> {
     const { item, draft_valid, issues, chosen_images_only } = await this.api<{
       item: IntakeDetailRow;

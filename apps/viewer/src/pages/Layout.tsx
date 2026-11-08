@@ -5,6 +5,7 @@ import {
   Inbox,
   LogOut,
   Menu,
+  Newspaper,
   Search,
   Settings,
   X,
@@ -12,6 +13,7 @@ import {
 import { useCallback, useState } from "react";
 import { NavLink, Outlet, useOutletContext } from "react-router";
 import { useApp } from "../context.tsx";
+import { TRIAGE_ROUTES, type TriageRoute } from "../triage-routes.ts";
 import { useLoad } from "../use-load.ts";
 
 export interface LayoutOutlet {
@@ -49,11 +51,18 @@ export function Layout() {
     [source, viewer.canWork, version],
   );
   const pendingCount = pending.status === "ready" ? pending.data : null;
+  // 振り分け待ちは、ブログとニュースで分けて数える（決定記録 0038）
   const [triage] = useLoad(
-    () => (viewer.canWork ? source.countIntake("triage") : Promise.resolve(0)),
+    async (): Promise<Record<TriageRoute, number>> =>
+      viewer.canWork
+        ? {
+            blog: await source.countTriage("blog"),
+            news: await source.countTriage("news"),
+          }
+        : { blog: 0, news: 0 },
     [source, viewer.canWork, version],
   );
-  const triageCount = triage.status === "ready" ? triage.data : null;
+  const triageCount = (route: TriageRoute) => (triage.status === "ready" ? triage.data[route] : 0);
   const close = () => setMenuOpen(false);
 
   return (
@@ -90,17 +99,22 @@ export function Layout() {
               )}
             </NavLink>
           )}
-          {viewer.canWork && (
-            <NavLink to="/triage" className="nav-item" onClick={close}>
-              <Filter size={16} aria-hidden="true" />
-              振り分け
-              {triageCount !== null && triageCount > 0 && (
-                <span className="count" aria-label={`振り分け待ち ${triageCount} 件`}>
-                  {triageCount}
-                </span>
-              )}
-            </NavLink>
-          )}
+          {viewer.canWork &&
+            (["blog", "news"] as const).map((route) => {
+              const count = triageCount(route);
+              const Icon = route === "news" ? Newspaper : Filter;
+              return (
+                <NavLink key={route} to={`/triage/${route}`} className="nav-item" onClick={close}>
+                  <Icon size={16} aria-hidden="true" />
+                  {TRIAGE_ROUTES[route].nav}
+                  {count > 0 && (
+                    <span className="count" aria-label={`振り分け待ち ${count} 件`}>
+                      {count}
+                    </span>
+                  )}
+                </NavLink>
+              );
+            })}
           {viewer.isMember && (
             <NavLink to="/events" className="nav-item" onClick={close}>
               <CalendarDays size={16} aria-hidden="true" />
