@@ -441,6 +441,8 @@ export interface ArchiveSource {
     decision: Decision,
     options?: { draft?: DraftInput; note?: string },
   ): Promise<{ postId?: string }>;
+  /** 却下を取り消し、承認待ちに戻す（却下した直近 10 件だけ。決定記録 0043） */
+  reopenIntake(id: string): Promise<void>;
   labels(refs: { id: string; type: RefLabel["type"] }[]): Promise<RefLabel[]>;
   /** 紐付けの行き先の候補を名前で探す */
   findRefs(query: string): Promise<RefLabel[]>;

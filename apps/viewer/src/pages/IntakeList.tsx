@@ -72,7 +72,9 @@ export function IntakePage() {
           <p className="empty">
             {state === "pending"
               ? "承認待ちの下書きはありません。Discord の入口に投稿すると、ここに並びます。"
-              : "該当する下書きはありません。"}
+              : state === "rejected"
+                ? "却下した下書きはありません。却下したものは直近 10 件まで置いておき、承認待ちに戻せます。"
+                : "該当する下書きはありません。"}
           </p>
         )}
         {list.status === "ready" && list.data.length > 0 && (

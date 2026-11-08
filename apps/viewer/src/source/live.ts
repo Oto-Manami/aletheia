@@ -282,6 +282,10 @@ export class LiveSource implements ArchiveSource {
     return res.postId ? { postId: res.postId } : {};
   }
 
+  async reopenIntake(id: string): Promise<void> {
+    await this.api("POST", `/intake/${encodeURIComponent(id)}/reopen`, {});
+  }
+
   async labels(refs: { id: string; type: RefLabel["type"] }[]): Promise<RefLabel[]> {
     const byType = (type: RefLabel["type"]) => refs.filter((r) => r.type === type).map((r) => r.id);
     const found: RefLabel[] = [];

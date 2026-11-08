@@ -271,8 +271,29 @@ export class DemoSource implements ArchiveSource {
     ] as IntakeState;
     item.reviewNote = options.note ?? null;
     item.reviewedAt = new Date().toISOString();
+    if (decision === "reject") this.dropOldRejected();
     const postId = this.posts[0]?.id;
     return decision === "approve" && postId ? { postId } : {};
+  }
+
+  /** 却下したものは直近 10 件まで置いておく（API と同じ規則。決定記録 0043） */
+  private dropOldRejected() {
+    const old = this.intakes
+      .filter((i) => i.state === "rejected")
+      .sort((a, b) => (b.reviewedAt ?? "").localeCompare(a.reviewedAt ?? ""))
+      .slice(10)
+      .map((i) => i.id);
+    this.intakes = this.intakes.filter((i) => !old.includes(i.id));
+  }
+
+  async reopenIntake(id: string): Promise<void> {
+    await this.delay();
+    const item = this.intakes.find((i) => i.id === id);
+    if (!item) throw new SourceError("戻せる下書きが見つかりません", 404);
+    if (item.state !== "rejected") throw new SourceError("この下書きは却下されていません", 409);
+    item.state = "pending";
+    item.reviewNote = null;
+    item.reviewedAt = null;
   }
 
   labels(refs: { id: string; type: RefLabel["type"] }[]): Promise<RefLabel[]> {
