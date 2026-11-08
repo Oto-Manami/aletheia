@@ -122,6 +122,51 @@ describe("下書き", () => {
       expect((await call("POST", "/intake", newIntake(d))).status).toBe(409);
     }));
 
+  it("却下した投稿は取り込み直せる。却下の前の内容は変更履歴に残る（決定記録 0042）", () =>
+    withApi(async ({ c, call }) => {
+      const d = await seed(c);
+      const first = (await (await call("POST", "/intake", newIntake(d))).json()) as { id: string };
+      expect((await call("POST", `/intake/${first.id}/reject`, { note: "古い形" })).status).toBe(
+        200,
+      );
+
+      const again = newIntake(d);
+      again.draft.post.title = "取り込み直した題名";
+      const res = await call("POST", "/intake", again);
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as { id: string; state: string; reopened?: boolean };
+      // 同じ下書きを、新しい内容で承認待ちに戻す
+      expect(body).toMatchObject({ id: first.id, state: "pending", reopened: true });
+      const { rows } = await c.query<{
+        state: string;
+        title: string;
+        reviewed_at: string | null;
+        review_note: string | null;
+      }>(
+        `select state, draft -> 'post' ->> 'title' as title, reviewed_at, review_note
+           from public.intake_items where id = $1`,
+        [first.id],
+      );
+      expect(rows).toEqual([
+        { state: "pending", title: "取り込み直した題名", reviewed_at: null, review_note: null },
+      ]);
+      const history = await c.query<{ state: string; title: string }>(
+        `select old_row ->> 'state' as state, old_row -> 'draft' -> 'post' ->> 'title' as title
+           from app.history where table_name = 'intake_items' and row_id = $1 order by id`,
+        [first.id],
+      );
+      expect(history.rows).toContainEqual({ state: "rejected", title: "お菓子の日" });
+    }));
+
+  it("承認済み・承認待ちの投稿は、取り込み直さない", () =>
+    withApi(async ({ c, call }) => {
+      const d = await seed(c);
+      const first = (await (await call("POST", "/intake", newIntake(d))).json()) as { id: string };
+      expect((await call("POST", "/intake", newIntake(d))).status).toBe(409);
+      expect((await call("POST", `/intake/${first.id}/approve`, {})).status).toBe(200);
+      expect((await call("POST", "/intake", newIntake(d))).status).toBe(409);
+    }));
+
   it("形の足りない下書きも作れるが、そのことを返す（人が補ってから承認する）", () =>
     withApi(async ({ c, call }) => {
       const d = await seed(c);

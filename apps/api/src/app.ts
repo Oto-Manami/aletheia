@@ -538,12 +538,41 @@ export function createApp(
       .onConflict((oc) => oc.columns(["channel_id", "external_id", "route"]).doNothing())
       .returning("id")
       .executeTakeFirst();
-    if (!created) {
+    // 同じ経路の下書きが却下済みなら、新しい内容で取り込み直す（設計書 決定記録 0042）。却下の前の内容は
+    // 変更履歴に残り、却下の場所へ移したファイルもそのまま残る
+    const reopened = created
+      ? undefined
+      : await db
+          .updateTable("intake_items")
+          .set({
+            route_ref: body.route_ref ?? null,
+            captured_at: body.captured_at,
+            draft: JSON.stringify(draft),
+            staged_files: JSON.stringify(body.staged_files),
+            state,
+            reviewed_by: null,
+            reviewed_at: null,
+            review_note: null,
+          })
+          .where("channel_id", "=", channel.id)
+          .where("external_id", "=", body.external_id)
+          .where("route", "=", body.route)
+          .where("state", "=", "rejected")
+          .returning("id")
+          .executeTakeFirst();
+    const id = created?.id ?? reopened?.id;
+    if (!id) {
       throw new HTTPException(409, { message: "同じ経路から、同じ投稿の下書きが既にあります" });
     }
     const check = draftSchema.safeParse(draft);
     return c.json(
-      { id: created.id, state, draft_valid: check.success, issues: check.error?.issues ?? [] },
+      {
+        id,
+        state,
+        draft_valid: check.success,
+        issues: check.error?.issues ?? [],
+        ...(reopened ? { reopened: true } : {}),
+      },
       201,
     );
   });
