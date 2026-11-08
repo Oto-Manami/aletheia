@@ -24,8 +24,10 @@ export const triageListQuery = z.object({
     .default("all"),
   /** 情報源の種類: all すべて / blog メンバーのブログ / news 公式サイトのニュースなど（web） */
   source: z.enum(["all", "blog", "news"]).default("all"),
-  /** oldest 取り込んだ古い順 / signal 言及の強い順 */
-  sort: z.enum(["oldest", "signal"]).default("oldest"),
+  /** oldest 記事の古い順 / newest 記事の新しい順 / signal 言及の強い順 */
+  sort: z.enum(["oldest", "newest", "signal"]).default("oldest"),
+  /** 言葉で探す（空白で区切ると複数）。題名か本文に含むものを先に並べ、その後は sort の順 */
+  q: z.string().trim().max(100).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(200),
 });
 export type TriageListQuery = z.output<typeof triageListQuery>;
@@ -68,7 +70,10 @@ export const SOURCE_KINDS = { blog: "blog", news: "web" } as const;
 /** 言及の強さ（並べ替え・絞り込み・件数に使う） */
 interface Signal {
   id: string;
-  captured_at: Date;
+  /** 探す言葉のうち、題名か本文に含むものの数 */
+  hits: number;
+  /** 記事の日時（公開日時。無ければ公開日の JST 0 時、それも無ければ取り込んだ日時） */
+  dated_at: number;
   s: number;
   g: number;
   t: number;
@@ -93,11 +98,27 @@ function matches(mention: TriageListQuery["mention"], x: Signal): boolean {
   }
 }
 
-/** 古い順（同じ日時は id の順） */
+/** 記事の古い順（同じ日時は id の順） */
 function byOldest(a: Signal, b: Signal): number {
-  return (
-    a.captured_at.getTime() - b.captured_at.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-  );
+  return a.dated_at - b.dated_at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/** 記事の新しい順（同じ日時は id の逆順） */
+function byNewest(a: Signal, b: Signal): number {
+  return -byOldest(a, b);
+}
+
+/** 記事の日時。下書きの公開日時 → 公開日（JST の 0 時）→ 取り込んだ日時の順に使う */
+function datedAt(
+  publishedAt: string | null,
+  publishedDate: string | null,
+  capturedAt: Date | string,
+): number {
+  const at = publishedAt ? Date.parse(publishedAt) : Number.NaN;
+  if (!Number.isNaN(at)) return at;
+  const day = publishedDate ? Date.parse(`${publishedDate}T00:00:00+09:00`) : Number.NaN;
+  if (!Number.isNaN(day)) return day;
+  return new Date(capturedAt).getTime();
 }
 
 /** 言及の強い順: 本人への言及、期への言及の多い順。言及の無いものは、ほかのメンバーの名前の無いものを先に */
@@ -105,11 +126,38 @@ function bySignal(a: Signal, b: Signal): number {
   return b.s - a.s || b.g - a.g || Number(a.t > 0) - Number(b.t > 0) || byOldest(a, b);
 }
 
+const SORTS = { oldest: byOldest, newest: byNewest, signal: bySignal } as const;
+
 /**
  * 振り分け待ちの一覧。下書きの中身（本文を含む）は大きく、件数も多いため、言及の強さは 1 回だけ
  * 数え（下書きの紐付けから）、絞り込み・並べ替え・件数はその結果で行い、中身は画面に出す分だけ読む
  */
+/** 探す言葉（空白で区切る。5 語まで） */
+export function queryWords(q: string | undefined): string[] {
+  return [...new Set((q ?? "").split(/\s+/).filter(Boolean))].slice(0, 5);
+}
+
+/** 下書きの題名と本文のうち、探す言葉を含むものの数（大文字・小文字は区別しない） */
+function wordHits(words: string[]) {
+  return sql<number>`(
+    select count(*)::int
+    from (
+      select lower(
+        coalesce(i.draft -> 'post' ->> 'title', '') || ' ' || coalesce((
+          select string_agg(t ->> 'content', ' ')
+          from jsonb_array_elements(case when jsonb_typeof(i.draft -> 'assets') = 'array'
+                                         then i.draft -> 'assets' else '[]'::jsonb end) a,
+               jsonb_array_elements(case when jsonb_typeof(a -> 'texts') = 'array'
+                                         then a -> 'texts' else '[]'::jsonb end) t
+        ), '')
+      ) as doc
+    ) d, unnest(${words}::text[]) as w(word)
+    where strpos(d.doc, lower(w.word)) > 0
+  )`;
+}
+
 export async function listTriage(db: Database, q: TriageListQuery) {
+  const words = queryWords(q.q);
   const signals: Signal[] = (
     await db
       .selectFrom("intake_items as i")
@@ -117,9 +165,12 @@ export async function listTriage(db: Database, q: TriageListQuery) {
       .select([
         "i.id",
         "i.captured_at",
+        sql<string | null>`i.draft -> 'post' ->> 'published_at'`.as("published_at"),
+        sql<string | null>`i.draft -> 'post' ->> 'published_date'`.as("published_date"),
         mentionCount(true).as("s"),
         mentionCount(false).as("g"),
         tagCount.as("t"),
+        words.length > 0 ? wordHits(words).as("hits") : sql<number>`0`.as("hits"),
       ])
       .where("i.state", "=", "triage")
       .$if(q.source !== "all", (qb) =>
@@ -128,7 +179,8 @@ export async function listTriage(db: Database, q: TriageListQuery) {
       .execute()
   ).map((r) => ({
     id: r.id,
-    captured_at: new Date(r.captured_at),
+    dated_at: datedAt(r.published_at, r.published_date, r.captured_at),
+    hits: Number(r.hits),
     s: Number(r.s),
     g: Number(r.g),
     t: Number(r.t),
@@ -147,10 +199,11 @@ export async function listTriage(db: Database, q: TriageListQuery) {
     counts[key] = signals.filter((x) => matches(key, x)).length;
   }
 
-  const picked = signals
-    .filter((x) => matches(q.mention, x))
-    .sort(q.sort === "signal" ? bySignal : byOldest)
-    .slice(0, q.limit);
+  // 言葉を含むもの（多く含むもの）を先に、その後は選んだ並び
+  const order = SORTS[q.sort];
+  const shown = signals.filter((x) => matches(q.mention, x));
+  const queryMatches = shown.filter((x) => x.hits > 0).length;
+  const picked = shown.sort((a, b) => b.hits - a.hits || order(a, b)).slice(0, q.limit);
   const signalOf = new Map(picked.map((x) => [x.id, x]));
   const rows =
     picked.length === 0
@@ -185,7 +238,13 @@ export async function listTriage(db: Database, q: TriageListQuery) {
     if (!row || row.state !== "triage") return [];
     const signal = signalOf.get(x.id)!;
     return [
-      { ...row, subject_mentions: signal.s, group_mentions: signal.g, tag_mentions: signal.t },
+      {
+        ...row,
+        subject_mentions: signal.s,
+        group_mentions: signal.g,
+        tag_mentions: signal.t,
+        query_hits: signal.hits,
+      },
     ];
   });
 
@@ -197,5 +256,12 @@ export async function listTriage(db: Database, q: TriageListQuery) {
     .where("merged_into", "is", null)
     .where(sql<boolean>`attributes @> '{"archive_subject": true}'`)
     .execute();
-  return { items, total: counts[q.mention], counts, subject_ids: subjects.map((r) => r.id) };
+  return {
+    items,
+    total: counts[q.mention],
+    counts,
+    // 探す言葉を含むものの数（いま選んでいる絞り込みの中で）
+    query_matches: words.length > 0 ? queryMatches : null,
+    subject_ids: subjects.map((r) => r.id),
+  };
 }

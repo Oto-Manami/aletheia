@@ -256,6 +256,32 @@ describe("振り分けの画面", () => {
     expect(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" })).toBeTruthy();
   });
 
+  it("記事の新しい順に並べられ、言葉で探すと含む記事を先に並べる", async () => {
+    const user = userEvent.setup();
+    open();
+    await screen.findByText("リハーサルの日");
+    const titles = () => cards().map((c) => c.querySelector(".triage-name")?.textContent ?? "");
+    const oldest = titles();
+    await user.selectOptions(screen.getByLabelText("並び"), "newest");
+    await waitFor(() => expect(titles()).toEqual([...oldest].reverse()));
+
+    // 押したときに探す。含む記事を先に、その後は選んだ並び（新しい順）
+    await user.type(screen.getByLabelText("言葉"), "パン屋");
+    expect(titles()).toEqual([...oldest].reverse());
+    await user.click(screen.getByRole("button", { name: "探す" }));
+    await waitFor(() => expect(titles()[0]).toContain("秋のお散歩"));
+    expect(within(cards()[0]!).getByText("探す言葉あり")).toBeTruthy();
+    expect(
+      screen.getByText("「パン屋」を含む記事 1 件を先に並べ、その後は新しい順です。"),
+    ).toBeTruthy();
+    const rest = [...oldest].reverse().filter((t) => !t.includes("秋のお散歩"));
+    expect(titles().slice(1)).toEqual(rest);
+
+    await user.click(screen.getByRole("button", { name: "探すのをやめる" }));
+    await waitFor(() => expect(titles()).toEqual([...oldest].reverse()));
+    expect(screen.queryByText("探す言葉あり")).toBeNull();
+  });
+
   it("ブログとニュースで画面を分け、画像を選ぶ意味をそれぞれに出す", async () => {
     open();
     expect(await screen.findByRole("heading", { name: "ブログの振り分け" })).toBeTruthy();

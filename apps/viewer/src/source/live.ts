@@ -597,23 +597,31 @@ export class LiveSource implements ArchiveSource {
   }
 
   async listTriage(
-    options: { mention?: TriageMentionFilter; sort?: TriageSort; source?: TriageSource } = {},
+    options: {
+      mention?: TriageMentionFilter;
+      sort?: TriageSort;
+      source?: TriageSource;
+      query?: string;
+    } = {},
   ) {
     // 1 件ずつ本文と画像を見て判断するため、一度に読むのは 50 件まで（多いと開くのが遅くなる）
     const params = new URLSearchParams({ state: "triage", limit: String(TRIAGE_PAGE) });
     if (options.source && options.source !== "all") params.set("source", options.source);
     if (options.mention && options.mention !== "all") params.set("mention", options.mention);
     if (options.sort && options.sort !== "oldest") params.set("sort", options.sort);
-    const { items, total, counts, subject_ids } = await this.api<{
-      items: IntakeRow[];
+    if (options.query?.trim()) params.set("q", options.query.trim());
+    const { items, total, counts, subject_ids, query_matches } = await this.api<{
+      items: (IntakeRow & { query_hits?: number })[];
       total: number;
       counts: TriageCounts;
       subject_ids: string[];
+      query_matches?: number | null;
     }>("GET", `/intake?${params.toString()}`);
     const subjects = new Set(subject_ids);
     return {
       total,
       counts,
+      queryMatches: query_matches ?? null,
       items: items.map((i): TriageItem =>
         triageItemOf(
           {
@@ -622,6 +630,7 @@ export class LiveSource implements ArchiveSource {
             capturedAt: i.captured_at,
             draft: i.draft,
             channelKind: i.channel_kind ?? null,
+            queryHits: i.query_hits ?? 0,
           },
           subjects,
         ),

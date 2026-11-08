@@ -33,6 +33,13 @@ import { TRIAGE_ROUTES, triageRouteOf } from "../triage-routes.ts";
 import { useLoad } from "../use-load.ts";
 import { useLayout } from "./Layout.tsx";
 
+/** 並び。日付は記事の日付（公開日時。無ければ取り込んだ日時） */
+const SORTS: { key: TriageSort; label: string }[] = [
+  { key: "oldest", label: "古い順" },
+  { key: "newest", label: "新しい順" },
+  { key: "signal", label: "言及の強い順" },
+];
+
 const FILTER_LABELS: Record<TriageMentionFilter, string> = {
   all: "すべて",
   any: "言及あり",
@@ -111,6 +118,7 @@ function TriageCard({
         />
         <div className="triage-title">
           <span className="triage-source">
+            {item.queryHits > 0 && <span className="tag triage-hit">探す言葉あり</span>}
             {item.category && <span className="tag triage-category">{item.category}</span>}
             {item.channelName}
             {item.publishedAt && (
@@ -446,10 +454,15 @@ export function TriagePage() {
   const from = triageRouteOf(useParams().route) ?? "blog";
   const route = TRIAGE_ROUTES[from];
   const mention = TRIAGE_FILTERS.find((f) => f === params.get("mention")) ?? "all";
-  const sort: TriageSort = params.get("sort") === "signal" ? "signal" : "oldest";
+  const sort: TriageSort = SORTS.some((x) => x.key === params.get("sort"))
+    ? (params.get("sort") as TriageSort)
+    : "oldest";
+  // 言葉で探す。押したとき（Enter）に探す（打つたびに探すと、一覧を何度も読み直して重くなる）
+  const query = params.get("q") ?? "";
+  const [typed, setTyped] = useState(query);
   const [list, reload] = useLoad(
-    () => source.listTriage({ mention, sort, source: from }),
-    [source, mention, sort, from],
+    () => source.listTriage({ mention, sort, source: from, query }),
+    [source, mention, sort, from, query],
   );
   const [appears, setAppears] = useState<Record<string, Record<string, boolean>>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -491,14 +504,17 @@ export function TriagePage() {
   const shown = new Set(items.map((i) => i.id));
   const picked = [...selected].filter((id) => shown.has(id));
 
-  const setView = (patch: { mention?: TriageMentionFilter; sort?: TriageSort }) => {
+  const setView = (patch: { mention?: TriageMentionFilter; sort?: TriageSort; query?: string }) => {
     const next = new URLSearchParams(params);
     const m = patch.mention ?? mention;
     const so = patch.sort ?? sort;
+    const q = patch.query ?? query;
     if (m === "all") next.delete("mention");
     else next.set("mention", m);
     if (so === "oldest") next.delete("sort");
     else next.set("sort", so);
+    if (q) next.set("q", q);
+    else next.delete("q");
     setSelected(new Set());
     setParams(next);
   };
@@ -621,10 +637,46 @@ export function TriagePage() {
               value={sort}
               onChange={(e) => setView({ sort: e.target.value as TriageSort })}
             >
-              <option value="oldest">古い順</option>
-              <option value="signal">言及の強い順</option>
+              {SORTS.map((x) => (
+                <option key={x.key} value={x.key}>
+                  {x.label}
+                </option>
+              ))}
             </select>
           </span>
+          <form
+            className="triage-search"
+            role="search"
+            aria-label="言葉で探す"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setView({ query: typed.trim() });
+            }}
+          >
+            <label htmlFor="triage-query">言葉</label>
+            <input
+              id="triage-query"
+              type="search"
+              value={typed}
+              placeholder="含む記事を先に並べる"
+              onChange={(e) => setTyped(e.target.value)}
+            />
+            <button type="submit" className="button">
+              探す
+            </button>
+            {query && (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => {
+                  setTyped("");
+                  setView({ query: "" });
+                }}
+              >
+                探すのをやめる
+              </button>
+            )}
+          </form>
         </div>
         <div className="triage-bulk">
           <button
@@ -667,9 +719,16 @@ export function TriagePage() {
           {mention !== "all" &&
             `このうち「${FILTER_LABELS[mention]}」は ${total.toLocaleString("ja-JP")} 件。`}
           {more &&
-            `${sort === "signal" ? "言及の強い順" : "古い順"}に ${items.length.toLocaleString("ja-JP")} 件を表示しています。`}
+            `${SORTS.find((x) => x.key === sort)?.label}に ${items.length.toLocaleString("ja-JP")} 件を表示しています。`}
           {sort === "signal" &&
             "本人への言及の多いもの、期への言及の多いもの、メンバーの名前の無いもの、ほかのメンバーの名前だけのもの、の順です。"}
+        </p>
+      )}
+      {list.status === "ready" && query && list.data.queryMatches !== null && (
+        <p className="quiet triage-total" role="status">
+          {list.data.queryMatches > 0
+            ? `「${query}」を含む記事 ${list.data.queryMatches.toLocaleString("ja-JP")} 件を先に並べ、その後は${SORTS.find((x) => x.key === sort)?.label}です。`
+            : `「${query}」を含む記事はありません。${SORTS.find((x) => x.key === sort)?.label}で並べています。`}
         </p>
       )}
       {message && (

@@ -311,6 +311,68 @@ describe("振り分け", () => {
       expect(typeof counts.pending).toBe("number");
     }));
 
+  it("記事の日付の新しい順に並べられ、探す言葉を含むものを先に並べる", () =>
+    withApi(async (ctx) => {
+      await seed(ctx.c);
+      const make = async (
+        externalId: string,
+        published: { published_at?: string; published_date?: string },
+        title: string,
+        body: string,
+      ) => {
+        const res = await ctx.call("POST", "/intake", {
+          channel_key: "sns:test_account",
+          external_id: externalId,
+          route: "fetch",
+          state: "triage",
+          // 取り込んだ順は記事の日付と逆にする（並びは記事の日付で決まることを確かめる）
+          captured_at: `2026-10-${String(30 - Number(externalId.slice(-1))).padStart(2, "0")}T00:00:00+09:00`,
+          draft: {
+            version: 1,
+            post: { title, classification: "public", ...published },
+            assets: [
+              { ref: "body", media_type: "text", texts: [{ text_type: "body", content: body }] },
+            ],
+          },
+        });
+        expect(res.status).toBe(201);
+        return ((await res.json()) as { id: string }).id;
+      };
+      const a = await make(
+        "601",
+        { published_at: "2026-10-01T21:00:00+09:00" },
+        "秋の公園",
+        "散歩をしました",
+      );
+      const b = await make("602", { published_date: "2026-10-02" }, "撮影", "楽屋で LIVE の話");
+      const c = await make(
+        "603",
+        { published_at: "2026-10-03T21:00:00+09:00" },
+        "ライブ",
+        "楽屋にて",
+      );
+      type List = { items: { id: string; query_hits: number }[]; query_matches: number | null };
+      const list = async (query: string) =>
+        (await (await ctx.call("GET", `/intake?state=triage&${query}`)).json()) as List;
+
+      expect((await list("")).items.map((i) => i.id)).toEqual([a, b, c]);
+      expect((await list("sort=newest")).items.map((i) => i.id)).toEqual([c, b, a]);
+      expect((await list("")).query_matches).toBeNull();
+
+      // 含む言葉の多いものを先に、その後は選んだ並び。大文字・小文字は区別しない
+      const found = await list(`sort=newest&q=${encodeURIComponent("楽屋 live")}`);
+      expect(found.items.map((i) => i.id)).toEqual([b, c, a]);
+      expect(found.items.map((i) => i.query_hits)).toEqual([2, 1, 0]);
+      expect(found.query_matches).toBe(2);
+      // 題名も探す
+      expect((await list(`q=${encodeURIComponent("公園")}`)).items.map((i) => i.id)).toEqual([
+        a,
+        b,
+        c,
+      ]);
+      expect((await list(`q=${encodeURIComponent("見つからない言葉")}`)).query_matches).toBe(0);
+    }));
+
   it("残すと承認を 1 回で行える。同じ画像が既にあっても承認でき、ファイルは二重に保存しない", () =>
     withApi(async (ctx) => {
       const d = await seed(ctx.c);
