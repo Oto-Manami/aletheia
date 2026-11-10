@@ -2978,6 +2978,30 @@ details.more[open] > summary {
   flex: none;
 }
 
+/* 素材を外す・紐付ける（設計書 決定記録 0044） */
+.event-material-remove {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.event-material-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.source-preview-link {
+  flex: none;
+  margin-left: auto;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
 .event-add-child,
 .event-add-source {
   justify-self: start;

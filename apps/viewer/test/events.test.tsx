@@ -210,6 +210,54 @@ describe("出来事", () => {
     expect(await screen.findByText(/取り込み済みの素材には見つかりません/)).toBeTruthy();
   });
 
+  it("保存済みの投稿は、出典の URL から素材として紐付けられ、紐付けた素材は確かめてから外せる", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/events/e1000000-0000-4000-8000-000000000001");
+    await screen.findByRole("heading", { name: "出来事を直す" });
+    const materials = () => screen.getByText(/^紐付いている素材（/).closest("div")!;
+    const count = () => screen.getByText(/^紐付いている素材（/).textContent;
+    const before = count();
+
+    await user.type(screen.getByLabelText("出典の URL 1"), "https://example.com/news/76010");
+    await user.click(await screen.findByRole("button", { name: "素材として紐付ける" }));
+    await waitFor(() =>
+      expect(
+        within(materials()).getByRole("link", { name: "『月刊ミホン』11 月号、表紙は試験花子" }),
+      ).toBeTruthy(),
+    );
+    expect(count()).not.toBe(before);
+    // 紐付けたら、出典の URL の欄は空に戻る
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "出典の URL 1" }).value).toBe("");
+    // 同じ URL をもう一度入れると、紐付け済みと分かる
+    await user.type(screen.getByLabelText("出典の URL 1"), "https://example.com/news/76010");
+    expect(await screen.findByText("素材として紐付け済み")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "素材として紐付ける" })).toBeNull();
+
+    // 外す（確かめてから）。投稿は消えない
+    const row = within(materials())
+      .getByRole("link", { name: "『月刊ミホン』11 月号、表紙は試験花子" })
+      .closest("li")!;
+    await user.click(within(row).getByRole("button", { name: "外す" }));
+    const confirm = within(row).getByRole("group", { name: "外すか確かめる" });
+    await user.click(within(confirm).getByRole("button", { name: "外す" }));
+    await waitFor(() => expect(count()).toBe(before));
+    const event = await source.getEvent("e1000000-0000-4000-8000-000000000001");
+    // 後から紐付けた保存済みの投稿（投稿の ID があるもの）が無くなる
+    expect(event.materials.filter((m) => m.postId !== null)).toEqual([]);
+  });
+
+  it("閲覧者には、素材を紐付ける・外すボタンを出さない", async () => {
+    const user = userEvent.setup();
+    open("/events/e1000000-0000-4000-8000-000000000001", { ...member, canWork: false });
+    await screen.findByRole("heading", { name: /出来事/ });
+    expect(screen.queryByRole("button", { name: "外す" })).toBeNull();
+    const field = screen.queryByLabelText("出典の URL 1");
+    if (field) {
+      await user.type(field, "https://example.com/news/76010").catch(() => undefined);
+    }
+    expect(screen.queryByRole("button", { name: "素材として紐付ける" })).toBeNull();
+  });
+
   it("何も紐付いていない出来事は、確かめてから消せる。紐付いている出来事は消せない", async () => {
     const user = userEvent.setup();
     const { source } = open("/events/e1000000-0000-4000-8000-000000000011");

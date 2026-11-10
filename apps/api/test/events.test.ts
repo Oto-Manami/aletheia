@@ -340,6 +340,103 @@ describe("出来事を作る・直す", () => {
       expect((await ctx.call("POST", `/events/${parent}/delete`, {}, owner)).status).toBe(409);
     }));
 
+  it("保存済みのニュースを、後から別の出来事にも素材として紐付け、外せる。閲覧者はできない", () =>
+    withApi(async (ctx) => {
+      const worker = await participant(ctx);
+      const viewer = await tokenFor(
+        await discordUser(ctx.c, "66666666-6666-4666-8666-666666666666", "viewer"),
+      );
+      const make = async () =>
+        (await json<{ id: string }>(ctx.call("POST", "/events", base, worker))).id;
+      const first = await make();
+      const second = await make();
+      // 振り分けで 1 つ目の出来事に紐付けたニュース（投稿と、選んだ画像の紐付け）
+      const { rows } = await ctx.c.query<{ post: string; asset: string }>(
+        `with ch as (
+           insert into public.channels (key, name, kind, availability, item_unit, classification)
+           values ('web:test_news', '試験のニュース', 'web', 'free', 'post', 'public') returning id
+         ), p as (
+           insert into public.posts (channel_id, external_id, classification)
+           select id, 'N0002', 'public' from ch returning id
+         ), a as (
+           insert into public.assets (post_id, position, media_type, file_policy, classification)
+           select id, 1, 'image', 'reference_only', 'public' from p returning id, post_id
+         )
+         select post_id as post, id as asset from a`,
+      );
+      const { post, asset } = rows[0]!;
+      await ctx.c.query(
+        `insert into public.links (from_type, from_id, to_type, to_id, role, classification)
+         values ('post', $1, 'event', $3, 'about', 'public'), ('asset', $2, 'event', $3, 'about', 'public')`,
+        [post, asset, first],
+      );
+      const materialsOf = async (id: string) =>
+        (
+          await json<{ materials: { post_id: string }[] }>(
+            ctx.call("GET", `/events/${id}`, undefined, worker),
+          )
+        ).materials.map((m) => m.post_id);
+
+      // 閲覧者は紐付けられない
+      expect(
+        (await ctx.call("POST", `/events/${second}/materials`, { post_id: post }, viewer)).status,
+      ).toBe(403);
+      // 2 つ目の出来事にも紐付ける（2 回送っても 1 つ）
+      for (let i = 0; i < 2; i++) {
+        const res = await ctx.call(
+          "POST",
+          `/events/${second}/materials`,
+          { post_id: post },
+          worker,
+        );
+        expect(res.status).toBe(201);
+      }
+      expect(await materialsOf(second)).toEqual([post]);
+      expect(await materialsOf(first)).toEqual([post]);
+      const { rows: added } = await ctx.c.query<{ origin: string; created_by: string }>(
+        `select origin::text, created_by::text from public.links where to_id = $1`,
+        [second],
+      );
+      expect(added).toEqual([
+        { origin: "human", created_by: "33333333-3333-4333-8333-333333333333" },
+      ]);
+      // 無い投稿・無い出来事
+      expect(
+        (
+          await ctx.call(
+            "POST",
+            `/events/${second}/materials`,
+            { post_id: "00000000-0000-4000-8000-000000000000" },
+            worker,
+          )
+        ).status,
+      ).toBe(404);
+
+      // 1 つ目から外すと、投稿と画像からの紐付けがまとめて消え、2 つ目には残る。履歴に残る
+      const res = await ctx.call(
+        "POST",
+        `/events/${first}/materials/remove`,
+        { post_id: post },
+        worker,
+      );
+      expect(await res.json()).toEqual({ ok: true, removed: 2 });
+      expect(await materialsOf(first)).toEqual([]);
+      expect(await materialsOf(second)).toEqual([post]);
+      const { rows: history } = await ctx.c.query<{ n: string }>(
+        `select count(*) as n from app.history where table_name = 'links' and operation = 'DELETE'
+         and changed_by = '33333333-3333-4333-8333-333333333333'`,
+      );
+      expect(Number(history[0]!.n)).toBe(2);
+      expect(
+        (await ctx.call("POST", `/events/${first}/materials/remove`, { post_id: post }, worker))
+          .status,
+      ).toBe(404);
+      expect(
+        (await ctx.call("POST", `/events/${second}/materials/remove`, { post_id: post }, viewer))
+          .status,
+      ).toBe(403);
+    }));
+
   it("ライブの公演は日程として扱い、一覧では隠してまとまりに件数を出す。部も残せる", () =>
     withApi(async (ctx) => {
       const hanako = await subject(ctx);
