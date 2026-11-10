@@ -2032,6 +2032,8 @@ a.tab {
     min-height: 0;
     width: 100%;
     align-items: stretch;
+    /* 行の高さを画面に合わせる（中身の高さに伸ばすと、欄の中でスクロールできない） */
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .split-list,
@@ -2045,6 +2047,14 @@ a.tab {
 
   .split-list {
     padding-right: 4px;
+  }
+
+  /* 見出し・絞り込みは止めたまま、一覧だけをスクロールする（一覧の枠は、欄の高さに合わせて縮む） */
+  .split-list > .intake-list,
+  .split-list > .event-list {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 }
 
