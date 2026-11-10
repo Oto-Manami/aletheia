@@ -635,6 +635,46 @@ describe("出来事を作る・直す", () => {
         published_date: "2026-10-31",
       });
       expect(await preview("https://example.com/test-news/3")).toEqual({ found: false });
+
+      // 共有・計測の引数（utm_ など）は外して比べる
+      expect(
+        await preview("https://example.com/test-news/1?utm_source=share&fbclid=abc#top"),
+      ).toMatchObject({ found: true, post_id: post[0]!.id });
+
+      // サイトごとの決まりは、情報源の設定（url_patterns）で書く。番号が同じなら、引数が違っても同じ記事
+      const { rows: site } = await ctx.c.query<{ id: string }>(
+        `insert into public.channels (key, name, kind, availability, item_unit, classification, config)
+         values ('web:test_site', '試験のサイト', 'web', 'free', 'post', 'public', $1)
+         returning id`,
+        [
+          JSON.stringify({
+            url_patterns: ["^https?://www\\.example\\.org/news/detail/(?<id>[A-Z0-9]+)"],
+          }),
+        ],
+      );
+      const { rows: sitePost } = await ctx.c.query<{ id: string }>(
+        `insert into public.posts (channel_id, external_id, title, url, classification)
+         values ($1, 'E00001', '試験のお知らせ', 'https://www.example.org/news/detail/E00001?ima=0000', 'public')
+         returning id`,
+        [site[0]!.id],
+      );
+      for (const url of [
+        "https://www.example.org/news/detail/E00001",
+        "https://www.example.org/news/detail/E00001?ima=1234",
+        "http://www.example.org/news/detail/E00001?ima=0000",
+      ]) {
+        expect(await preview(url)).toMatchObject({ found: true, post_id: sitePost[0]!.id });
+      }
+      expect(await preview("https://www.example.org/news/detail/E00002")).toEqual({
+        found: false,
+      });
+      // 設定の無い情報源では、投稿を見分けるかもしれない引数（?v= など）は外さない
+      await ctx.c.query(
+        `insert into public.posts (channel_id, external_id, title, url, classification)
+         values ($1, 'V1', '試験の動画', 'https://example.com/watch?v=aaa', 'public')`,
+        [channel],
+      );
+      expect(await preview("https://example.com/watch?v=bbb")).toEqual({ found: false });
       const bad = await ctx.call(
         "GET",
         "/events/source-preview?url=javascript:alert(1)",

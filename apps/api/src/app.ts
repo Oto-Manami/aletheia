@@ -58,6 +58,7 @@ import {
   writesNeedWorker,
 } from "./auth.ts";
 import { registerAssetRoutes } from "./assets.ts";
+import { matchUrl } from "./urls.ts";
 import { registerEventRoutes } from "./events.ts";
 import { listTriage, SOURCE_KINDS, triageListQuery } from "./triage-list.ts";
 import { finalizeApprovedFiles, removeStagedFiles, stageFile } from "./files.ts";
@@ -99,37 +100,6 @@ const keepBody = approveBody.extend({ approve: z.boolean().optional() });
 const bulkNoMentionBody = decisionBody.extend({ ids: z.array(uuid).min(1).max(200) });
 
 const resolveBody = z.object({ url: z.url() });
-
-/**
- * 情報源の設定（channels.config.url_patterns）で、URL がどの情報源のどの投稿かを判定する。
- * パターンは正規表現で、名前つきグループ id が外部 ID になる。
- * 例: { "url_patterns": ["^https://x\\.com/example/status/(?<id>\\d+)"] }
- */
-export function matchUrl(
-  url: string,
-  channels: { key: string; config: unknown }[],
-): { channel_key: string; external_id: string }[] {
-  const matches: { channel_key: string; external_id: string }[] = [];
-  for (const ch of channels) {
-    const patterns = (ch.config as { url_patterns?: unknown } | null)?.url_patterns;
-    if (!Array.isArray(patterns)) continue;
-    for (const pattern of patterns) {
-      if (typeof pattern !== "string") continue;
-      let re: RegExp;
-      try {
-        re = new RegExp(pattern);
-      } catch {
-        continue;
-      }
-      const id = re.exec(url)?.groups?.["id"];
-      if (id) {
-        matches.push({ channel_key: ch.key, external_id: id });
-        break;
-      }
-    }
-  }
-  return matches;
-}
 
 const stagingQuery = z.object({
   route: z.string().regex(/^(fetch|discord|migration|archive:[a-z0-9_-]+)$/),
@@ -194,6 +164,8 @@ export interface AppOptions {
   /** ブラウザから呼んでよい閲覧サイトの URL（オリジン）。無ければブラウザからは呼べない */
   viewerOrigins?: string[];
 }
+
+export { matchUrl } from "./urls.ts";
 
 export function createApp(
   db: Database,
