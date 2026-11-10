@@ -22,6 +22,7 @@ import type { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { type Kysely, sql, type Transaction } from "kysely";
 import { z } from "zod";
+import { matchUrl, urlVariants } from "./urls.ts";
 import type { Actor, AuthEnv } from "./auth.ts";
 
 type Trx = Transaction<DB>;
@@ -459,19 +460,6 @@ async function syncParticipants(
   }
 }
 
-/** 同じページを指す URL の書き方の違い（http/https・末尾の /・# 以降）をそろえて、候補を並べる */
-export function urlVariants(url: string): string[] {
-  const base = url.trim().replace(/#.*$/, "");
-  const out = new Set<string>();
-  for (const scheme of ["https://", "http://"]) {
-    const rest = base.replace(/^https?:\/\//i, "");
-    const withScheme = scheme + rest;
-    out.add(withScheme);
-    out.add(withScheme.endsWith("/") ? withScheme.slice(0, -1) : `${withScheme}/`);
-  }
-  return [...out];
-}
-
 /** 素材として紐付ける・外す投稿 */
 const materialInput = z.object({ post_id: z.uuid() });
 
@@ -488,6 +476,21 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
     const q = previewQuery.safeParse(c.req.query());
     if (!q.success) badRequest("URL が正しくありません");
     const variants = urlVariants(q.data.url);
+    // 情報源の設定（url_patterns）で、URL から投稿の番号が分かれば、その番号でも探す。
+    // 例: 引数（?ima=…）の違う同じ記事の URL（決定記録 0046）
+    const patterned = await db
+      .selectFrom("channels")
+      .select(["key", "config"])
+      .where(sql<boolean>`config ? 'url_patterns'`)
+      .orderBy("key")
+      .execute();
+    const ids = matchUrl(q.data.url, patterned);
+    const byId = (alias: "p" | "i") =>
+      ids.length === 0
+        ? sql<boolean>`false`
+        : sql<boolean>`(ch.key, ${sql.ref(`${alias}.external_id`)}) in (${sql.join(
+            ids.map((m) => sql`(${m.channel_key}, ${m.external_id})`),
+          )})`;
     const { rows: posts } = await sql<{
       post_id: string;
       title: string | null;
@@ -498,7 +501,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       select p.id as post_id, p.title, p.published_at, p.published_date, ch.name as channel_name
       from public.posts p
       join public.channels ch on ch.id = p.channel_id
-      where p.url = any(${variants}::text[])
+      where p.url = any(${variants}::text[]) or ${byId("p")}
       order by p.created_at
       limit 1`.execute(db);
     const post = posts[0];
@@ -519,7 +522,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       from public.intake_items i
       join public.channels ch on ch.id = i.channel_id
       where i.state in ('triage', 'pending', 'on_hold')
-        and i.draft -> 'post' ->> 'url' = any(${variants}::text[])
+        and (i.draft -> 'post' ->> 'url' = any(${variants}::text[]) or ${byId("i")})
       order by i.captured_at
       limit 1`.execute(db);
     const draft = drafts[0];
