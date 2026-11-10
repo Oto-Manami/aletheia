@@ -19,6 +19,7 @@
 // | GET      | /intake/counts            | 承認待ち・振り分け待ちの件数（メニュー） |
 // | POST     | /intake/:id/restore       | 言及なしを取り消して振り分け待ちへ |
 // | POST     | /resolve                  | URL から情報源と外部 ID を判定する |
+// | POST     | /assets/:id/remove        | 要らない素材を外す（assets.ts）     |
 // | POST     | /files/staging            | ファイルを承認待ちの場所に保存する |
 // | GET/POST | /events・/entities        | 出来事と作品・相手を作る・直す（events.ts） |
 
@@ -56,6 +57,7 @@ import {
   requireMember,
   writesNeedWorker,
 } from "./auth.ts";
+import { registerAssetRoutes } from "./assets.ts";
 import { registerEventRoutes } from "./events.ts";
 import { listTriage, SOURCE_KINDS, triageListQuery } from "./triage-list.ts";
 import { finalizeApprovedFiles, removeStagedFiles, stageFile } from "./files.ts";
@@ -224,7 +226,9 @@ export function createApp(
   app.use("/events", requireMember(db, auth), writesNeedWorker);
   app.use("/events/*", requireMember(db, auth), writesNeedWorker);
   app.use("/entities", requireMember(db, auth), writesNeedWorker);
+  app.use("/assets/*", requireMember(db, auth), writesNeedWorker);
   registerEventRoutes(app, db);
+  registerAssetRoutes(app, db, files);
 
   app.post("/files/staging", async (c) => {
     if (!files) throw new HTTPException(503, { message: "ファイルの保存先が設定されていません" });

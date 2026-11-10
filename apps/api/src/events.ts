@@ -231,7 +231,7 @@ function mayDelete(actor: Actor, createdBy: string | null): boolean {
  * トランザクションの中で動かす。ログインした利用者の操作なら、変更履歴（app.history）に
  * 直した人が残るよう、その人をトランザクションの間だけ設定する
  */
-function inTransaction<T>(
+export function inTransaction<T>(
   db: Database,
   userId: string | null,
   fn: (trx: Trx) => Promise<T>,
