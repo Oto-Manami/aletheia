@@ -7,6 +7,8 @@
 // | POST     | /events       | 出来事を作る                                               |
 // | POST     | /events/:id   | 出来事を直す（出演は送ったものに合わせる）                 |
 // | POST     | /events/:id/delete | 出来事を消す（運営者と作った本人。素材が紐付いていないときだけ） |
+// | POST     | /events/:id/materials | 保存済みの投稿を、後から素材として紐付ける（決定記録 0044） |
+// | POST     | /events/:id/materials/remove | 投稿を素材から外す（投稿・素材そのものは消さない） |
 // | POST     | /entities     | 作品・相手を作る（同じ種類・同じ名前があればそれを返す）   |
 //
 // 作業者・運営者が作り・直せる（閲覧者は見るだけ。決定記録 0032）。消せるのは運営者と作った本人で、
@@ -470,6 +472,9 @@ export function urlVariants(url: string): string[] {
   return [...out];
 }
 
+/** 素材として紐付ける・外す投稿 */
+const materialInput = z.object({ post_id: z.uuid() });
+
 const previewQuery = z.object({
   url: z.url({ protocol: /^https?$/ }).max(2000),
 });
@@ -784,6 +789,85 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       await trx.deleteFrom("events").where("id", "=", id.data).execute();
     });
     return c.json({ ok: true });
+  });
+
+  /**
+   * 保存済みの投稿（振り分け・承認の済んだニュース・ブログなど）を、後からこの出来事の素材として紐付ける
+   * （投稿から出来事への about。人の判断）。却下した紐付けがあれば、採用に戻す（設計書 決定記録 0044）
+   */
+  app.post("/events/:id/materials", async (c) => {
+    const id = z.uuid().safeParse(c.req.param("id"));
+    if (!id.success) throw new HTTPException(404, { message: "見つかりません" });
+    const body = await parse(c.req.raw, materialInput);
+    const userId = userIdOf(c.get("actor"));
+    await inTransaction(db, userId, async (trx) => {
+      const event = await trx
+        .selectFrom("events")
+        .select("id")
+        .where("id", "=", id.data)
+        .executeTakeFirst();
+      if (!event) throw new HTTPException(404, { message: "出来事が見つかりません" });
+      const post = await trx
+        .selectFrom("posts")
+        .select(["id", "classification"])
+        .where("id", "=", body.post_id)
+        .executeTakeFirst();
+      if (!post) throw new HTTPException(404, { message: "投稿が見つかりません" });
+      await trx
+        .insertInto("links")
+        .values({
+          from_type: "post",
+          from_id: post.id,
+          to_type: "event",
+          to_id: id.data,
+          role: "about",
+          origin: "human",
+          confidence: 1,
+          review_state: "accepted",
+          created_by: userId,
+          reviewed_by: userId,
+          reviewed_at: new Date(),
+          classification: post.classification,
+        })
+        .onConflict((oc) =>
+          oc.columns(["from_type", "from_id", "to_type", "to_id", "role"]).doUpdateSet({
+            review_state: "accepted",
+            origin: "human",
+            confidence: 1,
+            reviewed_by: userId,
+            reviewed_at: new Date(),
+          }),
+        )
+        .execute();
+    });
+    return c.json({ ok: true }, 201);
+  });
+
+  /**
+   * 投稿をこの出来事の素材から外す。投稿からの紐付けと、投稿の中の素材（画像など）からの紐付けをまとめて
+   * 消す（変更履歴には残る。設計書 決定記録 0044）。投稿と素材そのものは消さない
+   */
+  app.post("/events/:id/materials/remove", async (c) => {
+    const id = z.uuid().safeParse(c.req.param("id"));
+    if (!id.success) throw new HTTPException(404, { message: "見つかりません" });
+    const body = await parse(c.req.raw, materialInput);
+    const userId = userIdOf(c.get("actor"));
+    const removed = await inTransaction(db, userId, async (trx) => {
+      const { rows } = await sql<{ id: string }>`
+        delete from public.links l
+        where l.to_type = 'event' and l.to_id = ${id.data}
+          and (
+            (l.from_type = 'post' and l.from_id = ${body.post_id})
+            or (l.from_type = 'asset'
+                and l.from_id in (select a.id from public.assets a where a.post_id = ${body.post_id}))
+          )
+        returning l.id`.execute(trx);
+      return rows.length;
+    });
+    if (removed === 0) {
+      throw new HTTPException(404, { message: "この出来事には、その投稿が紐付いていません" });
+    }
+    return c.json({ ok: true, removed });
   });
 
   app.post("/entities", async (c) => {

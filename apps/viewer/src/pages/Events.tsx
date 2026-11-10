@@ -486,6 +486,10 @@ export function EventEditPage() {
           layout.changed();
           reload();
         }}
+        onMaterialsChanged={() => {
+          layout.changed();
+          reload();
+        }}
       />
     </>
   );
@@ -495,10 +499,13 @@ function EventForm({
   detail,
   initial,
   onSaved,
+  onMaterialsChanged,
 }: {
   detail: EventDetail | null;
   initial: FormState;
   onSaved: (notice: string) => void;
+  /** 素材を紐付けた・外した（出来事を読み直す。入力の途中のものは残す） */
+  onMaterialsChanged: () => void;
 }) {
   const { source, viewer } = useApp();
   // 閲覧者は見るだけ。直す欄は出すが触れず、保存・消すのボタンは出さない（決定記録 0032）
@@ -932,11 +939,24 @@ function EventForm({
 
         <section className="editor-section" aria-labelledby={`${formId}-sources`}>
           <h2 id={`${formId}-sources`}>出典</h2>
-          {detail && <EventMaterials id={`${formId}-materials`} detail={detail} />}
+          {detail && (
+            <EventMaterials
+              id={`${formId}-materials`}
+              detail={detail}
+              onRemove={
+                readOnly
+                  ? null
+                  : async (postId) => {
+                      await source.unlinkEventMaterial(detail.id, postId);
+                      onMaterialsChanged();
+                    }
+              }
+            />
+          )}
           <p className="field-hint">
             {detail && detail.materials.length > 0
-              ? "ほかに出典があれば URL を足せます（任意）。"
-              : "公式の告知・お知らせなどの URL（任意）。振り分け・承認でニュースや投稿を紐付けると、上に並びます。"}
+              ? "ほかに出典があれば URL を足せます（任意）。保存済みのニュース・投稿の URL なら、素材として紐付けられます。"
+              : "公式の告知・お知らせなどの URL（任意）。振り分け・承認でニュースや投稿を紐付けると、上に並びます。保存済みのニュース・投稿の URL を入れると、後からでも素材として紐付けられます。"}
           </p>
           {f.sources.map((url, i) => (
             <div key={i} className="source-item">
@@ -969,7 +989,29 @@ function EventForm({
                   </button>
                 )}
               </div>
-              <SourcePreviewLine url={url} />
+              <SourcePreviewLine
+                url={url}
+                link={
+                  detail && !readOnly
+                    ? {
+                        linked: new Set(
+                          detail.materials.flatMap((m) => (m.postId ? [m.postId] : [])),
+                        ),
+                        onLink: async (postId) => {
+                          await source.linkEventMaterial(detail.id, postId);
+                          // 素材として紐付けたら、出典の URL の欄は要らないので外す
+                          set({
+                            sources: (() => {
+                              const rest = f.sources.filter((_, j) => j !== i);
+                              return rest.length > 0 ? rest : [""];
+                            })(),
+                          });
+                          onMaterialsChanged();
+                        },
+                      }
+                    : null
+                }
+              />
             </div>
           ))}
           <button
@@ -1301,8 +1343,20 @@ const PREVIEW_STATE: Record<SourcePreview["state"], string | null> = {
  * 出典の URL の見出し。取り込み済みの素材（保存済み・振り分け待ち・承認待ち）から探し、外のサイトには
  * 取りに行かない（設計書 決定記録 0030）
  */
-function SourcePreviewLine({ url }: { url: string }) {
+function SourcePreviewLine({
+  url,
+  link,
+}: {
+  url: string;
+  /**
+   * 保存済みの投稿を、この出来事の素材として紐付ける（作業者・運営者が、保存済みの出来事を開いているとき。
+   * 設計書 決定記録 0044）
+   */
+  link: { linked: ReadonlySet<string>; onLink: (postId: string) => Promise<void> } | null;
+}) {
   const { source } = useApp();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const target = /^https?:\/\/[^\s/]+\.[^\s]+$/i.test(url.trim()) ? url.trim() : "";
   const found = useSearch<SourcePreview | null>(target, async (u) => [
     await source.previewSource(u),
@@ -1331,13 +1385,51 @@ function SourcePreviewLine({ url }: { url: string }) {
       )}
       {date && <span className="quiet event-material-date">{date}</span>}
       {state && <span className="tag source-preview-state">{state}</span>}
+      {link && p.postId && link.linked.has(p.postId) && (
+        <span className="tag source-preview-state">素材として紐付け済み</span>
+      )}
+      {link && p.postId && !link.linked.has(p.postId) && (
+        <button
+          type="button"
+          className="button source-preview-link"
+          disabled={busy}
+          onClick={() => {
+            const postId = p.postId!;
+            setBusy(true);
+            setError(null);
+            link.onLink(postId).catch((e: unknown) => {
+              setBusy(false);
+              setError(e instanceof Error ? e.message : String(e));
+            });
+          }}
+        >
+          {busy ? "紐付けています" : "素材として紐付ける"}
+        </button>
+      )}
+      {error && (
+        <span className="error" role="alert">
+          {error}
+        </span>
+      )}
     </div>
   );
 }
 
 /** 出来事に紐付いた素材（振り分け・承認で紐付けたニュース・ブログなど） */
-function EventMaterials({ id, detail }: { id: string; detail: EventDetail }) {
+function EventMaterials({
+  id,
+  detail,
+  onRemove,
+}: {
+  id: string;
+  detail: EventDetail;
+  /** 素材から外す（作業者・運営者）。投稿と素材そのものは消さない */
+  onRemove: ((postId: string) => Promise<void>) | null;
+}) {
   const { materials } = detail;
+  const [asking, setAsking] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
     <div className="event-materials" id={id}>
       <h3>紐付いている素材（{materials.length} 件）</h3>
@@ -1370,10 +1462,58 @@ function EventMaterials({ id, detail }: { id: string; detail: EventDetail }) {
                     <ExternalLink size={14} aria-hidden="true" />
                   </a>
                 )}
+                {onRemove && m.postId && asking !== m.postId && (
+                  <button
+                    type="button"
+                    className="link-button event-material-remove"
+                    disabled={busy}
+                    onClick={() => {
+                      setAsking(m.postId);
+                      setError(null);
+                    }}
+                  >
+                    外す
+                  </button>
+                )}
+                {onRemove && m.postId && asking === m.postId && (
+                  <span className="event-material-confirm" role="group" aria-label="外すか確かめる">
+                    <span>この出来事から外しますか？（投稿は消えません）</span>
+                    <button
+                      type="button"
+                      className="button danger"
+                      disabled={busy}
+                      onClick={() => {
+                        const postId = m.postId!;
+                        setBusy(true);
+                        onRemove(postId)
+                          .then(() => setAsking(null))
+                          .catch((e: unknown) =>
+                            setError(e instanceof Error ? e.message : String(e)),
+                          )
+                          .finally(() => setBusy(false));
+                      }}
+                    >
+                      外す
+                    </button>
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={busy}
+                      onClick={() => setAsking(null)}
+                    >
+                      やめる
+                    </button>
+                  </span>
+                )}
               </li>
             );
           })}
         </ul>
+      )}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
       )}
     </div>
   );

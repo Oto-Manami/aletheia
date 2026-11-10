@@ -852,6 +852,18 @@ export class LiveSource implements ArchiveSource {
     await this.api("POST", `/events/${encodeURIComponent(id)}/delete`, {});
   }
 
+  async linkEventMaterial(eventId: string, postId: string): Promise<void> {
+    await this.api("POST", `/events/${encodeURIComponent(eventId)}/materials`, {
+      post_id: postId,
+    });
+  }
+
+  async unlinkEventMaterial(eventId: string, postId: string): Promise<void> {
+    await this.api("POST", `/events/${encodeURIComponent(eventId)}/materials/remove`, {
+      post_id: postId,
+    });
+  }
+
   async previewSource(url: string): Promise<SourcePreview | null> {
     const r = await this.api<
       | { found: false }

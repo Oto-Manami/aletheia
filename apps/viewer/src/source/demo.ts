@@ -38,6 +38,7 @@ import {
   type DiscardedItem,
   type EntityOption,
   type EventDetail,
+  type EventMaterial,
   type EventInput,
   type IntakeDetail,
   type IntakeIssue,
@@ -611,7 +612,7 @@ export class DemoSource implements ArchiveSource {
   async getEvent(id: string): Promise<EventDetail> {
     await this.delay();
     // デモ版では、出来事に紐付けた下書き（承認待ち・承認済み）を、紐付いた素材として見せる
-    const materials = this.intakes.flatMap((i) => {
+    const materials: EventMaterial[] = this.intakes.flatMap((i): EventMaterial[] => {
       const link = (i.draft.links ?? []).find((l) => l.to_type === "event" && l.to_id === id);
       if (!link) return [];
       return [
@@ -627,7 +628,40 @@ export class DemoSource implements ArchiveSource {
         },
       ];
     });
+    // 後から紐付けた保存済みの投稿
+    for (const postId of this.eventPosts.get(id) ?? []) {
+      const post = this.posts.find((p) => p.id === postId);
+      if (!post) continue;
+      materials.push({
+        postId: post.id,
+        title: post.title,
+        url: post.url,
+        publishedAt: post.publishedAt,
+        publishedDate: post.publishedDate,
+        channelName: post.channelName,
+        channelKind: "web",
+        role: "about",
+      });
+    }
     return this.events.get(id, materials);
+  }
+
+  /** 出来事に後から紐付けた保存済みの投稿（デモ版だけ） */
+  private eventPosts = new Map<string, Set<string>>();
+
+  async linkEventMaterial(eventId: string, postId: string): Promise<void> {
+    await this.delay();
+    if (!this.posts.some((p) => p.id === postId))
+      throw new SourceError("投稿が見つかりません", 404);
+    this.eventPosts.set(eventId, new Set([...(this.eventPosts.get(eventId) ?? []), postId]));
+  }
+
+  async unlinkEventMaterial(eventId: string, postId: string): Promise<void> {
+    await this.delay();
+    const linked = this.eventPosts.get(eventId);
+    if (!linked?.delete(postId)) {
+      throw new SourceError("この出来事には、その投稿が紐付いていません", 404);
+    }
   }
 
   async saveEvent(id: string | null, input: EventInput): Promise<string> {

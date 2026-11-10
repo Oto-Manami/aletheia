@@ -515,6 +515,10 @@ export interface ArchiveSource {
   saveEvent(id: string | null, input: EventInput): Promise<string>;
   /** 出来事を消す（管理者と作った本人。素材が紐付いていないときだけ） */
   deleteEvent(id: string): Promise<void>;
+  /** 保存済みの投稿を、後からこの出来事の素材として紐付ける（設計書 決定記録 0044） */
+  linkEventMaterial(eventId: string, postId: string): Promise<void>;
+  /** 投稿をこの出来事の素材から外す（投稿・素材そのものは消さない） */
+  unlinkEventMaterial(eventId: string, postId: string): Promise<void>;
   /** 出典の URL の見出し（取り込み済みの素材だけから探す。無ければ null） */
   previewSource(url: string): Promise<SourcePreview | null>;
   /** 作品・相手を名前で探す */
