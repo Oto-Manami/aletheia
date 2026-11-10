@@ -155,7 +155,8 @@ export function EventsPage() {
           </ol>
         )}
       </section>
-      <section className="split-detail" aria-label="出来事">
+      {/* 別のものを開いたら、中身は先頭から見せる（中身の欄だけがスクロールするため） */}
+      <section key={detail?.params.id ?? ""} className="split-detail" aria-label="出来事">
         <Outlet context={layout} />
       </section>
     </div>
