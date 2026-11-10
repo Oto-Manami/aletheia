@@ -1,4 +1,5 @@
 import { Play } from "lucide-react";
+import { useState } from "react";
 import { useParams } from "react-router";
 import { originalCapture } from "../capture.ts";
 import { PageCapture } from "../components/PageCapture.tsx";
@@ -57,7 +58,73 @@ function VideoBlock({ asset, watch }: { asset: AssetView; watch: ReturnType<type
   );
 }
 
-function AssetBlock({ asset, watch }: { asset: AssetView; watch: ReturnType<typeof watchLink> }) {
+/** 外せる素材（本文・保存したページは投稿の中身なので外さない。設計書 決定記録 0045） */
+function removable(asset: AssetView): boolean {
+  return asset.mediaType !== "text" && asset.mediaType !== "webpage";
+}
+
+/** 要らない素材を外す（確かめてから。作業者・運営者） */
+function RemoveAsset({ asset, onRemove }: { asset: AssetView; onRemove: () => Promise<void> }) {
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const label = MEDIA_LABELS[asset.mediaType] ?? "素材";
+  if (!asking) {
+    return (
+      <button
+        type="button"
+        className="link-button post-asset-remove"
+        onClick={() => setAsking(true)}
+      >
+        この{label}を外す
+      </button>
+    );
+  }
+  return (
+    <div className="post-asset-confirm" role="group" aria-label={`この${label}を外すか確かめる`}>
+      <p>
+        この{label}
+        を素材から外しますか？写っている人・出来事への紐付けも外れます。原本は消さずに、却下の場所へ移します。
+      </p>
+      <div className="post-asset-confirm-actions">
+        <button
+          type="button"
+          className="button danger"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            setError(null);
+            onRemove().catch((e: unknown) => {
+              setBusy(false);
+              setError(e instanceof Error ? e.message : String(e));
+            });
+          }}
+        >
+          {busy ? "外しています" : "外す"}
+        </button>
+        <button type="button" className="button" disabled={busy} onClick={() => setAsking(false)}>
+          やめる
+        </button>
+      </div>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AssetBlock({
+  asset,
+  watch,
+  onRemove,
+}: {
+  asset: AssetView;
+  watch: ReturnType<typeof watchLink>;
+  /** 外す（作業者・運営者で、外せる素材のとき） */
+  onRemove: (() => Promise<void>) | null;
+}) {
   const page = pageLabel(asset.attributes);
   const clip = clipLabel(asset.attributes);
   const isPrivate = asset.classification === "private";
@@ -111,14 +178,16 @@ function AssetBlock({ asset, watch }: { asset: AssetView; watch: ReturnType<type
           </div>
         ),
       )}
+      {onRemove && <RemoveAsset asset={asset} onRemove={onRemove} />}
     </section>
   );
 }
 
 export function PostPage() {
   const { id = "" } = useParams();
-  const { source } = useApp();
-  const [post] = useLoad(() => source.getPost(id), [source, id]);
+  const { source, viewer } = useApp();
+  const [post, reload] = useLoad(() => source.getPost(id), [source, id]);
+  const [notice, setNotice] = useState<string | null>(null);
 
   if (post.status === "loading") return <p className="page quiet">読み込んでいます</p>;
   if (post.status === "error") {
@@ -165,8 +234,26 @@ export function PostPage() {
               />
             </div>
           )}
+          {notice && (
+            <p className="notice" role="status">
+              {notice}
+            </p>
+          )}
           {assets.map((a) => (
-            <AssetBlock key={a.id} asset={a} watch={watchLink(a, p)} />
+            <AssetBlock
+              key={a.id}
+              asset={a}
+              watch={watchLink(a, p)}
+              onRemove={
+                viewer.canWork && removable(a)
+                  ? async () => {
+                      await source.removeAsset(a.id);
+                      setNotice(`${MEDIA_LABELS[a.mediaType] ?? "素材"}を 1 つ外しました`);
+                      reload();
+                    }
+                  : null
+              }
+            />
           ))}
         </div>
 

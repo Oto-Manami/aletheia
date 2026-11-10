@@ -401,6 +401,17 @@ export class DemoSource implements ArchiveSource {
     return structuredClone(post);
   }
 
+  async removeAsset(assetId: string): Promise<void> {
+    await this.delay();
+    const post = this.posts.find((p) => p.assets.some((a) => a.id === assetId));
+    const asset = post?.assets.find((a) => a.id === assetId);
+    if (!post || !asset) throw new SourceError("素材が見つかりません", 404);
+    if (asset.mediaType === "text" || asset.mediaType === "webpage") {
+      throw new SourceError("本文・保存したページは投稿の中身なので外せません", 422);
+    }
+    post.assets = post.assets.filter((a) => a.id !== assetId);
+  }
+
   async createInvite(note?: string) {
     await this.delay();
     const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) =>

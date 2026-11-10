@@ -848,6 +848,10 @@ export class LiveSource implements ArchiveSource {
     return result.id;
   }
 
+  async removeAsset(assetId: string): Promise<void> {
+    await this.api("POST", `/assets/${encodeURIComponent(assetId)}/remove`, {});
+  }
+
   async deleteEvent(id: string): Promise<void> {
     await this.api("POST", `/events/${encodeURIComponent(id)}/delete`, {});
   }

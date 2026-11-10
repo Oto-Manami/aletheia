@@ -450,6 +450,11 @@ export interface ArchiveSource {
   listTagCandidates(): Promise<RefLabel[]>;
   search(query: string): Promise<SearchHit[]>;
   getPost(id: string): Promise<PostView>;
+  /**
+   * 要らない素材（画像・動画など）を外す。素材と、その紐付け・文字を消し、原本は却下の場所へ移す（消さない）。
+   * 本文・保存したページは外せない（設計書 決定記録 0045）
+   */
+  removeAsset(assetId: string): Promise<void>;
   /** アセットの一覧（保存した新しい順。同じファイルの重複は除く）。offset から limit 件 */
   listAssets(
     filter: AssetFilter,
