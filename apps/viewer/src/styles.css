@@ -2015,6 +2015,39 @@ a.tab {
   }
 }
 
+/*
+ * 一覧と中身を並べる画面（承認・出来事）は、広い画面では画面全体を動かさず、一覧と中身をそれぞれの中で
+ * スクロールする。画面全体を動かすと、一覧の下の方を押したときに中身が読み込み中で短くなり、画面が上に
+ * 戻ってしまうため
+ */
+@media (min-width: 1081px) {
+  .main:has(> .split) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .main:has(> .split) > .split {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .split-list,
+  .split-detail {
+    position: static;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    align-content: start;
+  }
+
+  .split-list {
+    padding-right: 4px;
+  }
+}
+
 @media (max-width: 1080px) {
   .split {
     grid-template-columns: minmax(0, 1fr);
