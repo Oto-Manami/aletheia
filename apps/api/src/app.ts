@@ -3,6 +3,7 @@
 // | メソッド | パス                      | 内容                               |
 // |----------|---------------------------|------------------------------------|
 // | GET      | /health                   | 動いているか（認証なし）           |
+// | GET      | /ready                    | データベースまで使えるか（認証なし） |
 // | GET      | /intake                   | 下書きの一覧（既定は承認待ち）     |
 // | GET      | /intake/:id               | 下書き 1 件                        |
 // | POST     | /intake                   | 下書きを作る                       |
@@ -189,6 +190,20 @@ export function createApp(
   }
 
   app.get("/health", (c) => c.json({ ok: true }));
+
+  /**
+   * データベースに 1 回問い合わせて、使えるかを返す（更新の後の確認に使う）。接続の設定の誤り・表が無い
+   * （マイグレーションの流し忘れ）は 503。中身は返さない
+   */
+  app.get("/ready", async (c) => {
+    try {
+      await sql`select 1 from public.channels limit 1`.execute(db);
+      return c.json({ ok: true });
+    } catch (e) {
+      console.error("データベースを使えません:", e instanceof Error ? e.message : e);
+      return c.json({ ok: false, error: "データベースを使えません" }, 503);
+    }
+  });
 
   // 閲覧者は見るだけ。変更（POST）は作業者・運営者だけ（決定記録 0032）
   app.use("/intake/*", requireMember(db, auth), writesNeedWorker);
