@@ -6,6 +6,8 @@
 // - 既に同じファイルが保存されている（重複）場合は、却下の場所（_rejected）へ移す（削除しない）
 // - 却下したものは、直近 10 件の間は仮置きの場所のまま置き、押し出されたら消す（決定記録 0043）
 // - 承認した下書きの素材に無いファイル（振り分けで選ばなかった画像など）は、保存せずに消す（決定記録 0037）
+// - 下書きの staged_files は、取り込みのときに仮置きの場所にあることを確かめ、動かす・消す直前にも
+//   確かめ直す。仮置きの場所に無いファイルには触らない。消すときはごみ箱に移す（決定記録 0047）
 
 import { createHash } from "node:crypto";
 import type { Database } from "@aletheia/db/client";
@@ -14,8 +16,11 @@ import {
   type FileStore,
   finalLocation,
   rejectedLocation,
+  STAGING,
+  safeSegment,
   stagingLocation,
 } from "@aletheia/storage";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 
 export const stagedFileSchema = z.object({
@@ -72,6 +77,49 @@ export interface FileReport {
   /** 下書きの素材に無かった（振り分けで選ばなかった画像など）ので、保存せずに消した数 */
   unselected?: number;
   failed: { storage_key: string; error: string }[];
+}
+
+/** 仮置きのファイルを動かせない・消せないときの理由 */
+export const NOT_STAGED = "仮置きの場所にありません（触らずに残しました）";
+
+/**
+ * ファイルが仮置きの場所（_staging/<経路>/）にあるか。経路を渡さないときは _staging の中のどこか。
+ * 下書きの staged_files は取り込む側が書くので、承認済みのファイルなどを指していないかを確かめる
+ */
+export async function isStaged(files: FileStore, key: string, route?: string): Promise<boolean> {
+  const path = await files.locate(key);
+  if (!path || path[0] !== STAGING) return false;
+  if (route === undefined) return path.length >= 2;
+  return path.length === 2 && path[1] === safeSegment(route);
+}
+
+/**
+ * 取り込みの時点の確認: staged_files のどれもが、この保存先の、この経路の仮置きの場所にあること。
+ * 形の誤りは 400、保存先の違い・仮置きの場所に無いものは 422
+ */
+export async function assertStagedFiles(
+  files: FileStore | undefined,
+  route: string,
+  value: unknown[],
+): Promise<void> {
+  if (value.length === 0) return;
+  if (!files) throw new HTTPException(503, { message: "ファイルの保存先が設定されていません" });
+  for (const [i, v] of value.entries()) {
+    const parsed = stagedFileSchema.safeParse(v);
+    if (!parsed.success) {
+      throw new HTTPException(400, { message: `staged_files[${i}] の形が正しくありません` });
+    }
+    if (parsed.data.provider !== files.provider) {
+      throw new HTTPException(422, {
+        message: `staged_files[${i}] の保存先が違います: ${parsed.data.provider}`,
+      });
+    }
+    if (!(await isStaged(files, parsed.data.storage_key, route))) {
+      throw new HTTPException(422, {
+        message: `staged_files[${i}] は、この経路の仮置きの場所にありません（/files/staging で保存したものだけを渡せます）`,
+      });
+    }
+  }
 }
 
 function stagedFilesOf(value: unknown, provider: string): StagedFile[] {
@@ -132,6 +180,11 @@ export async function finalizeApprovedFiles(
 
   for (const file of staged) {
     try {
+      // 動かす・消す前に、まだ仮置きの場所にあるかを確かめ直す（決定記録 0047）
+      if (!(await isStaged(files, file.storage_key, intake.route))) {
+        report.failed.push({ storage_key: file.storage_key, error: NOT_STAGED });
+        continue;
+      }
       // 記録だけの素材（同じファイルを別の素材が保存している）には、ファイルを置かない
       const asset = assets.find(
         (a) => a.sha256 === file.sha256 && a.file_policy === "stored" && !a.has_original,
@@ -144,8 +197,8 @@ export async function finalizeApprovedFiles(
           report.duplicates++;
         } else {
           // 下書きの素材に無い（振り分けで写っている人を付けなかった画像など）。保存先には残さず、
-          // 仮置きのファイルを消す（設計書 決定記録 0037）
-          await files.remove(file.storage_key);
+          // 仮置きのファイルをごみ箱に移す（設計書 決定記録 0037・0047）
+          await files.trash(file.storage_key);
           report.unselected = (report.unselected ?? 0) + 1;
         }
         continue;
@@ -186,7 +239,10 @@ export async function finalizeApprovedFiles(
   return report;
 }
 
-/** 振り分けで「言及なし」にした下書きの、仮置きのファイルを削除する（設計書 決定記録 0021） */
+/**
+ * 振り分けで「言及なし」にした・却下した下書きの、仮置きのファイルをごみ箱に移す（設計書 決定記録 0021・0047）。
+ * 仮置きの場所に無いものには触らない
+ */
 export async function removeStagedFiles(
   files: FileStore,
   stagedFiles: unknown,
@@ -194,7 +250,11 @@ export async function removeStagedFiles(
   const report: FileReport = { stored: 0, duplicates: 0, failed: [] };
   for (const file of stagedFilesOf(stagedFiles, files.provider)) {
     try {
-      await files.remove(file.storage_key);
+      if (!(await isStaged(files, file.storage_key))) {
+        report.failed.push({ storage_key: file.storage_key, error: NOT_STAGED });
+        continue;
+      }
+      await files.trash(file.storage_key);
     } catch (e) {
       report.failed.push({
         storage_key: file.storage_key,
