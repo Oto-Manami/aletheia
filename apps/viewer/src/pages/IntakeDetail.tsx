@@ -113,6 +113,11 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
   const [done] = useState<string | null>(
     (location.state as { done?: string } | null)?.done ?? null,
   );
+  // 承認の後にファイルを保存できなかったときは、投稿の画面でやり直せることを知らせる
+  const [filesFailed] = useState(
+    (location.state as { filesFailed?: { count: number; postId: string } } | null)?.filesFailed ??
+      null,
+  );
   const [labels, setLabels] = useState(new Map<string, string>());
   const [candidates] = useLoad(() => source.listTagCandidates(), [source]);
   const candidateList = candidates.status === "ready" ? candidates.data : [];
@@ -174,7 +179,7 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
     try {
       // 次の承認待ちへ進むため、判断の前に一覧を読んでおく
       const pending = await source.listIntake("pending");
-      await source.decide(detail.id, decision, {
+      const outcome = await source.decide(detail.id, decision, {
         // 画面で見せたタグ付け（写っている人・本文に出てくる人）は、人が確かめたものとして記録する
         ...(decision === "approve" ? { draft: confirmPeopleTags(draft) } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
@@ -185,7 +190,15 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
       const next = params.get("state") ? undefined : pending.find((p) => p.id !== detail.id);
       void navigate(
         { pathname: `/intake/${next?.id ?? detail.id}`, search: params.toString() },
-        { replace: true, state: { done: label } },
+        {
+          replace: true,
+          state: {
+            done: label,
+            ...(outcome.filesFailed && outcome.postId
+              ? { filesFailed: { count: outcome.filesFailed, postId: outcome.postId } }
+              : {}),
+          },
+        },
       );
     } catch (e) {
       setFailure({
@@ -263,6 +276,13 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
       {done && (
         <p className="done" role="status">
           {decidable ? `前の下書きを${done}` : done}
+        </p>
+      )}
+      {filesFailed && (
+        <p className="error" role="alert">
+          ファイル {filesFailed.count} 件を保存できませんでした（承認はできています）。
+          <Link to={`/posts/${filesFailed.postId}`}>投稿の画面</Link>
+          の「ファイルの保存をやり直す」でやり直せます。
         </p>
       )}
 

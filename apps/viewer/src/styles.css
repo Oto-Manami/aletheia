@@ -3608,3 +3608,23 @@ a.asset-tile-picture:focus-visible {
   display: flex;
   gap: 8px;
 }
+
+/* 原本を保存できていない素材（承認の後の保存に失敗した） */
+.tag-missing {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.post-missing {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  font-size: 13px;
+}
+
+.post-missing p {
+  margin: 0;
+}
