@@ -17,8 +17,19 @@ describe("手元のフォルダ", () => {
       expect(moved.key).toBe("message/m/2026-10/x_01.jpg");
       expect(new TextDecoder().decode(await store.get(moved.key))).toBe("image-bytes");
       await expect(store.get("../outside")).rejects.toThrow();
-      await store.remove(moved.key);
-      await expect(store.get(moved.key)).rejects.toThrow();
+      expect(await store.locate(moved.key)).toEqual(["message", "m", "2026-10"]);
+      expect(await store.locate("../outside")).toBeNull();
+      await store.trash(moved.key);
+      expect(await store.locate(moved.key)).toBeNull();
+      expect(await store.locate(`.trash/${moved.key}`)).toEqual([
+        ".trash",
+        "message",
+        "m",
+        "2026-10",
+      ]);
+      await store.trash(moved.key);
+      await store.remove(`.trash/${moved.key}`);
+      await expect(store.get(`.trash/${moved.key}`)).rejects.toThrow();
       await store.remove(moved.key);
       // 同じ名前のファイルは上書きしない
       await store.put(["a"], "b.jpg", bytes, "image/jpeg");
@@ -35,6 +46,10 @@ describe("メモリ", () => {
     const { key } = await store.put(["a"], "b.jpg", bytes, "image/jpeg");
     expect((await store.move(key, ["c"], "d.jpg")).key).toBe(key);
     expect(store.pathOf(key)).toBe("c/d.jpg");
+    expect(await store.locate(key)).toEqual(["c"]);
+    await store.trash(key);
+    expect(await store.locate(key)).toBeNull();
+    expect(store.trashed.has(key)).toBe(true);
   });
 
   it("フォルダを一覧し、中身ごとごみ箱に移せる", async () => {
@@ -61,6 +76,7 @@ interface Call {
 function fakeDrive() {
   const calls: Call[] = [];
   const folders = new Map<string, string>(); // "parent/name" → id
+  const folderMeta = new Map<string, { name: string; parent: string | null }>(); // id → 名前と親
   const parents = new Map<string, string[]>(); // file id → parents
   const trashed = new Set<string>();
   let seq = 0;
@@ -105,6 +121,7 @@ function fakeDrive() {
       const meta = JSON.parse(body) as { name: string; parents: string[] };
       const id = `folder-${++seq}`;
       folders.set(`${meta.parents[0]}/${meta.name}`, id);
+      folderMeta.set(id, { name: meta.name, parent: meta.parents[0] ?? null });
       return json({ id });
     }
     if (method === "POST" && url.pathname === "/upload/drive/v3/files") {
@@ -115,7 +132,10 @@ function fakeDrive() {
     }
     if (method === "GET" && url.pathname.startsWith("/drive/v3/files/")) {
       const id = decodeURIComponent(url.pathname.split("/").pop() ?? "");
-      return json({ parents: parents.get(id) ?? [] });
+      const folder = folderMeta.get(id);
+      if (folder) return json({ name: folder.name, parents: folder.parent ? [folder.parent] : [] });
+      if (!parents.has(id)) return json({ error: "not found" }, 404);
+      return json({ parents: parents.get(id), trashed: trashed.has(id) });
     }
     if (method === "DELETE") {
       const id = decodeURIComponent(url.pathname.split("/").pop()!);
@@ -135,7 +155,7 @@ function fakeDrive() {
     }
     return json({ error: "unexpected" }, 500);
   };
-  return { calls, parents, trashed, fetch: fetchImpl, tokenCount: () => tokens };
+  return { calls, parents, trashed, folderMeta, fetch: fetchImpl, tokenCount: () => tokens };
 }
 
 function drive(fake: ReturnType<typeof fakeDrive>, now = () => 0) {
@@ -217,6 +237,28 @@ describe("Google Drive", () => {
     expect(fake.parents.has(key)).toBe(false);
     await store.remove(key);
     expect(fake.calls.filter((c) => c.method === "DELETE")).toHaveLength(2);
+  });
+
+  it("ファイルの場所を最上位のフォルダからたどり、外にあるもの・無いもの・ごみ箱のものは null", async () => {
+    const fake = fakeDrive();
+    const store = drive(fake);
+    const { key } = await store.put(["_staging", "discord"], "a.jpg", bytes, "image/jpeg");
+    expect(await store.locate(key)).toEqual(["_staging", "discord"]);
+    // 別の接続（フォルダの ID を覚えていない）でも、親をたどって分かる
+    const fresh = drive(fake);
+    expect(await fresh.locate(key)).toEqual(["_staging", "discord"]);
+    await store.move(key, ["blog", "2026-10"], "x.jpg");
+    expect(await fresh.locate(key)).toEqual(["blog", "2026-10"]);
+    // 最上位のフォルダの外
+    fake.folderMeta.set("outside", { name: "_staging", parent: null });
+    fake.parents.set("stray", ["outside"]);
+    expect(await store.locate("stray")).toBeNull();
+    expect(await store.locate("missing")).toBeNull();
+    await store.trash(key);
+    expect(fake.trashed.has(key)).toBe(true);
+    expect(await store.locate(key)).toBeNull();
+    // 既に無いものをごみ箱に移しても失敗にしない
+    await store.trash("missing");
   });
 
   it("検索式に入る名前の ' と \\ を逃がす", async () => {

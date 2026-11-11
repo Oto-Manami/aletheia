@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import type { FileStore, FolderPath, StoredFile } from "./types.ts";
@@ -43,5 +44,25 @@ export class LocalFileStore implements FileStore {
 
   async remove(key: string): Promise<void> {
     await rm(this.pathOf(key), { force: true });
+  }
+
+  /** 手元では、保存先の中の .trash へ移す */
+  async trash(key: string): Promise<void> {
+    const full = this.pathOf(key);
+    if (!existsSync(full)) return;
+    const target = this.pathOf(join(".trash", key));
+    await mkdir(dirname(target), { recursive: true });
+    await rename(full, target);
+  }
+
+  locate(key: string): Promise<FolderPath | null> {
+    let full: string;
+    try {
+      full = this.pathOf(key);
+    } catch {
+      return Promise.resolve(null);
+    }
+    if (!existsSync(full)) return Promise.resolve(null);
+    return Promise.resolve(key.split("/").slice(0, -1));
   }
 }

@@ -25,8 +25,15 @@ export interface FileStore {
   move(key: string, folder: FolderPath, name: string): Promise<StoredFile>;
   /** ファイルの中身を読む（完全性の照合に使う） */
   get(key: string): Promise<Uint8Array>;
-  /** ファイルを削除する。振り分けで「言及なし」にした仮置きのファイルだけに使う（設計書 決定記録 0021） */
+  /** ファイルを削除する（戻せない）。仮置きのファイルを片付けるときは trash を使う */
   remove(key: string): Promise<void>;
+  /** ファイルをごみ箱に移す（保存先によっては、しばらく戻せる）。無ければ何もしない */
+  trash(key: string): Promise<void>;
+  /**
+   * ファイルが今どのフォルダにあるか（最上位のフォルダからの並び）。無い・最上位のフォルダの外にあるときは null。
+   * 仮置きのファイルを動かす・消す前に、本当に仮置きの場所にあるかを確かめるのに使う（設計書 決定記録 0047）
+   */
+  locate(key: string): Promise<FolderPath | null>;
 }
 
 export interface FolderEntry {

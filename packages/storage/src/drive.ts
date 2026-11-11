@@ -42,6 +42,8 @@ export class DriveFileStore implements FileStore, FolderStore {
   private token: { value: string; expiresAt: number } | null = null;
   /** フォルダの並び → フォルダの ID */
   private readonly folders = new Map<string, Promise<string>>();
+  /** フォルダの ID → 名前と親（ファイルの場所をたどるときに使う。フォルダは名前も親も変えない） */
+  private readonly folderInfo = new Map<string, { name: string; parent: string | null }>();
 
   constructor(private readonly options: DriveOptions) {
     this.fetch = options.fetch ?? fetch;
@@ -107,12 +109,16 @@ export class DriveFileStore implements FileStore, FolderStore {
         `${API}/files?${new URLSearchParams({ q, fields: "files(id)", pageSize: "1" }).toString()}`,
       );
       const existing = found.files[0]?.id;
-      if (existing) return existing;
+      if (existing) {
+        this.folderInfo.set(existing, { name, parent });
+        return existing;
+      }
       const created = await this.call<{ id: string }>(`${API}/files?fields=id`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name, mimeType: FOLDER, parents: [parent] }),
       });
+      this.folderInfo.set(created.id, { name, parent });
       return created.id;
     })();
     // 失敗したら次に調べ直せるようにする
@@ -195,6 +201,50 @@ export class DriveFileStore implements FileStore, FolderStore {
     });
     // ごみ箱に移したフォルダを、次に置くときに使わないようにする
     this.folders.clear();
+  }
+
+  /** ごみ箱に移す（Drive では 30 日間戻せる）。既に無いものは何もしない */
+  async trash(key: string): Promise<void> {
+    const res = await this.fetch(`${API}/files/${encodeURIComponent(key)}?fields=id`, {
+      method: "PATCH",
+      headers: {
+        authorization: `Bearer ${await this.accessToken()}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ trashed: true }),
+    });
+    if (!res.ok && res.status !== 404) {
+      throw new DriveError(res.status, `Drive のファイルをごみ箱に移せません（${res.status}）`);
+    }
+  }
+
+  /** 親のフォルダを最上位のフォルダまでたどる。ごみ箱にあるもの・最上位のフォルダの外にあるものは null */
+  async locate(key: string): Promise<FolderPath | null> {
+    const res = await this.fetch(`${API}/files/${encodeURIComponent(key)}?fields=parents,trashed`, {
+      headers: { authorization: `Bearer ${await this.accessToken()}` },
+    });
+    if (res.status === 404) return null;
+    if (!res.ok)
+      throw new DriveError(res.status, `Drive のファイルを調べられません（${res.status}）`);
+    const file = (await res.json()) as { parents?: string[]; trashed?: boolean };
+    if (file.trashed) return null;
+    const names: string[] = [];
+    let current = file.parents?.[0] ?? null;
+    // フォルダの深さは数段なので、念のため 20 段で打ち切る
+    for (let depth = 0; current && current !== this.options.rootFolderId; depth++) {
+      if (depth >= 20) return null;
+      let info = this.folderInfo.get(current);
+      if (!info) {
+        const folder = await this.call<{ name: string; parents?: string[] }>(
+          `${API}/files/${encodeURIComponent(current)}?fields=name,parents`,
+        );
+        info = { name: folder.name, parent: folder.parents?.[0] ?? null };
+        this.folderInfo.set(current, info);
+      }
+      names.unshift(info.name);
+      current = info.parent;
+    }
+    return current === this.options.rootFolderId ? names : null;
   }
 
   async remove(key: string): Promise<void> {

@@ -10,9 +10,9 @@ type Seed = Awaited<ReturnType<typeof seed>>;
 const photo = new TextEncoder().encode("photo-bytes");
 const photoSha = createHash("sha256").update(photo).digest("hex");
 
-async function stage(ctx: Ctx, ref: string, index = 1): Promise<StagedFile> {
+async function stage(ctx: Ctx, ref: string, index = 1, route = "discord"): Promise<StagedFile> {
   const res = await ctx.upload(
-    `/files/staging?route=discord&ref=${ref}&index=${index}&name=photo.jpg`,
+    `/files/staging?route=${encodeURIComponent(route)}&ref=${ref}&index=${index}&name=photo.jpg`,
     photo,
     "image/jpeg",
   );
@@ -108,7 +108,7 @@ describe("承認・却下の後の移動", () => {
       const d = await seed(ctx.c);
       const first = await stage(ctx, "1001");
       await ctx.call("POST", `/intake/${await intakeWith(ctx, d, [first])}/approve`, {});
-      const second = await stage(ctx, "2002");
+      const second = await stage(ctx, "2002", 1, "archive:other");
       const id2 = await intakeWith(ctx, d, [second], "archive:other");
       const res = await ctx.call("POST", `/intake/${id2}/approve`, {});
       expect(((await res.json()) as { files: unknown }).files).toEqual({
@@ -150,6 +150,7 @@ describe("承認・却下の後の移動", () => {
         failed: [],
       });
       expect(ctx.files.pathOf(droppedFile.storage_key)).toBeUndefined();
+      expect(ctx.files.trashed.has(droppedFile.storage_key)).toBe(true);
       expect(ctx.files.files.size).toBe(1);
     }));
 
@@ -319,5 +320,63 @@ describe("承認・却下の後の移動", () => {
         id,
       ]);
       expect(rows).toEqual([{ state: "approved" }]);
+    }));
+});
+
+describe("仮置きのファイルの確かめ（決定記録 0047）", () => {
+  it("承認済みのファイル・別の経路のファイル・存在しないファイルを指す下書きは受け付けない", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const staged = await stage(ctx, "1001");
+      await ctx.call("POST", `/intake/${await intakeWith(ctx, d, [staged])}/approve`, {});
+      const approvedPath = ctx.files.pathOf(staged.storage_key);
+      expect(approvedPath).toMatch(/^sns\//);
+
+      const post = (files: unknown[], route = "discord") =>
+        ctx.call("POST", "/intake", {
+          channel_key: "sns:test_account",
+          external_id: "9100",
+          route,
+          captured_at: "2026-10-12T21:35:00+09:00",
+          staged_files: files,
+          draft: { version: 1, post: { published_at: "2026-10-12T21:30:00+09:00" } },
+        });
+      // 承認済みのファイル（攻撃: 言及なしにしてファイルを消させる・別の場所へ移させる）
+      expect((await post([staged])).status).toBe(422);
+      // 別の経路の仮置きのファイル
+      const other = await stage(ctx, "1002", 1, "archive:other");
+      expect((await post([other])).status).toBe(422);
+      // 存在しないファイル・保存先の違い・形の誤り
+      expect((await post([{ ...other, storage_key: "missing" }], "archive:other")).status).toBe(
+        422,
+      );
+      expect((await post([{ ...other, provider: "drive" }], "archive:other")).status).toBe(422);
+      expect((await post([{ storage_key: other.storage_key }], "archive:other")).status).toBe(400);
+      // 承認済みのファイルは元の場所のまま
+      expect(ctx.files.pathOf(staged.storage_key)).toBe(approvedPath);
+      // 正しい経路なら受け付ける
+      expect((await post([other], "archive:other")).status).toBe(201);
+    }));
+
+  it("取り込みの後に仮置きの場所から外れたファイルは、承認・言及なしでも触らない", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const kept = await stage(ctx, "1001");
+      const id = await intakeWith(ctx, d, [kept]);
+      // 以前の取り込みで入った下書きや、手で動かしたファイル
+      await ctx.files.move(kept.storage_key, ["blog", "2026-10"], "other.jpg");
+      const res = await ctx.call("POST", `/intake/${id}/approve`, {});
+      const body = (await res.json()) as { files: { stored: number; failed: { error: string }[] } };
+      expect(body.files.stored).toBe(0);
+      expect(body.files.failed.map((f) => f.error)).toEqual([
+        "仮置きの場所にありません（触らずに残しました）",
+      ]);
+      expect(ctx.files.pathOf(kept.storage_key)).toBe("blog/2026-10/other.jpg");
+
+      // 却下の置き場から押し出されて片付けるときも、仮置きの場所に無いものは消さない
+      const { removeStagedFiles } = await import("../src/files.ts");
+      const report = await removeStagedFiles(ctx.files, [kept]);
+      expect(report.failed).toHaveLength(1);
+      expect(ctx.files.pathOf(kept.storage_key)).toBe("blog/2026-10/other.jpg");
     }));
 });

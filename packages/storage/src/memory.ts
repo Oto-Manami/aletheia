@@ -59,4 +59,17 @@ export class MemoryFileStore implements FileStore, FolderStore {
     this.files.delete(key);
     return Promise.resolve();
   }
+
+  /** ごみ箱に移したファイル（テストの確認用） */
+  readonly trashed = new Set<string>();
+
+  trash(key: string): Promise<void> {
+    if (this.files.delete(key)) this.trashed.add(key);
+    return Promise.resolve();
+  }
+
+  locate(key: string): Promise<FolderPath | null> {
+    const file = this.files.get(key);
+    return Promise.resolve(file ? file.path.split("/").slice(0, -1) : null);
+  }
 }

@@ -61,7 +61,7 @@ import { registerAssetRoutes } from "./assets.ts";
 import { matchUrl } from "./urls.ts";
 import { registerEventRoutes } from "./events.ts";
 import { listTriage, SOURCE_KINDS, triageListQuery } from "./triage-list.ts";
-import { finalizeApprovedFiles, removeStagedFiles, stageFile } from "./files.ts";
+import { assertStagedFiles, finalizeApprovedFiles, removeStagedFiles, stageFile } from "./files.ts";
 
 const uuid = z.uuid();
 
@@ -474,6 +474,8 @@ export function createApp(
 
   app.post("/intake", async (c) => {
     const body = await parseBody(c.req.raw, createIntakeBody);
+    // 渡されたファイルが、この経路の仮置きの場所にあることを確かめる（設計書 決定記録 0047）
+    await assertStagedFiles(files, body.route, body.staged_files);
     const channel = await db
       .selectFrom("channels")
       .select(["id", "owner_entity_id"])
