@@ -31,7 +31,7 @@ export interface FileStore {
   trash(key: string): Promise<void>;
   /**
    * ファイルが今どのフォルダにあるか（最上位のフォルダからの並び）。無い・最上位のフォルダの外にあるときは null。
-   * 仮置きのファイルを動かす・消す前に、本当に仮置きの場所にあるかを確かめるのに使う（設計書 決定記録 0047）
+   * 仮置きのファイルを動かす・消す前に、本当に仮置きの場所にあるかを確かめるのに使う（設計書 決定記録 0048）
    */
   locate(key: string): Promise<FolderPath | null>;
 }
