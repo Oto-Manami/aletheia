@@ -97,9 +97,17 @@ export interface AssetView {
   openUrl: string | null;
   /** 原本のファイルを保存済みか */
   stored: boolean;
+  /** 原本を保存するはずなのに、まだ保存できていない（承認の後の保存に失敗した。やり直せる） */
+  missingOriginal: boolean;
   byteSize: number | null;
   /** 保存した Web ページの HTML をこの画面で見せるときの中身（デモ版のみ。本番は保存先で開く） */
   inlineHtml: string | null;
+}
+
+/** 承認の結果。filesFailed は、承認の後に保存できなかったファイルの数（投稿の画面からやり直せる） */
+export interface ApproveOutcome {
+  postId?: string;
+  filesFailed?: number;
 }
 
 /** アセットの一覧の 1 枚 */
@@ -435,12 +443,12 @@ export interface ArchiveSource {
   /** その状態の本当の件数（一覧の上限に関わらない） */
   countIntake(state: IntakeState): Promise<number>;
   getIntake(id: string): Promise<IntakeDetail>;
-  /** 承認・却下・保留。承認では、直した下書きを一緒に送れる */
+  /** 承認・却下・保留。承認では、直した下書きを一緒に送れる。filesFailed は保存できなかったファイルの数 */
   decide(
     id: string,
     decision: Decision,
     options?: { draft?: DraftInput; note?: string },
-  ): Promise<{ postId?: string }>;
+  ): Promise<ApproveOutcome>;
   /** 却下を取り消し、承認待ちに戻す（却下した直近 10 件だけ。決定記録 0043） */
   reopenIntake(id: string): Promise<void>;
   labels(refs: { id: string; type: RefLabel["type"] }[]): Promise<RefLabel[]>;
@@ -455,6 +463,11 @@ export interface ArchiveSource {
    * 本文・保存したページは外せない（設計書 決定記録 0045）
    */
   removeAsset(assetId: string): Promise<void>;
+  /**
+   * 承認の後に保存できなかったファイルの保存をやり直す（仮置きの場所に残っていれば移す）。
+   * stored は今回保存できた数、missing は残った「原本の無い素材」の数
+   */
+  retryPostFiles(postId: string): Promise<{ stored: number; missing: number }>;
   /** アセットの一覧（保存した新しい順。同じファイルの重複は除く）。offset から limit 件 */
   listAssets(
     filter: AssetFilter,
@@ -483,7 +496,7 @@ export interface ArchiveSource {
   /**
    * 残して、そのまま承認する（ニュースを出来事に紐付けるとき）。1 回の処理で行い、失敗したら振り分け待ちのまま
    */
-  keepAndApprove(id: string, draft: DraftInput): Promise<void>;
+  keepAndApprove(id: string, draft: DraftInput): Promise<ApproveOutcome>;
   /** 言及なしにする（まとめて）。確認済みの記録だけを残し、下書きと仮置きのファイルを消す */
   discardTriage(
     ids: string[],

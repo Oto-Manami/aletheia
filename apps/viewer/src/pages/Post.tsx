@@ -132,13 +132,14 @@ function AssetBlock({
 
   return (
     <section className={`panel panel-pad post-asset ${isPrivate ? "is-private" : ""}`}>
-      {(page || asset.title || isPrivate || !visual) && (
+      {(page || asset.title || isPrivate || !visual || asset.missingOriginal) && (
         <p className="post-asset-head">
           {page && <span className="page-no">{page}</span>}
           {!visual && <span>{MEDIA_LABELS[asset.mediaType]}</span>}
           {clip && <span>{clip}</span>}
           {asset.title && <span className="post-asset-title">{asset.title}</span>}
           {isPrivate && <span className="tag tag-private">非公開</span>}
+          {asset.missingOriginal && <span className="tag tag-missing">原本なし</span>}
         </p>
       )}
       {visual &&
@@ -183,6 +184,49 @@ function AssetBlock({
   );
 }
 
+/** 原本を保存できていない素材があるとき: 件数と、保存のやり直し（作業者・運営者だけ） */
+function MissingOriginals({
+  count,
+  onRetry,
+}: {
+  count: number;
+  onRetry: (() => Promise<void>) | null;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="post-missing" role="group" aria-label="原本を保存できていない素材">
+      <p>
+        原本のファイルを保存できていない素材が {count}{" "}
+        件あります。承認の後の保存に失敗したものです（仮置きの場所に残っていれば、やり直せます）。
+      </p>
+      {onRetry && (
+        <div>
+          <button
+            type="button"
+            className="button"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              setError(null);
+              onRetry()
+                .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+                .finally(() => setBusy(false));
+            }}
+          >
+            {busy ? "保存しています" : "ファイルの保存をやり直す"}
+          </button>
+        </div>
+      )}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function PostPage() {
   const { id = "" } = useParams();
   const { source, viewer } = useApp();
@@ -200,6 +244,7 @@ export function PostPage() {
   const p = post.data;
   const published = formatPublished(p);
   const assets = [...p.assets].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  const missing = assets.filter((a) => a.missingOriginal).length;
   const capture = originalCapture({
     url: p.url,
     assets: assets.map((a) => ({
@@ -238,6 +283,24 @@ export function PostPage() {
             <p className="notice" role="status">
               {notice}
             </p>
+          )}
+          {missing > 0 && (
+            <MissingOriginals
+              count={missing}
+              onRetry={
+                viewer.canWork
+                  ? async () => {
+                      const r = await source.retryPostFiles(p.id);
+                      setNotice(
+                        r.missing === 0
+                          ? `ファイル ${r.stored} 件を保存しました`
+                          : `ファイル ${r.stored} 件を保存しました。${r.missing} 件はまだ保存できていません（仮置きの場所に無いものは、やり直しても保存できません）`,
+                      );
+                      reload();
+                    }
+                  : null
+              }
+            />
           )}
           {assets.map((a) => (
             <AssetBlock
