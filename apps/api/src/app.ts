@@ -61,7 +61,13 @@ import { registerAssetRoutes } from "./assets.ts";
 import { matchUrl } from "./urls.ts";
 import { registerEventRoutes } from "./events.ts";
 import { listTriage, SOURCE_KINDS, triageListQuery } from "./triage-list.ts";
-import { assertStagedFiles, finalizeApprovedFiles, removeStagedFiles, stageFile } from "./files.ts";
+import {
+  assertStagedFiles,
+  finalizeApprovedFiles,
+  removeStagedFiles,
+  retryPostFiles,
+  stageFile,
+} from "./files.ts";
 
 const uuid = z.uuid();
 
@@ -199,8 +205,17 @@ export function createApp(
   app.use("/events/*", requireMember(db, auth), writesNeedWorker);
   app.use("/entities", requireMember(db, auth), writesNeedWorker);
   app.use("/assets/*", requireMember(db, auth), writesNeedWorker);
+  app.use("/posts/*", requireMember(db, auth), writesNeedWorker);
   registerEventRoutes(app, db);
   registerAssetRoutes(app, db, files);
+
+  /** 承認済みの投稿のファイルの保存をやり直す（承認の後に保存できなかったもの。仮置きの場所に残っていれば移す） */
+  app.post("/posts/:id/files/retry", async (c) => {
+    assertWorker(c.get("actor"));
+    if (!files) throw new HTTPException(503, { message: "ファイルの保存先が設定されていません" });
+    const id = idParam(c.req.param("id"));
+    return c.json(await retryPostFiles(db, files, id));
+  });
 
   app.post("/files/staging", async (c) => {
     if (!files) throw new HTTPException(503, { message: "ファイルの保存先が設定されていません" });

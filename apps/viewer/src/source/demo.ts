@@ -31,6 +31,7 @@ import {
   triageItemOf,
 } from "./triage.ts";
 import {
+  type ApproveOutcome,
   type ArchiveSource,
   type AssetCard,
   type AssetFilter,
@@ -250,7 +251,7 @@ export class DemoSource implements ArchiveSource {
     id: string,
     decision: Decision,
     options: { draft?: DraftInput; note?: string } = {},
-  ): Promise<{ postId?: string }> {
+  ): Promise<ApproveOutcome> {
     await this.delay();
     const item = this.find(id);
     if (item.state === "approved" || item.state === "rejected") {
@@ -412,6 +413,19 @@ export class DemoSource implements ArchiveSource {
     post.assets = post.assets.filter((a) => a.id !== assetId);
   }
 
+  /** デモ版では、原本の無い素材をすべて保存できたことにする */
+  async retryPostFiles(postId: string): Promise<{ stored: number; missing: number }> {
+    await this.delay();
+    const post = this.posts.find((p) => p.id === postId);
+    if (!post) throw new SourceError("投稿が見つかりません", 404);
+    const missing = post.assets.filter((a) => a.missingOriginal);
+    for (const a of missing) {
+      a.missingOriginal = false;
+      a.stored = true;
+    }
+    return { stored: missing.length, missing: 0 };
+  }
+
   async createInvite(note?: string) {
     await this.delay();
     const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) =>
@@ -538,12 +552,12 @@ export class DemoSource implements ArchiveSource {
     };
   }
 
-  async keepAndApprove(id: string, draft: DraftInput): Promise<void> {
+  async keepAndApprove(id: string, draft: DraftInput): Promise<ApproveOutcome> {
     // 承認できない下書きなら、振り分け待ちのまま残す
     const issues = issuesOf(draft);
     if (issues.length > 0) throw new SourceError("下書きに直すところがあります", 422, issues);
     await this.keepTriage(id, draft);
-    await this.decide(id, "approve", { draft });
+    return this.decide(id, "approve", { draft });
   }
 
   async keepTriage(id: string, draft: DraftInput): Promise<void> {
