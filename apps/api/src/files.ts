@@ -180,15 +180,16 @@ export async function finalizeApprovedFiles(
 
   for (const file of staged) {
     try {
-      // 動かす・消す前に、まだ仮置きの場所にあるかを確かめ直す（決定記録 0048）
-      if (!(await isStaged(files, file.storage_key, intake.route))) {
-        report.failed.push({ storage_key: file.storage_key, error: NOT_STAGED });
-        continue;
-      }
       // 記録だけの素材（同じファイルを別の素材が保存している）には、ファイルを置かない
       const asset = assets.find(
         (a) => a.sha256 === file.sha256 && a.file_policy === "stored" && !a.has_original,
       );
+      // 動かす・消す前に、まだ仮置きの場所にあるかを確かめ直す（決定記録 0048）。原本を待っている素材が
+      // 無いもの（保存済み・前の回で片付けたもの）は、仮置きの場所に無くても失敗にしない（やり直しに使う）
+      if (!(await isStaged(files, file.storage_key, intake.route))) {
+        if (asset) report.failed.push({ storage_key: file.storage_key, error: NOT_STAGED });
+        continue;
+      }
       if (!asset) {
         const place = rejectedLocation(intake.route, file.staged_name);
         if (assets.some((a) => a.sha256 === file.sha256)) {
@@ -237,6 +238,63 @@ export async function finalizeApprovedFiles(
     }
   }
   return report;
+}
+
+/**
+ * 承認済みの投稿のファイルの保存をやり直す。その投稿になった承認済みの下書き（経路ごと）について、
+ * 承認の後と同じ処理をもう一度行う。保存済みのものはそのまま。残りの「原本の無い素材」の数を返す
+ */
+export async function retryPostFiles(
+  db: Database,
+  files: FileStore,
+  postId: string,
+): Promise<FileReport & { missing: number }> {
+  const post = await db
+    .selectFrom("posts")
+    .select(["channel_id", "external_id"])
+    .where("id", "=", postId)
+    .executeTakeFirst();
+  if (!post) throw new HTTPException(404, { message: "投稿が見つかりません" });
+  const intakes = await db
+    .selectFrom("intake_items")
+    .select("id")
+    .where("channel_id", "=", post.channel_id)
+    .where("external_id", "=", post.external_id)
+    .where("state", "=", "approved")
+    .orderBy("reviewed_at")
+    .execute();
+  const total: FileReport = { stored: 0, duplicates: 0, failed: [] };
+  for (const intake of intakes) {
+    const r = await finalizeApprovedFiles(db, files, intake.id, postId);
+    total.stored += r.stored;
+    total.duplicates += r.duplicates;
+    if (r.unselected) total.unselected = (total.unselected ?? 0) + r.unselected;
+    total.failed.push(...r.failed);
+  }
+  return { ...total, missing: await missingOriginals(db, postId) };
+}
+
+/** 投稿の素材のうち、原本を保存するはずなのに原本の記録が無いものの数（データ品質の検査と同じ条件） */
+export async function missingOriginals(db: Database, postId: string): Promise<number> {
+  const row = await db
+    .selectFrom("assets as a")
+    .select((eb) => eb.fn.countAll<string>().as("n"))
+    .where("a.post_id", "=", postId)
+    .where("a.file_policy", "=", "stored")
+    .where("a.media_type", "<>", "text")
+    .where((eb) =>
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom("asset_files as f")
+            .select("f.id")
+            .whereRef("f.asset_id", "=", "a.id")
+            .where("f.variant", "=", "original"),
+        ),
+      ),
+    )
+    .executeTakeFirstOrThrow();
+  return Number(row.n);
 }
 
 /**

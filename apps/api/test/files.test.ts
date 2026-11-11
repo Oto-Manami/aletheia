@@ -380,3 +380,56 @@ describe("仮置きのファイルの確かめ（決定記録 0048）", () => {
       expect(ctx.files.pathOf(kept.storage_key)).toBe("blog/2026-10/other.jpg");
     }));
 });
+
+describe("ファイルの保存のやり直し", () => {
+  it("承認の後に保存できなかったファイルを、投稿からやり直して保存する。何度やっても同じ", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const staged = await stage(ctx, "1001");
+      const id = await intakeWith(ctx, d, [staged]);
+      // 保存先の一時的な失敗
+      vi.spyOn(ctx.files, "move").mockRejectedValueOnce(new Error("一時的な失敗"));
+      const approved = (await (await ctx.call("POST", `/intake/${id}/approve`, {})).json()) as {
+        postId: string;
+        files: { stored: number; failed: unknown[] };
+      };
+      expect(approved.files.stored).toBe(0);
+      expect(approved.files.failed).toHaveLength(1);
+      expect(ctx.files.pathOf(staged.storage_key)).toBe("_staging/discord/1001_01.jpg");
+
+      const retry = async () =>
+        (await (await ctx.call("POST", `/posts/${approved.postId}/files/retry`, {})).json()) as {
+          stored: number;
+          failed: unknown[];
+          missing: number;
+        };
+      expect(await retry()).toMatchObject({ stored: 1, failed: [], missing: 0 });
+      expect(ctx.files.pathOf(staged.storage_key)).toBe(
+        "sns/test_account/2026-10/20261012-2130_9001_01.jpg",
+      );
+      // もう一度やっても、保存済みのものは動かさず、失敗にもしない
+      expect(await retry()).toMatchObject({ stored: 0, duplicates: 0, failed: [], missing: 0 });
+      const { rows } = await ctx.c.query(
+        "select count(*)::int as n from public.asset_files where storage_key = $1",
+        [staged.storage_key],
+      );
+      expect(rows).toEqual([{ n: 1 }]);
+    }));
+
+  it("仮置きのファイルが無くなっていれば、原本の無い素材の数を返す。無い投稿は 404", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const staged = await stage(ctx, "1001");
+      const id = await intakeWith(ctx, d, [staged]);
+      ctx.files.files.delete(staged.storage_key);
+      const { postId } = (await (await ctx.call("POST", `/intake/${id}/approve`, {})).json()) as {
+        postId: string;
+      };
+      const res = await ctx.call("POST", `/posts/${postId}/files/retry`, {});
+      expect(await res.json()).toMatchObject({ stored: 0, missing: 1 });
+      expect(
+        (await ctx.call("POST", "/posts/00000000-0000-4000-8000-000000000000/files/retry", {}))
+          .status,
+      ).toBe(404);
+    }));
+});

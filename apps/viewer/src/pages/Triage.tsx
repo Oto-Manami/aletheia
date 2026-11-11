@@ -9,7 +9,7 @@
 import { Check, ExternalLink, ImageIcon, Undo2 } from "lucide-react";
 import { type MouseEvent, useMemo, useState } from "react";
 import type { DraftInput } from "@aletheia/intake/draft";
-import { useParams, useSearchParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import { EventLinks } from "../components/EventLinks.tsx";
 import { Snippet } from "../components/Snippet.tsx";
 import { useApp } from "../context.tsx";
@@ -471,7 +471,12 @@ export function TriagePage() {
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   // 言及なしにしたら、開いている「直近に言及なしにしたもの」を読み直す
   const [discardVersion, setDiscardVersion] = useState(0);
-  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [message, setMessage] = useState<{
+    text: string;
+    error: boolean;
+    /** 開く投稿（ファイルを保存できなかったとき） */
+    postId?: string;
+  } | null>(null);
 
   if (!viewer.canWork) {
     return (
@@ -734,6 +739,12 @@ export function TriagePage() {
       {message && (
         <p className={message.error ? "error" : "quiet"} role={message.error ? "alert" : "status"}>
           {message.text}
+          {message.postId && (
+            <>
+              {" "}
+              <Link to={`/posts/${message.postId}`}>投稿の画面を開く</Link>
+            </>
+          )}
         </p>
       )}
       {viewer.canWork && (
@@ -802,8 +813,15 @@ export function TriagePage() {
             onDiscard={viewer.canWork ? () => discard([item.id]).then(() => undefined) : null}
             onToEvents={async (draft) => {
               // 残すと承認を 1 回で行う。失敗したら振り分け待ちのまま（ニュースは承認の一覧に回さない）
-              await source.keepAndApprove(item.id, draft);
+              const outcome = await source.keepAndApprove(item.id, draft);
               finish([item.id]);
+              if (outcome.filesFailed && outcome.postId) {
+                setMessage({
+                  text: `ファイル ${outcome.filesFailed} 件を保存できませんでした（承認はできています）。投稿の画面の「ファイルの保存をやり直す」でやり直せます。`,
+                  error: true,
+                  postId: outcome.postId,
+                });
+              }
             }}
           />
         ))}

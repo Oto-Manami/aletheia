@@ -7,6 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import { triageItemOf } from "./triage.ts";
 import {
+  type ApproveOutcome,
   type ArchiveSource,
   type AssetCard,
   type AssetFilter,
@@ -106,6 +107,7 @@ interface AssetRow {
   description: string | null;
   classification: Classification;
   attributes: Record<string, unknown>;
+  file_policy?: string;
   asset_texts: { text_type: string; content: string }[];
   asset_files: {
     variant: string;
@@ -113,6 +115,20 @@ interface AssetRow {
     storage_key: string;
     byte_size: number | null;
   }[];
+}
+
+/** 承認の API の応答（必要なところだけ） */
+interface ApproveResponse {
+  postId?: string;
+  files?: { failed: unknown[] } | null;
+}
+
+function approveOutcome(res: ApproveResponse): ApproveOutcome {
+  const failed = res.files?.failed.length ?? 0;
+  return {
+    ...(res.postId ? { postId: res.postId } : {}),
+    ...(failed > 0 ? { filesFailed: failed } : {}),
+  };
 }
 
 interface PostRow {
@@ -269,17 +285,17 @@ export class LiveSource implements ArchiveSource {
     id: string,
     decision: Decision,
     options: { draft?: DraftInput; note?: string } = {},
-  ): Promise<{ postId?: string }> {
+  ): Promise<ApproveOutcome> {
     const body = {
       ...(options.note ? { note: options.note } : {}),
       ...(decision === "approve" && options.draft ? { draft: options.draft } : {}),
     };
-    const res = await this.api<{ postId?: string }>(
+    const res = await this.api<ApproveResponse>(
       "POST",
       `/intake/${encodeURIComponent(id)}/${decision}`,
       body,
     );
-    return res.postId ? { postId: res.postId } : {};
+    return approveOutcome(res);
   }
 
   async reopenIntake(id: string): Promise<void> {
@@ -480,7 +496,7 @@ export class LiveSource implements ArchiveSource {
       await this.supabase
         .from("assets")
         .select(
-          "id, post_id, position, media_type, title, description, classification, attributes, asset_texts(text_type, content), asset_files(variant, provider, storage_key, byte_size)",
+          "id, post_id, position, media_type, title, description, classification, attributes, file_policy, asset_texts(text_type, content), asset_files(variant, provider, storage_key, byte_size)",
         )
         .eq("post_id", id)
         .order("position"),
@@ -511,6 +527,11 @@ export class LiveSource implements ArchiveSource {
       previewUrl: null,
       openUrl: openUrlOf(a.asset_files.find((f) => f.variant === "original")),
       stored: a.asset_files.some((f) => f.variant === "original"),
+      // データ品質の検査（stored_without_file）と同じ条件
+      missingOriginal:
+        a.file_policy === "stored" &&
+        a.media_type !== "text" &&
+        !a.asset_files.some((f) => f.variant === "original"),
       byteSize: a.asset_files.find((f) => f.variant === "original")?.byte_size ?? null,
       inlineHtml: null,
     }));
@@ -642,8 +663,22 @@ export class LiveSource implements ArchiveSource {
     };
   }
 
-  async keepAndApprove(id: string, draft: DraftInput): Promise<void> {
-    await this.api("POST", `/intake/${encodeURIComponent(id)}/keep`, { draft, approve: true });
+  async keepAndApprove(id: string, draft: DraftInput): Promise<ApproveOutcome> {
+    return approveOutcome(
+      await this.api<ApproveResponse>("POST", `/intake/${encodeURIComponent(id)}/keep`, {
+        draft,
+        approve: true,
+      }),
+    );
+  }
+
+  async retryPostFiles(postId: string): Promise<{ stored: number; missing: number }> {
+    const res = await this.api<{ stored: number; missing: number }>(
+      "POST",
+      `/posts/${encodeURIComponent(postId)}/files/retry`,
+      {},
+    );
+    return { stored: res.stored, missing: res.missing };
   }
 
   async keepTriage(id: string, draft: DraftInput): Promise<void> {
