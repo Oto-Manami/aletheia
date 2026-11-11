@@ -7,7 +7,7 @@
 // - 却下したものは、直近 10 件の間は仮置きの場所のまま置き、押し出されたら消す（決定記録 0043）
 // - 承認した下書きの素材に無いファイル（振り分けで選ばなかった画像など）は、保存せずに消す（決定記録 0037）
 // - 下書きの staged_files は、取り込みのときに仮置きの場所にあることを確かめ、動かす・消す直前にも
-//   確かめ直す。仮置きの場所に無いファイルには触らない。消すときはごみ箱に移す（決定記録 0047）
+//   確かめ直す。仮置きの場所に無いファイルには触らない。消すときはごみ箱に移す（決定記録 0048）
 
 import { createHash } from "node:crypto";
 import type { Database } from "@aletheia/db/client";
@@ -180,7 +180,7 @@ export async function finalizeApprovedFiles(
 
   for (const file of staged) {
     try {
-      // 動かす・消す前に、まだ仮置きの場所にあるかを確かめ直す（決定記録 0047）
+      // 動かす・消す前に、まだ仮置きの場所にあるかを確かめ直す（決定記録 0048）
       if (!(await isStaged(files, file.storage_key, intake.route))) {
         report.failed.push({ storage_key: file.storage_key, error: NOT_STAGED });
         continue;
@@ -197,7 +197,7 @@ export async function finalizeApprovedFiles(
           report.duplicates++;
         } else {
           // 下書きの素材に無い（振り分けで写っている人を付けなかった画像など）。保存先には残さず、
-          // 仮置きのファイルをごみ箱に移す（設計書 決定記録 0037・0047）
+          // 仮置きのファイルをごみ箱に移す（設計書 決定記録 0037・0048）
           await files.trash(file.storage_key);
           report.unselected = (report.unselected ?? 0) + 1;
         }
@@ -240,7 +240,7 @@ export async function finalizeApprovedFiles(
 }
 
 /**
- * 振り分けで「言及なし」にした・却下した下書きの、仮置きのファイルをごみ箱に移す（設計書 決定記録 0021・0047）。
+ * 振り分けで「言及なし」にした・却下した下書きの、仮置きのファイルをごみ箱に移す（設計書 決定記録 0021・0048）。
  * 仮置きの場所に無いものには触らない
  */
 export async function removeStagedFiles(

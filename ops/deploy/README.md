@@ -1,6 +1,6 @@
 # サーバーの API を自動で更新する
 
-`main` にプルリクエストを取り込み、`main` の CI が成功すると、GitHub Actions（`.github/workflows/deploy.yml`）がサーバー用の機械の API をそのコミットに合わせる（設計書 決定記録 0036・0048）。CI が失敗したコミットでは動かない。
+`main` にプルリクエストを取り込み、`main` の CI が成功すると、GitHub Actions（`.github/workflows/deploy.yml`）がサーバー用の機械の API をそのコミットに合わせる（設計書 決定記録 0036・0049）。CI が失敗したコミットでは動かない。
 
 1. 実行の間だけ、GitHub Actions の実行環境を Tailscale につなぐ（タグ `tag:ci`、使い捨て）
 2. 更新専用の鍵で、サーバーに SSH で入る。この鍵では `ops/deploy/server-deploy.sh` しか動かせない

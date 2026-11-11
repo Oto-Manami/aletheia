@@ -489,7 +489,7 @@ export function createApp(
 
   app.post("/intake", async (c) => {
     const body = await parseBody(c.req.raw, createIntakeBody);
-    // 渡されたファイルが、この経路の仮置きの場所にあることを確かめる（設計書 決定記録 0047）
+    // 渡されたファイルが、この経路の仮置きの場所にあることを確かめる（設計書 決定記録 0048）
     await assertStagedFiles(files, body.route, body.staged_files);
     const channel = await db
       .selectFrom("channels")
