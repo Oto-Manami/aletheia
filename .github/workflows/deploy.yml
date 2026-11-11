@@ -1,9 +1,12 @@
 name: サーバーの更新
 
 # main への取り込みで、サーバー用の機械の API を最新にする（設計書 決定記録 0036。手順は ops/deploy/README.md）
+# main の CI が成功した後に、そのコミットに合わせる。CI が失敗したコミットでは動かない
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
     inputs:
@@ -22,7 +25,10 @@ concurrency:
 jobs:
   deploy:
     name: サーバーの API を最新にする
-    if: github.repository == 'Oto-Manami/aletheia'
+    if: >-
+      github.repository == 'Oto-Manami/aletheia' &&
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: server
@@ -54,6 +60,8 @@ jobs:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           APPLIED: ${{ inputs.migrations_applied }}
+          # CI が成功したコミット（手で動かしたときは main の最新）
+          TARGET: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
@@ -61,10 +69,20 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           request=deploy
           if [ "$APPLIED" = "true" ]; then request="deploy --migrations-applied"; fi
+          run() {
+            ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              "aletheia@$HOST" "$1" 2>&1 | tee result.txt
+            return "${PIPESTATUS[0]}"
+          }
           set +e
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            "aletheia@$HOST" "$request" 2>&1 | tee result.txt
-          status=${PIPESTATUS[0]}
+          run "$request $TARGET"
+          status=$?
+          # サーバーの更新のスクリプトが、コミットを受け取れない前の版のとき（この仕組みを入れた直後の 1 回だけ）。
+          # 前の版は main の最新に合わせ、そのときにスクリプト自体も新しくなる
+          if [ "$status" = 2 ] && grep -q "使えないコマンドです" result.txt; then
+            run "$request"
+            status=$?
+          fi
           set -e
           {
             echo "### サーバーの更新"

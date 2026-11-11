@@ -43,6 +43,10 @@ describe("認証", () => {
     withApi(async ({ call }) => {
       const res = await call("GET", "/health", undefined, null);
       expect(res.status).toBe(200);
+      // データベースまで使えるかの確認も、認証なしで使える
+      const ready = await call("GET", "/ready", undefined, null);
+      expect(ready.status).toBe(200);
+      expect(await ready.json()).toEqual({ ok: true });
     }));
 
   it("鍵が無い・違う呼び出しは断る", () =>
