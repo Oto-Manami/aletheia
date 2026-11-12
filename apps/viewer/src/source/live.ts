@@ -213,6 +213,29 @@ export class LiveSource implements ArchiveSource {
     return json as T;
   }
 
+  /** 縮めた画像を同時に読む数（保存先に負担をかけない） */
+  private thumbnailSlots = 6;
+  private readonly thumbnailWaiters: (() => void)[] = [];
+
+  async assetThumbnail(assetId: string): Promise<{ url: string; release: () => void } | null> {
+    if (this.thumbnailSlots === 0) {
+      await new Promise<void>((resolve) => this.thumbnailWaiters.push(resolve));
+    } else {
+      this.thumbnailSlots--;
+    }
+    try {
+      const blob = await this.apiBlob(`/assets/${encodeURIComponent(assetId)}/thumbnail`);
+      const url = URL.createObjectURL(blob);
+      return { url, release: () => URL.revokeObjectURL(url) };
+    } catch {
+      return null;
+    } finally {
+      const next = this.thumbnailWaiters.shift();
+      if (next) next();
+      else this.thumbnailSlots++;
+    }
+  }
+
   /** API からファイルの中身を読む */
   private async apiBlob(path: string): Promise<Blob> {
     const { data } = await this.supabase.auth.getSession();

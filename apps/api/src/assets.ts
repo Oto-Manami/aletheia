@@ -17,13 +17,43 @@ import { sql } from "kysely";
 import { z } from "zod";
 import type { AuthEnv } from "./auth.ts";
 import { inTransaction } from "./events.ts";
+import { thumbnailOf } from "./thumbnails.ts";
 
 /** 外せない素材の種類（投稿の中身そのもの） */
 const KEPT_MEDIA = new Set(["text", "webpage"]);
 
 const conflict = (message: string) => new HTTPException(409, { message });
 
-export function registerAssetRoutes(app: Hono<AuthEnv>, db: Database, files?: FileStore): void {
+export function registerAssetRoutes(
+  app: Hono<AuthEnv>,
+  db: Database,
+  files?: FileStore,
+  /** 縮めた画像の保存先。無ければ原本と同じ保存先 */
+  thumbnailFiles: FileStore | undefined = files,
+): void {
+  /**
+   * 素材の縮めた画像（一覧用）。保存した原本から作る。素材の記録はログインした利用者の全員が読めるので、
+   * 縮めた画像も同じ範囲（閲覧者を含む）に返す
+   */
+  app.get("/assets/:id/thumbnail", async (c) => {
+    if (!files || !thumbnailFiles) {
+      throw new HTTPException(503, { message: "ファイルの保存先が設定されていません" });
+    }
+    const id = z.uuid().safeParse(c.req.param("id"));
+    if (!id.success) throw new HTTPException(404, { message: "見つかりません" });
+    const thumbnail = await thumbnailOf(db, files, thumbnailFiles, id.data);
+    if (!thumbnail) throw new HTTPException(404, { message: "見つかりません" });
+    return new Response(thumbnail.bytes, {
+      headers: {
+        "content-type": thumbnail.contentType,
+        "content-length": String(thumbnail.bytes.byteLength),
+        // ログインした人の手元にだけ残す
+        "cache-control": "private, max-age=604800",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  });
+
   app.post("/assets/:id/remove", async (c) => {
     const id = z.uuid().safeParse(c.req.param("id"));
     if (!id.success) throw new HTTPException(404, { message: "見つかりません" });

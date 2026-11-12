@@ -1,10 +1,10 @@
 // アセットの一覧: 保存した画像などを新しい順に並べ、種類・情報源・写っている人で絞る
 //
-// 画像は元のページの画像を表示する（保存した原本は保存先で開く）。同じファイルの重複
-// （記録だけの素材）は出さない。参加者だけが見られる。
+// 画像は、保存した原本から作った縮めた画像を表示する（元のサイトが消えても見られる。保存した原本は保存先で開く）。
+// 同じファイルの重複（記録だけの素材）は出さない。参加者だけが見られる。
 
 import { ExternalLink, FileText, Film, Globe, ImageOff, Music } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApp } from "../context.tsx";
 import { formatPublished, MEDIA_LABELS } from "../format.ts";
@@ -31,18 +31,42 @@ function TypeIcon({ type }: { type: string }) {
 }
 
 function Tile({ asset }: { asset: AssetCard }) {
+  const { source } = useApp();
   const [broken, setBroken] = useState(false);
+  // 保存した画像（縮めたもの）を読む。undefined は読んでいる途中、null は読めなかった
+  const usesSaved = asset.mediaType === "image" && "assetThumbnail" in source;
+  const [saved, setSaved] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!usesSaved || !source.assetThumbnail) return;
+    let stopped = false;
+    let release: (() => void) | undefined;
+    void source.assetThumbnail(asset.id).then((thumbnail) => {
+      if (stopped) return thumbnail?.release();
+      release = thumbnail?.release;
+      setSaved(thumbnail?.url ?? null);
+    });
+    return () => {
+      stopped = true;
+      release?.();
+    };
+  }, [source, asset.id, usesSaved]);
   const label = asset.postTitle?.trim() || asset.title?.trim() || "（題名なし）";
   const date = formatPublished(asset);
+  // 保存した画像を先に出す。読めなかったときだけ、元のページの画像を代わりに出す
+  // （読んでいる途中は、元のサイトには取りに行かない）
+  const imageUrl = usesSaved ? (saved ?? (saved === null ? asset.imageUrl : null)) : asset.imageUrl;
+  const loading = usesSaved && saved === undefined;
   const picture =
-    asset.imageUrl && !broken ? (
-      <img src={asset.imageUrl} alt="" loading="lazy" onError={() => setBroken(true)} />
+    imageUrl && !broken ? (
+      <img src={imageUrl} alt="" loading="lazy" onError={() => setBroken(true)} />
     ) : (
       <span className="asset-tile-empty">
         <TypeIcon type={asset.mediaType} />
         <span>
           {asset.mediaType === "image"
-            ? "元のページに画像がありません"
+            ? loading
+              ? "読み込んでいます"
+              : "画像を表示できません"
             : (MEDIA_LABELS[asset.mediaType] ?? asset.mediaType)}
         </span>
       </span>
