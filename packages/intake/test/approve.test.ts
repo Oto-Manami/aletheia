@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { seed } from "@aletheia/db/testing/fixtures";
 import { insert, type Queryable } from "@aletheia/db/testing/sql";
 import { describe, expect, it } from "vitest";
+import { sql } from "kysely";
 import {
+  APPROVAL_LOCK,
   approveIntake,
   approveIntakeIn,
   type DraftInput,
@@ -259,6 +261,31 @@ describe("承認", () => {
       );
       expect(rows).toEqual([{ title: "お菓子の日（修正）", draft_title: "お菓子の日（修正）" }]);
     }));
+
+  it("承認している間は承認の順番を持ち、ほかの承認は終わるまで待つ", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const id = await intake(c, d, blogDraft(d));
+      await approveIntakeIn(trx, id);
+      // 別の接続からは、この承認のトランザクションが終わるまで順番を取れない
+      const { rows } = await sql<{ got: boolean }>`
+        select pg_try_advisory_xact_lock(${APPROVAL_LOCK}::bigint) as got
+      `.execute(db);
+      expect(rows[0]?.got).toBe(false);
+    }));
+
+  it("承認が終われば（取り消しても）、次の承認が順番を取れる", async () => {
+    await withTrx(async (trx, c) => {
+      const d = await seed(c);
+      await approveIntakeIn(trx, await intake(c, d, blogDraft(d)));
+    });
+    const { rows } = await db.transaction().execute((t) =>
+      sql<{
+        got: boolean;
+      }>`select pg_try_advisory_xact_lock(${APPROVAL_LOCK}::bigint) as got`.execute(t),
+    );
+    expect(rows[0]?.got).toBe(true);
+  });
 
   it("同じ下書きは 2 度承認できない", () =>
     withTrx(async (trx, c) => {

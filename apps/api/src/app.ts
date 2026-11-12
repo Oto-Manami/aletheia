@@ -61,6 +61,7 @@ import {
   writesNeedWorker,
 } from "./auth.ts";
 import { registerAssetRoutes } from "./assets.ts";
+import { serial } from "./serial.ts";
 import { matchUrl } from "./urls.ts";
 import { registerEventRoutes } from "./events.ts";
 import { listTriage, SOURCE_KINDS, triageListQuery } from "./triage-list.ts";
@@ -186,6 +187,8 @@ export function createApp(
   options: AppOptions = {},
 ) {
   const app = new Hono<AuthEnv>();
+  // 承認は 1 件ずつ、データベースへの反映とファイルの移動を終えてから次へ進む（同時に押されても順に通す）
+  const inOrder = serial();
 
   const origins = options.viewerOrigins ?? [];
   if (origins.length > 0) {
@@ -644,14 +647,17 @@ export function createApp(
     const id = idParam(c.req.param("id"));
     const body = await parseBody(c.req.raw, approveBody);
     const reviewerId = reviewerOf(c.get("actor"), body);
-    const result = await approveIntake(db, id, {
-      ...(reviewerId ? { reviewerId } : {}),
-      ...(body.draft !== undefined ? { draft: body.draft } : {}),
-      ...(body.note ? { note: body.note } : {}),
+    const report = await inOrder(async () => {
+      const result = await approveIntake(db, id, {
+        ...(reviewerId ? { reviewerId } : {}),
+        ...(body.draft !== undefined ? { draft: body.draft } : {}),
+        ...(body.note ? { note: body.note } : {}),
+      });
+      // 承認が確定した後に、ファイルを本来の場所へ移す。失敗しても承認は取り消さない
+      const filesReport = files ? await finalizeApprovedFiles(db, files, id, result.postId) : null;
+      return { ...result, files: filesReport };
     });
-    // 承認が確定した後に、ファイルを本来の場所へ移す。失敗しても承認は取り消さない
-    const filesReport = files ? await finalizeApprovedFiles(db, files, id, result.postId) : null;
-    return c.json({ ...result, files: filesReport });
+    return c.json(report);
   });
 
   /**
@@ -696,12 +702,17 @@ export function createApp(
     const reviewerId = reviewerOf(c.get("actor"), body);
     if (body.approve) {
       // 残すと承認を 1 つのトランザクションで行う。失敗したら振り分け待ちのまま（決定記録 0030）
-      const result = await keepAndApprove(db, id, {
-        ...(reviewerId ? { reviewerId } : {}),
-        ...(body.draft !== undefined ? { draft: body.draft } : {}),
+      const report = await inOrder(async () => {
+        const result = await keepAndApprove(db, id, {
+          ...(reviewerId ? { reviewerId } : {}),
+          ...(body.draft !== undefined ? { draft: body.draft } : {}),
+        });
+        const filesReport = files
+          ? await finalizeApprovedFiles(db, files, id, result.postId)
+          : null;
+        return { ...result, files: filesReport };
       });
-      const filesReport = files ? await finalizeApprovedFiles(db, files, id, result.postId) : null;
-      return c.json({ ...result, files: filesReport });
+      return c.json(report);
     }
     await keepTriage(db, id, {
       ...(reviewerId ? { reviewerId } : {}),

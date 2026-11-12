@@ -30,6 +30,12 @@ function open(path: string, viewer: Viewer = admin) {
   return { source, router };
 }
 
+/** 列に入れた判断を送り終わるまで待つ */
+async function sentAll() {
+  const progress = await screen.findByRole("region", { name: "判断の進み具合" });
+  await within(progress).findByText("送り終わりました");
+}
+
 describe("承認の画面", () => {
   it("確信度の低い提案に答えると承認でき、答えが記録されて次の下書きへ進む", async () => {
     const user = userEvent.setup();
@@ -50,7 +56,8 @@ describe("承認の画面", () => {
     expect(within(checklist).getByText("すべて確認済み")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "承認する" }));
 
-    expect(await screen.findByText("前の下書きを承認しました")).toBeTruthy();
+    expect(await screen.findByText("前の下書きを承認に回しました")).toBeTruthy();
+    await sentAll();
     await waitFor(() => expect(router.state.location.pathname).not.toBe(`/intake/${blog.id}`));
     const approved = await source.getIntake(blog.id);
     expect(approved.state).toBe("approved");
@@ -128,6 +135,111 @@ describe("承認の画面", () => {
   });
 });
 
+/** 判断を送ると、gate を開けるまで返さないデモ版の窓口（承認に時間がかかる場合） */
+class SlowDemoSource extends DemoSource {
+  private gates: (() => void)[] = [];
+  running = 0;
+  maxRunning = 0;
+  sent: string[] = [];
+  /** いちばん古い送信を終わらせる */
+  open() {
+    this.gates.shift()?.();
+  }
+  get waiting() {
+    return this.gates.length;
+  }
+  override async decide(...args: Parameters<DemoSource["decide"]>) {
+    this.sent.push(args[0]);
+    this.running++;
+    this.maxRunning = Math.max(this.maxRunning, this.running);
+    await new Promise<void>((resolve) => this.gates.push(resolve));
+    try {
+      return await super.decide(...args);
+    } finally {
+      this.running--;
+    }
+  }
+}
+
+describe("承認の順番待ち", () => {
+  it("承認を押すとすぐ次の下書きへ進み、送っている間に直したものは、送り終わっても消えない", async () => {
+    const user = userEvent.setup();
+    const source = new SlowDemoSource(0);
+    const router = createMemoryRouter(routes, { initialEntries: ["/intake"] });
+    render(
+      <Ctx.Provider value={{ source, viewer: admin }}>
+        <RouterProvider router={router} />
+      </Ctx.Provider>,
+    );
+    const ready = (await source.listIntake("pending")).filter((i) => i.reviewReasons.length === 0);
+    expect(ready.length).toBeGreaterThanOrEqual(2);
+    const first = ready[0]!;
+    await user.click(await screen.findByRole("link", { name: new RegExp(first.title ?? "") }));
+    await user.click(await screen.findByRole("button", { name: "承認する" }));
+
+    // 承認が終わるのを待たずに、次の下書きへ進む
+    expect(await screen.findByText("前の下書きを承認に回しました")).toBeTruthy();
+    const second = router.state.location.pathname;
+    expect(second).not.toBe(`/intake/${first.id}`);
+    const progress = screen.getByRole("region", { name: "判断の進み具合" });
+    expect(await within(progress).findByText("承認しています")).toBeTruthy();
+
+    // 次の下書きで作業を進める
+    await user.click(screen.getByText("判断のメモを付ける"));
+    await user.type(screen.getByPlaceholderText("判断のメモ（任意）"), "作業の途中");
+
+    // 前の承認が終わっても、開いている下書きは読み直さず、移りもしない
+    source.open();
+    expect(await within(progress).findByText("送り終わりました")).toBeTruthy();
+    expect(router.state.location.pathname).toBe(second);
+    expect(screen.getByPlaceholderText("判断のメモ（任意）")).toHaveProperty("value", "作業の途中");
+    expect(screen.queryByText("読み込んでいます")).toBeNull();
+    expect((await source.getIntake(first.id)).state).toBe("approved");
+  });
+
+  it("続けて押しても、1 件ずつ順に送り、同じ下書きは二重に送らない", async () => {
+    const user = userEvent.setup();
+    const source = new SlowDemoSource(0);
+    const router = createMemoryRouter(routes, { initialEntries: ["/intake"] });
+    render(
+      <Ctx.Provider value={{ source, viewer: admin }}>
+        <RouterProvider router={router} />
+      </Ctx.Provider>,
+    );
+    const ready = (await source.listIntake("pending")).filter((i) => i.reviewReasons.length === 0);
+    const [a, b] = [ready[0]!, ready[1]!];
+
+    // a を承認し、b を開いて保留にする（a はまだ送っている途中）
+    await user.click(await screen.findByRole("link", { name: new RegExp(a.title ?? "") }));
+    await user.click(await screen.findByRole("button", { name: "承認する" }));
+    await screen.findByText("前の下書きを承認に回しました");
+    await user.click(screen.getByRole("link", { name: new RegExp(b.title ?? "") }));
+    await user.click(await screen.findByRole("button", { name: "保留" }));
+
+    // 送っている a をもう一度開いても、もう押せない
+    await user.click(
+      within(screen.getByRole("region", { name: "判断の進み具合" })).getByRole("link", {
+        name: new RegExp(a.title ?? ""),
+      }),
+    );
+    expect(await screen.findByText(/承認しています。ほかの下書きを開いて/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "承認する" })).toBeNull();
+
+    await waitFor(() => expect(source.waiting).toBe(1));
+    source.open();
+    await waitFor(() => expect(source.waiting).toBe(1));
+    source.open();
+    await within(screen.getByRole("region", { name: "判断の進み具合" })).findByText(
+      "送り終わりました",
+    );
+
+    expect(source.sent).toEqual([a.id, b.id]);
+    expect(source.maxRunning).toBe(1);
+    expect((await source.getIntake(a.id)).state).toBe("approved");
+    expect((await source.getIntake(b.id)).state).toBe("on_hold");
+  });
+});
+
 describe("探す・投稿", () => {
   it("言葉で探し、投稿を開くと、素材を元の順番で見られる", async () => {
     const user = userEvent.setup();
@@ -192,7 +304,8 @@ describe("承認の画面のタグ付け", () => {
     expect(within(record).getByRole("button", { name: /仮名 ゆい/, pressed: false })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "承認する" }));
-    await screen.findByText("前の下書きを承認しました");
+    await screen.findByText("前の下書きを承認に回しました");
+    await sentAll();
 
     const approved = await source.getIntake("d2000000-0000-4000-8000-000000000002");
     const links = approved.draft.links ?? [];
@@ -258,7 +371,8 @@ describe("承認の画面のタグ付け", () => {
     expect(await within(events).findByText(/「まだ無い出来事」を作って紐付けました/)).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "承認する" }));
-    await screen.findByText("前の下書きを承認しました");
+    await screen.findByText("前の下書きを承認に回しました");
+    await sentAll();
     const approved = await source.getIntake("d2000000-0000-4000-8000-000000000001");
     const about = (approved.draft.links ?? []).filter((l) => l.role === "about");
     expect(about).toHaveLength(3);
