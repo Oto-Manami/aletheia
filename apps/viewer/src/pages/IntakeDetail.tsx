@@ -106,6 +106,31 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [draft, setDraft] = useState<DraftInput>(detail.draft);
+  // 取り込んだファイル（画像・保存した Web ページ）は、下書きとは別に読み、読めたものから出す
+  const [loaded, setLoaded] = useState<{
+    previews: Record<string, string>;
+    pageHtml: Record<string, string>;
+  }>({ previews: {}, pageHtml: {} });
+  useEffect(
+    () =>
+      source.loadIntakeFiles?.(detail, (file) =>
+        setLoaded((prev) => ({
+          previews: file.previewUrl
+            ? { ...prev.previews, [file.ref]: file.previewUrl }
+            : prev.previews,
+          pageHtml: file.html ? { ...prev.pageHtml, [file.ref]: file.html } : prev.pageHtml,
+        })),
+      ),
+    [source, detail],
+  );
+  const previews = useMemo(
+    () => ({ ...detail.previews, ...loaded.previews }),
+    [detail.previews, loaded.previews],
+  );
+  const pageHtml = useMemo(
+    () => ({ ...detail.pageHtml, ...loaded.pageHtml }),
+    [detail.pageHtml, loaded.pageHtml],
+  );
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<Decision | "reopen" | null>(null);
   const [failure, setFailure] = useState<{ message: string; issues: IntakeIssue[] } | null>(null);
@@ -309,7 +334,7 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
           initial={detail.draft}
           onChange={setDraft}
           labels={labels}
-          previews={detail.previews}
+          previews={previews}
           source={source}
           readOnly={!decidable || busy !== null}
           onLabel={(ref) => setLabels((prev) => new Map(prev).set(ref.id, ref.label))}
@@ -324,7 +349,7 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
             subject={photoSubject}
             candidates={candidateList}
             name={name}
-            previews={detail.previews}
+            previews={previews}
             readOnly={readOnly}
             chosenOnly={detail.chosenImagesOnly}
           />
@@ -334,7 +359,7 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
               詳しく見る・直す
               <span className="dirty">元の投稿・保存の状況、日付・URL・公開区分など</span>
             </summary>
-            <SourcePreview draft={draft} previews={detail.previews} pageHtml={detail.pageHtml} />
+            <SourcePreview draft={draft} previews={previews} pageHtml={pageHtml} />
             <DraftEditor
               draft={draft}
               onChange={setDraft}

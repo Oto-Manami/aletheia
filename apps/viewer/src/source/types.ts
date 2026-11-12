@@ -46,6 +46,16 @@ export interface IntakeIssue {
   message: string;
 }
 
+/** 下書きの素材 1 つ分の、読めたファイル */
+export interface IntakeFile {
+  /** 下書きの素材の ref */
+  ref: string;
+  /** 画像の表示用の URL */
+  previewUrl?: string;
+  /** 保存した Web ページの HTML */
+  html?: string;
+}
+
 export interface IntakeDetail extends IntakeSummary {
   draft: DraftInput;
   draftValid: boolean;
@@ -53,7 +63,7 @@ export interface IntakeDetail extends IntakeSummary {
   reviewNote: string | null;
   /** 素材（下書きの ref）ごとの、取り込んだファイルの表示用の URL */
   previews: Record<string, string>;
-  /** 素材（下書きの ref）ごとの、保存した Web ページの HTML（デモ版のみ） */
+  /** 素材（下書きの ref）ごとの、保存した Web ページの HTML */
   pageHtml: Record<string, string>;
   /** 情報源の有料・無料の既定（無料の情報源なら、承認の画面で公開区分を選ばせない） */
   channelAvailability: string | null;
@@ -443,6 +453,12 @@ export interface ArchiveSource {
   /** その状態の本当の件数（一覧の上限に関わらない） */
   countIntake(state: IntakeState): Promise<number>;
   getIntake(id: string): Promise<IntakeDetail>;
+  /**
+   * 下書きに付いたファイル（取り込んだ画像・保存した Web ページ）を読む。数が多く大きいので、下書きとは別に読み、
+   * 読めたものから onFile で知らせる。戻り値を呼ぶと、読むのをやめて片付ける。
+   * 無ければ、getIntake の previews・pageHtml だけを使う（デモ版）
+   */
+  loadIntakeFiles?(detail: IntakeDetail, onFile: (file: IntakeFile) => void): () => void;
   /** 承認・却下・保留。承認では、直した下書きを一緒に送れる。filesFailed は保存できなかったファイルの数 */
   decide(
     id: string,

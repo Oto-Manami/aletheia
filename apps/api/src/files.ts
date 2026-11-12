@@ -122,6 +122,25 @@ export async function assertStagedFiles(
   }
 }
 
+/**
+ * 下書きに付いた仮置きのファイルのうち、SHA-256 が合うものの中身を読む（承認の画面で画像・保存したページを見せる）。
+ * 下書きに記録の無いファイル・読めないファイル（却下して片付けた後など）は null
+ */
+export async function readStagedFile(
+  files: FileStore,
+  stagedFiles: unknown,
+  sha256: string,
+): Promise<{ bytes: Uint8Array; contentType: string | null; name: string } | null> {
+  const staged = stagedFilesOf(stagedFiles, files.provider).find((f) => f.sha256 === sha256);
+  if (!staged) return null;
+  try {
+    const bytes = await files.get(staged.storage_key);
+    return { bytes, contentType: staged.content_type, name: staged.name };
+  } catch {
+    return null;
+  }
+}
+
 function stagedFilesOf(value: unknown, provider: string): StagedFile[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((v) => {

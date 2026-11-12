@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { seed } from "@aletheia/db/testing/fixtures";
 import { describe, expect, it, vi } from "vitest";
 import type { StagedFile } from "../src/files.ts";
-import { type Ctx, withApi } from "./helpers.ts";
+import { type Ctx, discordUser, tokenFor, withApi } from "./helpers.ts";
 
 type Seed = Awaited<ReturnType<typeof seed>>;
 
@@ -431,5 +431,44 @@ describe("ファイルの保存のやり直し", () => {
         (await ctx.call("POST", "/posts/00000000-0000-4000-8000-000000000000/files/retry", {}))
           .status,
       ).toBe(404);
+    }));
+});
+
+describe("下書きに付いた仮置きのファイルを見せる", () => {
+  it("作業者には中身を返し、閲覧者・下書きに無いファイルには返さない", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const staged = await stage(ctx, "1101");
+      const id = await intakeWith(ctx, d, [staged]);
+
+      const ok = await ctx.call("GET", `/intake/${id}/files/${staged.sha256}`);
+      expect(ok.status).toBe(200);
+      expect(ok.headers.get("content-type")).toBe("image/jpeg");
+      // 保存したページ（ほかのサイトの HTML）を、API の場所のページとして動かさない
+      expect(ok.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(ok.headers.get("content-security-policy")).toContain("sandbox");
+      expect(new Uint8Array(await ok.arrayBuffer())).toEqual(photo);
+
+      const worker = await tokenFor(
+        await discordUser(ctx.c, "77777777-7777-4777-8777-777777777777", "worker"),
+      );
+      expect(
+        (await ctx.call("GET", `/intake/${id}/files/${staged.sha256}`, undefined, worker)).status,
+      ).toBe(200);
+      // 承認の前の素材は公開区分が決まっていないので、閲覧者には返さない
+      const viewer = await tokenFor(
+        await discordUser(ctx.c, "88888888-8888-4888-8888-888888888888", "viewer"),
+      );
+      expect(
+        (await ctx.call("GET", `/intake/${id}/files/${staged.sha256}`, undefined, viewer)).status,
+      ).toBe(403);
+      expect(
+        (await ctx.call("GET", `/intake/${id}/files/${staged.sha256}`, undefined, null)).status,
+      ).toBe(401);
+
+      // この下書きに記録の無いファイル（ほかの下書きのファイルなど）は返さない
+      const other = "0".repeat(64);
+      expect((await ctx.call("GET", `/intake/${id}/files/${other}`)).status).toBe(404);
+      expect((await ctx.call("GET", `/intake/${id}/files/not-a-hash`)).status).toBe(400);
     }));
 });
