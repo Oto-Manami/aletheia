@@ -131,7 +131,10 @@ export interface AssetCard {
   publishedDate: string | null;
   mediaType: string;
   title: string | null;
-  /** 一覧に出す画像の URL（元のページの画像。無ければ出さない） */
+  /**
+   * 一覧に出す画像の URL。保存した画像を読める版（assetThumbnail があるもの）では、保存した画像を読めなかったときの
+   * 代わり（元のページの画像）。無ければ出さない
+   */
   imageUrl: string | null;
   /** 保存した原本を開く URL */
   openUrl: string | null;
@@ -453,6 +456,11 @@ export interface ArchiveSource {
   /** その状態の本当の件数（一覧の上限に関わらない） */
   countIntake(state: IntakeState): Promise<number>;
   getIntake(id: string): Promise<IntakeDetail>;
+  /**
+   * 素材の縮めた画像（保存した原本から作ったもの）の表示用の URL を返す。読めなければ null。
+   * 使い終わったら release を呼ぶ。無ければ、AssetCard.imageUrl を使う（デモ版）
+   */
+  assetThumbnail?(assetId: string): Promise<{ url: string; release: () => void } | null>;
   /**
    * 下書きに付いたファイル（取り込んだ画像・保存した Web ページ）を読む。数が多く大きいので、下書きとは別に読み、
    * 読めたものから onFile で知らせる。戻り値を呼ぶと、読むのをやめて片付ける。

@@ -10,5 +10,7 @@ export {
   safeSegment,
   STAGING,
   stagingLocation,
+  THUMBNAILS,
+  thumbnailLocation,
 } from "./naming.ts";
 export type { FileStore, FolderEntry, FolderPath, FolderStore, StoredFile } from "./types.ts";

@@ -2,7 +2,8 @@
 # ファイル実体の 2 つ目の控え（設計書 決定記録 0023）
 #
 # Google Drive のアーカイブのフォルダを、この機械のディスクに写す。Drive は読み取りだけの権限で読み、
-# 控えの側から Drive を変えることはない。承認待ちの場所（_staging）は写さない。
+# 控えの側から Drive を変えることはない。承認待ちの場所（_staging）と、
+# 一覧用の縮めた画像（_thumbnails。原本から作り直せる）は写さない。
 #
 #   mirror.sh setup   Drive を読み取りだけで読む設定（rclone の remote）を作る（初回だけ。ブラウザで承認する）
 #   mirror.sh size    写す対象の件数と大きさを表示する（何も写さない）
@@ -18,7 +19,7 @@ dir="${MIRROR_DIR:-$HOME/file-mirror}"
 keep_days="${KEEP_DAYS:-90}"
 min_free_gb="${MIN_FREE_GB:-20}"
 today="$(TZ=Asia/Tokyo date +%F)"
-filters=(--exclude "/_staging/**")
+filters=(--exclude "/_staging/**" --exclude "/_thumbnails/**")
 drive_opts=(--drive-skip-gdocs)
 
 log() { echo "$*"; }

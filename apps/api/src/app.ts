@@ -21,6 +21,7 @@
 // | POST     | /intake/:id/restore       | 言及なしを取り消して振り分け待ちへ |
 // | POST     | /resolve                  | URL から情報源と外部 ID を判定する |
 // | POST     | /assets/:id/remove        | 要らない素材を外す（assets.ts）     |
+// | GET      | /assets/:id/thumbnail     | 素材の縮めた画像（一覧用。保存した原本から作る） |
 // | POST     | /files/staging            | ファイルを承認待ちの場所に保存する |
 // | GET      | /intake/:id/files/:sha256 | 下書きに付いた仮置きのファイルの中身（作業者・運営者） |
 // | GET/POST | /events・/entities        | 出来事と作品・相手を作る・直す（events.ts） |
@@ -172,6 +173,8 @@ function idParam(value: string): string {
 export interface AppOptions {
   /** ブラウザから呼んでよい閲覧サイトの URL（オリジン）。無ければブラウザからは呼べない */
   viewerOrigins?: string[];
+  /** 一覧用の縮めた画像の保存先。無ければ、原本と同じ保存先に置く */
+  thumbnailFiles?: FileStore;
 }
 
 export { matchUrl } from "./urls.ts";
@@ -224,7 +227,7 @@ export function createApp(
   app.use("/assets/*", requireMember(db, auth), writesNeedWorker);
   app.use("/posts/*", requireMember(db, auth), writesNeedWorker);
   registerEventRoutes(app, db);
-  registerAssetRoutes(app, db, files);
+  registerAssetRoutes(app, db, files, options.thumbnailFiles);
 
   /** 承認済みの投稿のファイルの保存をやり直す（承認の後に保存できなかったもの。仮置きの場所に残っていれば移す） */
   app.post("/posts/:id/files/retry", async (c) => {

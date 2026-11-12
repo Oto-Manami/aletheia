@@ -105,3 +105,17 @@ export function extensionOf(filename: string, contentType: string | null): strin
   };
   return known[contentType ?? ""] ?? "bin";
 }
+
+export const THUMBNAILS = "_thumbnails";
+
+/**
+ * 一覧用の縮めた画像の置き場所。原本とは別のフォルダーに、素材の ID で置く
+ * （原本から作り直せるもの。消えても、次に見るときに作り直す）
+ */
+export function thumbnailLocation(assetId: string, extension: string) {
+  const ext = safeSegment(extension.replace(/^\./, "").toLowerCase()) || "bin";
+  return {
+    folder: [THUMBNAILS, safeSegment(assetId.slice(0, 2))] as FolderPath,
+    name: `${safeSegment(assetId)}.${ext}`,
+  };
+}
