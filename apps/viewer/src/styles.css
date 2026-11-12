@@ -2655,6 +2655,60 @@ details.more[open] > summary {
   color: var(--muted);
 }
 
+/* 判断の順番待ちの列（押したらすぐ列に入れ、1 件ずつ送る） */
+.queue-state {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--info-ink);
+}
+.queue-done .queue-state,
+.queue-state.queue-done {
+  color: var(--success-ink);
+}
+.queue-failed .queue-state,
+.queue-state.queue-failed {
+  color: var(--danger);
+}
+.queue-notice {
+  padding: 8px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--info-bg);
+  color: var(--info-ink);
+  font-size: 13px;
+}
+.queue-notice.queue-done {
+  background: var(--success-bg);
+  color: var(--success-ink);
+}
+.decision-progress {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.decision-progress-head {
+  margin: 0 0 6px;
+  font-weight: 500;
+}
+.decision-progress ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.decision-progress li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.decision-progress li > a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
 /* ---------------------------------------------------------------- 出来事 */
 
 .events-head {

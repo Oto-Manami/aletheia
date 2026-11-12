@@ -19,10 +19,10 @@ import {
   type IntakeDetail,
   type IntakeIssue,
   type RefLabel,
-  SourceError,
 } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
-import { useLayout } from "./Layout.tsx";
+import { queueLabel, useIntakeOutlet } from "./IntakeList.tsx";
+import { useQueued } from "./Layout.tsx";
 
 const STATE_LABELS = {
   triage: "振り分け待ち",
@@ -32,10 +32,11 @@ const STATE_LABELS = {
   rejected: "却下",
 } as const;
 
-const DONE_LABELS: Record<Decision, string> = {
-  approve: "承認しました",
-  reject: "却下しました",
-  hold: "保留にしました",
+/** 判断を列に入れて次の下書きへ進んだときに、移った先で見せる言葉 */
+const QUEUED_LABELS: Record<Decision, string> = {
+  approve: "承認に回しました",
+  reject: "却下に回しました",
+  hold: "保留に回しました",
 };
 
 function issuesOf(draft: DraftInput): IntakeIssue[] {
@@ -85,8 +86,8 @@ function refsOf(draft: DraftInput): { id: string; type: RefLabel["type"] }[] {
 export function IntakeDetailPage() {
   const { id = "" } = useParams();
   const { source } = useApp();
-  const layout = useLayout();
-  const [detail] = useLoad(() => source.getIntake(id), [source, id, layout.version]);
+  // 開いている下書きは、ほかの判断が終わっても読み直さない（直している途中のものを消さない）
+  const [detail, reload] = useLoad(() => source.getIntake(id), [source, id]);
 
   if (detail.status === "loading") return <p className="quiet">読み込んでいます</p>;
   if (detail.status === "error") {
@@ -97,15 +98,36 @@ export function IntakeDetailPage() {
     );
   }
   // 下書きが変わったら、編集の状態を作り直す
-  return <IntakeEditor key={`${detail.data.id}:${detail.data.state}`} detail={detail.data} />;
+  return (
+    <IntakeEditor
+      key={`${detail.data.id}:${detail.data.state}`}
+      detail={detail.data}
+      reload={reload}
+    />
+  );
 }
 
-function IntakeEditor({ detail }: { detail: IntakeDetail }) {
+function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => void }) {
   const { source } = useApp();
-  const layout = useLayout();
+  const layout = useIntakeOutlet();
+  const { decisions } = layout;
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [draft, setDraft] = useState<DraftInput>(detail.draft);
+  // 判断の前に直していたものがあれば、そこから続ける（別の下書きを開いて戻ってきたとき）
+  const [draft, setDraftState] = useState<DraftInput>(
+    () =>
+      (detail.state === "pending" || detail.state === "on_hold"
+        ? decisions.editOf(detail.id)
+        : undefined) ?? detail.draft,
+  );
+  const setDraft = (next: DraftInput) => {
+    setDraftState(next);
+    decisions.saveEdit(detail.id, next);
+  };
+  const queued = useQueued(decisions);
+  const entry = queued.findLast((e) => e.id === detail.id);
+  // 列で待っている・送っているもの・送り終えたものは、もう直せない
+  const sent = entry !== undefined && entry.status !== "failed";
   // 取り込んだファイル（画像・保存した Web ページ）は、下書きとは別に読み、読めたものから出す
   const [loaded, setLoaded] = useState<{
     previews: Record<string, string>;
@@ -132,17 +154,15 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
     [detail.pageHtml, loaded.pageHtml],
   );
   const [note, setNote] = useState("");
-  const [busy, setBusy] = useState<Decision | "reopen" | null>(null);
-  const [failure, setFailure] = useState<{ message: string; issues: IntakeIssue[] } | null>(null);
+  const [busy, setBusy] = useState<"reopen" | null>(null);
+  const [reopenFailure, setReopenFailure] = useState<string | null>(null);
+  // 送って失敗したときは、その理由を見せる（直したところは残っている）
+  const failure: { message: string; issues: IntakeIssue[] } | null =
+    entry?.status === "failed" ? (entry.failure ?? null) : null;
   // 前の下書きを判断して、この下書きに進んできたときは、その結果を見せる
   const location = useLocation();
   const [done] = useState<string | null>(
     (location.state as { done?: string } | null)?.done ?? null,
-  );
-  // 承認の後にファイルを保存できなかったときは、投稿の画面でやり直せることを知らせる
-  const [filesFailed] = useState(
-    (location.state as { filesFailed?: { count: number; postId: string } } | null)?.filesFailed ??
-      null,
   );
   const [labels, setLabels] = useState(new Map<string, string>());
   const [candidates] = useLoad(() => source.listTagCandidates(), [source]);
@@ -175,7 +195,7 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
     () => reviewItems(draft, detail.draft).filter((i) => !i.resolved).length,
     [draft, detail.draft],
   );
-  const decidable = detail.state === "pending" || detail.state === "on_hold";
+  const decidable = (detail.state === "pending" || detail.state === "on_hold") && !sent;
   const readOnly = !decidable || busy !== null;
   // 出来事をその場で作るときに、押せば入る日付の候補（題名・本文に出てくる日付。決定記録 0051）
   const eventDates = useMemo(() => {
@@ -197,60 +217,52 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
   /** 却下を取り消し、承認待ちに戻す（却下した直近 10 件だけ。決定記録 0043） */
   const reopen = async () => {
     setBusy("reopen");
-    setFailure(null);
+    setReopenFailure(null);
     try {
       await source.reopenIntake(detail.id);
       layout.changed();
       void navigate(
-        { pathname: `/intake/${detail.id}` },
+        { pathname: `/intake/${detail.id}`, search: params.toString() },
         { replace: true, state: { done: "承認待ちに戻しました" } },
       );
+      reload();
     } catch (e) {
-      setFailure({
-        message: e instanceof Error ? e.message : String(e),
-        issues: e instanceof SourceError ? e.issues : [],
-      });
-    } finally {
+      setReopenFailure(e instanceof Error ? e.message : String(e));
       setBusy(null);
     }
   };
 
-  const decide = async (decision: Decision) => {
-    setBusy(decision);
-    setFailure(null);
-    try {
-      // 次の承認待ちへ進むため、判断の前に一覧を読んでおく
-      const pending = await source.listIntake("pending");
-      const outcome = await source.decide(detail.id, decision, {
-        // 画面で見せたタグ付け（写っている人・本文に出てくる人）は、人が確かめたものとして記録する
-        ...(decision === "approve" ? { draft: confirmPeopleTags(draft) } : {}),
-        ...(note.trim() ? { note: note.trim() } : {}),
-      });
-      const label = DONE_LABELS[decision];
-      layout.changed();
-      // 承認待ちの一覧を見ているときは、次の下書きへ進む。結果は移った先で見せる
-      const next = params.get("state") ? undefined : pending.find((p) => p.id !== detail.id);
-      void navigate(
-        { pathname: `/intake/${next?.id ?? detail.id}`, search: params.toString() },
-        {
-          replace: true,
-          state: {
-            done: label,
-            ...(outcome.filesFailed && outcome.postId
-              ? { filesFailed: { count: outcome.filesFailed, postId: outcome.postId } }
-              : {}),
-          },
-        },
-      );
-    } catch (e) {
-      setFailure({
-        message: e instanceof Error ? e.message : String(e),
-        issues: e instanceof SourceError ? e.issues : [],
-      });
-    } finally {
-      setBusy(null);
-    }
+  /**
+   * 判断を列に入れ、すぐ次の下書きへ進む。列は 1 件ずつ順に送り、送っている間もほかの下書きを直せる。
+   * 結果は一覧の上の「判断の進み具合」に出る（失敗したものは、開き直すと理由と直したところが残っている）
+   */
+  const decide = (decision: Decision) => {
+    const accepted = decisions.enqueue({
+      id: detail.id,
+      title: draft.post.title ?? detail.title,
+      decision,
+      // 画面で見せたタグ付け（写っている人・本文に出てくる人）は、人が確かめたものとして記録する
+      ...(decision === "approve" ? { draft: confirmPeopleTags(draft) } : {}),
+      ...(note.trim() ? { note: note.trim() } : {}),
+    });
+    if (!accepted) return;
+    // 承認待ちの一覧を見ているときは、まだ判断していない次の下書きへ進む
+    const next = params.get("state") ? undefined : nextUndecided(layout.listIds, detail.id);
+    if (!next) return;
+    void navigate(
+      { pathname: `/intake/${next}`, search: params.toString() },
+      { replace: true, state: { done: QUEUED_LABELS[decision] } },
+    );
   };
+
+  /** 一覧で、この下書きの後ろ（無ければ前）にある、まだ列に入れていない下書き */
+  function nextUndecided(ids: string[] | null, current: string): string | undefined {
+    if (!ids) return undefined;
+    const open = (id: string) =>
+      id !== current && !queued.some((e) => e.id === id && e.status !== "failed");
+    const at = ids.indexOf(current);
+    return ids.slice(at + 1).find(open) ?? ids.slice(0, Math.max(at, 0)).find(open);
+  }
 
   const blocked =
     issues.length > 0
@@ -317,16 +329,22 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
 
       {done && (
         <p className="done" role="status">
-          {decidable ? `前の下書きを${done}` : done}
+          {detail.state === "pending" || detail.state === "on_hold" ? `前の下書きを${done}` : done}
         </p>
       )}
-      {filesFailed && (
+      {entry && entry.status !== "failed" && (
+        <p className={`queue-notice queue-${entry.status}`} role="status">
+          {queueLabel(entry)}
+          {entry.status === "done" ? "。" : "。ほかの下書きを開いて、そのまま作業を続けられます。"}
+        </p>
+      )}
+      {entry?.status === "done" && entry.outcome?.filesFailed && entry.outcome.postId ? (
         <p className="error" role="alert">
-          ファイル {filesFailed.count} 件を保存できませんでした（承認はできています）。
-          <Link to={`/posts/${filesFailed.postId}`}>投稿の画面</Link>
+          ファイル {entry.outcome.filesFailed} 件を保存できませんでした（承認はできています）。
+          <Link to={`/posts/${entry.outcome.postId}`}>投稿の画面</Link>
           の「ファイルの保存をやり直す」でやり直せます。
         </p>
-      )}
+      ) : null}
 
       {reviewItems(draft, detail.draft).length > 0 && (
         <ReviewChecklist
@@ -405,9 +423,9 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
               >
                 {busy === "reopen" ? "戻しています" : "承認待ちに戻す"}
               </button>
-              {failure && (
+              {reopenFailure && (
                 <p className="error" role="alert">
-                  {failure.message}
+                  {reopenFailure}
                 </p>
               )}
             </div>
@@ -419,9 +437,9 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
                 type="button"
                 className="button primary block"
                 disabled={busy !== null || blocked !== null}
-                onClick={() => void decide("approve")}
+                onClick={() => decide("approve")}
               >
-                {busy === "approve" ? "承認しています" : "承認する"}
+                {failure ? "もう一度承認する" : "承認する"}
               </button>
               {blocked && <p className="decision-blocked">{blocked}</p>}
               <div className="decision-secondary">
@@ -429,17 +447,17 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
                   type="button"
                   className="button"
                   disabled={busy !== null || detail.state === "on_hold"}
-                  onClick={() => void decide("hold")}
+                  onClick={() => decide("hold")}
                 >
-                  {busy === "hold" ? "保留にしています" : "保留"}
+                  保留
                 </button>
                 <button
                   type="button"
                   className="button danger"
                   disabled={busy !== null}
-                  onClick={() => void decide("reject")}
+                  onClick={() => decide("reject")}
                 >
-                  {busy === "reject" ? "却下しています" : "却下"}
+                  却下
                 </button>
               </div>
               <details className="decision-note">
@@ -456,6 +474,7 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
               </details>
               {failure && (
                 <div className="error" role="alert">
+                  <p>送れませんでした。直したところは残っています。</p>
                   <p>{failure.message}</p>
                   {failure.issues.length > 0 && (
                     <ul>

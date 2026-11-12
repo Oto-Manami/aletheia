@@ -56,7 +56,9 @@ export function EventsPage() {
   const [list] = useLoad(
     // 日程（まとまりの各日・各部）は一覧に出さず、まとまりの画面で見せる（設計書 決定記録 0034）
     () => source.listEvents({ query, kind, schedule: "hide" }),
-    [source, query, kind, layout.version],
+    [source, query, kind],
+    // 承認などで変わったときは、今の一覧を見せたまま裏で読み直す
+    [layout.version],
   );
 
   // 入力が落ち着いてから URL に反映して探す

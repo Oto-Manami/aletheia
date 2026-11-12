@@ -171,12 +171,25 @@ export function parseDraft(value: unknown): Draft {
   return result.data;
 }
 
+/**
+ * 承認を 1 件ずつ順に通すための鍵（PostgreSQL の advisory lock の番号）。同じファイル・同じ人物を含む
+ * 下書きを同時に承認すると、どちらも「まだ無い」と見て二重に保存・作成しうるため、承認はデータベースの中で
+ * 順番待ちにする。鍵はトランザクションの終わりに外れる
+ */
+export const APPROVAL_LOCK = 4_102_026_001;
+
+/** 承認の順番を取る（ほかの承認が終わるまで待つ） */
+export async function lockApprovals(trx: Trx): Promise<void> {
+  await sql`select pg_advisory_xact_lock(${APPROVAL_LOCK}::bigint)`.execute(trx);
+}
+
 /** 既に始まっているトランザクションの中で承認する（テストや、複数の承認をまとめるときに使う） */
 export async function approveIntakeIn(
   trx: Trx,
   intakeId: string,
   options: ApproveOptions = {},
 ): Promise<ApproveResult> {
+  await lockApprovals(trx);
   const intake = await lockUndecided(trx, intakeId);
   // 振り分けで「言及あり」として残したもの・情報源の設定があるものは、写っている人を付けた画像だけを
   // 素材にする（決定記録 0035・0037・0040）

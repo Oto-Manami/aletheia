@@ -10,9 +10,10 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { NavLink, Outlet, useOutletContext } from "react-router";
 import { useApp } from "../context.tsx";
+import { DecisionQueue, type QueuedDecision } from "../decision-queue.ts";
 import { TRIAGE_ROUTES, type TriageRoute } from "../triage-routes.ts";
 import { useLoad } from "../use-load.ts";
 
@@ -20,10 +21,17 @@ export interface LayoutOutlet {
   /** 承認・却下などで件数が変わったときに呼ぶ */
   changed: () => void;
   version: number;
+  /** 承認・保留・却下の順番待ちの列（画面を移っても続く） */
+  decisions: DecisionQueue;
 }
 
 export function useLayout(): LayoutOutlet {
   return useOutletContext<LayoutOutlet>();
+}
+
+/** 順番待ちの列の今の中身（変わると描き直す） */
+export function useQueued(queue: DecisionQueue): readonly QueuedDecision[] {
+  return useSyncExternalStore(queue.subscribe, queue.snapshot);
 }
 
 function Brand() {
@@ -45,10 +53,21 @@ export function Layout() {
   const [version, setVersion] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const changed = useCallback(() => setVersion((v) => v + 1), []);
+  // 判断は列に入れて 1 件ずつ送る。1 件終わるたびに、一覧と件数を裏で読み直す
+  const [decisions] = useState(() => new DecisionQueue(source, changed));
+  useEffect(() => {
+    // 送り終わる前にページを閉じようとしたら確かめる
+    const warn = (e: BeforeUnloadEvent) => {
+      if (decisions.busy) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [decisions]);
   // 件数だけを 1 回で数える（一覧の上限に関わらない本当の件数。振り分け待ちはブログとニュースで分ける）
   const [counts] = useLoad(
     () => (viewer.canWork ? source.menuCounts() : Promise.resolve(null)),
-    [source, viewer.canWork, version],
+    [source, viewer.canWork],
+    [version],
   );
   const pendingCount = counts.status === "ready" && counts.data ? counts.data.pending : null;
   const triageCount = (route: TriageRoute) =>
@@ -143,7 +162,7 @@ export function Layout() {
             デモ版です。人物・情報源はすべて架空で、操作はこの画面の中だけで反映されます。
           </p>
         )}
-        <Outlet context={{ changed, version } satisfies LayoutOutlet} />
+        <Outlet context={{ changed, version, decisions } satisfies LayoutOutlet} />
       </main>
     </div>
   );
