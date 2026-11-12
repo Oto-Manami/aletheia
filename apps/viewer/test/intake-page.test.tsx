@@ -218,7 +218,7 @@ describe("承認の画面のタグ付け", () => {
     expect(within(article).getByText("本文をすべて読む")).toBeTruthy();
   });
 
-  it("候補のプルダウンから選ぶか、題名で探して紐付ける。承認の画面では出来事を作らない", async () => {
+  it("候補のプルダウンから選ぶか、題名で探して紐付ける。合う出来事が無ければその場で作れる", async () => {
     const user = userEvent.setup();
     const { source } = open("/intake/d2000000-0000-4000-8000-000000000001");
     const events = await screen.findByRole("region", { name: /出来事/ });
@@ -246,19 +246,21 @@ describe("承認の画面のタグ付け", () => {
     expect(
       within(events).getByRole("button", { name: "冬の試験公演 1 日目 の紐付けを外す" }),
     ).toBeTruthy();
-    // 承認の画面では作らない（設計書 決定記録 0030・0033）
+    // 合う出来事が無ければ、承認の画面でもその場で作って紐付けられる（設計書 決定記録 0051）
     await user.type(combo, "まだ無い出来事");
-    expect(within(events).queryByRole("option", { name: /で新しく作る/ })).toBeNull();
-    expect(
-      within(events)
-        .getByRole("link", { name: /出来事の画面で作って/ })
-        .getAttribute("href"),
-    ).toBe("#/events/new");
+    await user.click(
+      await within(events).findByRole("option", { name: /「まだ無い出来事」で新しく作る/ }),
+    );
+    const create = within(events).getByRole("group", { name: "出来事をその場で作る" });
+    expect(within(create).getByText(/この投稿に紐付けます/)).toBeTruthy();
+    await user.click(within(create).getByRole("button", { name: "作って紐付ける" }));
+    await within(events).findByRole("button", { name: "まだ無い出来事 の紐付けを外す" });
+    expect(await within(events).findByText(/「まだ無い出来事」を作って紐付けました/)).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "承認する" }));
     await screen.findByText("前の下書きを承認しました");
     const approved = await source.getIntake("d2000000-0000-4000-8000-000000000001");
     const about = (approved.draft.links ?? []).filter((l) => l.role === "about");
-    expect(about).toHaveLength(2);
+    expect(about).toHaveLength(3);
   });
 });

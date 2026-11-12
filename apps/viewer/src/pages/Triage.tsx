@@ -307,6 +307,7 @@ function NewsEvents({
         dates={dates}
         required
         allowCreate
+        subject="このニュース"
         title="このニュースを紐付ける出来事"
       />
       {error && (
