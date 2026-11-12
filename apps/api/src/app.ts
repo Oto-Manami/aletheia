@@ -22,6 +22,7 @@
 // | POST     | /resolve                  | URL から情報源と外部 ID を判定する |
 // | POST     | /assets/:id/remove        | 要らない素材を外す（assets.ts）     |
 // | POST     | /files/staging            | ファイルを承認待ちの場所に保存する |
+// | GET      | /intake/:id/files/:sha256 | 下書きに付いた仮置きのファイルの中身（作業者・運営者） |
 // | GET/POST | /events・/entities        | 出来事と作品・相手を作る・直す（events.ts） |
 
 import type { Database } from "@aletheia/db/client";
@@ -66,6 +67,7 @@ import {
   assertStagedFiles,
   finalizeApprovedFiles,
   removeStagedFiles,
+  readStagedFile,
   retryPostFiles,
   stageFile,
 } from "./files.ts";
@@ -368,6 +370,39 @@ export function createApp(
       draft_valid: check.success,
       issues: check.error?.issues ?? [],
       chosen_images_only: await usesChosenImagesOnly(db, item),
+    });
+  });
+
+  /**
+   * 下書きに付いた仮置きのファイルの中身を返す（承認の画面で、取り込んだ画像と保存したページを見せる）。
+   * 承認の前の素材は公開区分が決まっていないので、作業者・運営者だけに返す
+   */
+  app.get("/intake/:id/files/:sha256", async (c) => {
+    assertWorker(c.get("actor"));
+    if (!files) throw new HTTPException(503, { message: "ファイルの保存先が設定されていません" });
+    const id = idParam(c.req.param("id"));
+    const sha256 = c.req.param("sha256");
+    if (!/^[0-9a-f]{64}$/.test(sha256)) {
+      throw new HTTPException(400, { message: "ファイルの指定が正しくありません" });
+    }
+    const item = await db
+      .selectFrom("intake_items")
+      .select("staged_files")
+      .where("id", "=", id)
+      .executeTakeFirst();
+    const file = item ? await readStagedFile(files, item.staged_files, sha256) : null;
+    if (!file) throw new HTTPException(404, { message: "見つかりません" });
+    return new Response(file.bytes, {
+      headers: {
+        "content-type": file.contentType ?? "application/octet-stream",
+        "content-length": String(file.bytes.byteLength),
+        // 中身は SHA-256 で決まるので変わらない。ログインした人の手元にだけ残す
+        "cache-control": "private, max-age=86400, immutable",
+        // 保存したページ（ほかのサイトの HTML）を、この API の場所のページとして動かさない
+        "x-content-type-options": "nosniff",
+        "content-security-policy": "sandbox; default-src 'none'",
+        "content-disposition": "attachment",
+      },
     });
   });
 

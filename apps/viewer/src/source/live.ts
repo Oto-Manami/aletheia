@@ -23,6 +23,7 @@ import {
   type SourcePreview,
   type ParticipantStatus,
   type IntakeDetail,
+  type IntakeFile,
   type IntakeIssue,
   type IntakeState,
   type IntakeSummary,
@@ -212,6 +213,18 @@ export class LiveSource implements ArchiveSource {
     return json as T;
   }
 
+  /** API からファイルの中身を読む */
+  private async apiBlob(path: string): Promise<Blob> {
+    const { data } = await this.supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) throw new SourceError("ログインが必要です", 401);
+    const res = await fetch(new URL(path, this.apiUrl), {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new SourceError(`ファイルを読めませんでした（${res.status}）`, res.status);
+    return res.blob();
+  }
+
   async viewer(): Promise<Viewer> {
     const { data } = await this.supabase.auth.getUser();
     const user = data.user;
@@ -273,11 +286,47 @@ export class LiveSource implements ArchiveSource {
       draftValid: draft_valid,
       issues,
       reviewNote: item.review_note,
-      // 承認待ちのファイルの表示は、API がファイルを返せるようになってから
+      // 取り込んだファイルは数が多く大きいので、別に読む（loadIntakeFiles）
       previews: {},
       pageHtml: {},
       channelAvailability: channel?.availability ?? null,
       chosenImagesOnly: chosen_images_only === true,
+    };
+  }
+
+  loadIntakeFiles(detail: IntakeDetail, onFile: (file: IntakeFile) => void): () => void {
+    // 取り込んだファイルがある素材（SHA-256 が付いている画像と、保存した Web ページ）
+    const targets = (detail.draft.assets ?? []).flatMap((a) =>
+      a.sha256 && (a.media_type === "image" || a.media_type === "webpage")
+        ? [{ ref: a.ref, sha256: a.sha256, page: a.media_type === "webpage" }]
+        : [],
+    );
+    const urls: string[] = [];
+    let stopped = false;
+    const next = async (): Promise<void> => {
+      for (let t = targets.shift(); t && !stopped; t = targets.shift()) {
+        try {
+          const blob = await this.apiBlob(
+            `/intake/${encodeURIComponent(detail.id)}/files/${t.sha256}`,
+          );
+          if (stopped) return;
+          if (t.page) {
+            onFile({ ref: t.ref, html: await blob.text() });
+          } else {
+            const url = URL.createObjectURL(blob);
+            urls.push(url);
+            onFile({ ref: t.ref, previewUrl: url });
+          }
+        } catch {
+          // 読めないファイル（片付けた後・保存先に届かない）は、表示しないだけ
+        }
+      }
+    };
+    // 保存先に負担をかけないよう、同時に読むのは 4 つまで
+    for (let i = 0; i < 4; i++) void next();
+    return () => {
+      stopped = true;
+      for (const url of urls) URL.revokeObjectURL(url);
     };
   }
 
