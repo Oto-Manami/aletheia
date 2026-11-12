@@ -11,6 +11,7 @@ import { ReviewChecklist } from "../components/ReviewChecklist.tsx";
 import { SourcePreview } from "../components/SourcePreview.tsx";
 import { useApp } from "../context.tsx";
 import { formatInstant } from "../format.ts";
+import { newsDates } from "../source/news-dates.ts";
 import { draftWarnings, reviewItems } from "../source/summarize.ts";
 import { appearsOf, authorsOf, confirmPeopleTags } from "../source/tags.ts";
 import {
@@ -151,6 +152,22 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
   );
   const decidable = detail.state === "pending" || detail.state === "on_hold";
   const readOnly = !decidable || busy !== null;
+  // 出来事をその場で作るときに、押せば入る日付の候補（題名・本文に出てくる日付。決定記録 0051）
+  const eventDates = useMemo(() => {
+    const at = detail.draft.post.published_at ? new Date(detail.draft.post.published_at) : null;
+    return newsDates({
+      title: detail.draft.post.title ?? "",
+      body: (detail.draft.assets ?? [])
+        .flatMap((a) => a.texts ?? [])
+        .filter((t) => t.text_type === "body" || t.text_type === "caption")
+        .map((t) => t.content)
+        .join("\n"),
+      publishedDate:
+        at && !Number.isNaN(at.getTime())
+          ? new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(at)
+          : (detail.draft.post.published_date ?? null),
+    });
+  }, [detail.draft]);
 
   /** 却下を取り消し、承認待ちに戻す（却下した直近 10 件だけ。決定記録 0043） */
   const reopen = async () => {
@@ -345,6 +362,9 @@ function IntakeEditor({ detail }: { detail: IntakeDetail }) {
             name={name}
             onLabel={(ref) => setLabels((prev) => new Map(prev).set(ref.id, ref.label))}
             readOnly={readOnly}
+            dates={eventDates}
+            // 承認の画面は作業者・運営者だけが使う
+            allowCreate
           />
           {detail.state === "rejected" && (
             <div className="decision">

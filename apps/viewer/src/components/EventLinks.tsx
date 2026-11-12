@@ -2,8 +2,8 @@
 //
 // 候補は、題名の文字の重なりと日付の近さで関連の高い順に並べる（設計書 決定記録 0033）。上位を
 // 「関連が高そうな出来事」として先に出し、選ぶ欄は押すとプルダウンで開き、打つと絞り込める。
-// ニュースの振り分けでは、合う出来事が無ければ題名・種類・日付だけでその場で作れる（詳細は出来事の
-// 画面で入れる）。承認の画面では作らない（決定記録 0030）。
+// 合う出来事が無ければ、題名・種類・日付だけでその場で作れる（詳細は出来事の画面で入れる）。
+// ニュースの振り分けと承認の画面で使う（決定記録 0033・0051）。
 
 import type { DraftInput } from "@aletheia/intake/draft";
 import { CalendarPlus, ExternalLink, Plus, X } from "lucide-react";
@@ -76,6 +76,7 @@ export function EventLinks({
   required = false,
   allowCreate = false,
   title = "出来事",
+  subject = "この投稿",
 }: {
   draft: DraftInput;
   onChange: (d: DraftInput) => void;
@@ -86,9 +87,11 @@ export function EventLinks({
   dates?: string[];
   /** 紐付けが要るとき（ニュース）は「（任意）」を出さない */
   required?: boolean;
-  /** その場で作れるか（ニュースの振り分けだけ。決定記録 0033） */
+  /** その場で作れるか（作業者・運営者。決定記録 0033・0051） */
   allowCreate?: boolean;
   title?: string;
+  /** その場で作るときの案内で、紐付ける相手の呼び方 */
+  subject?: string;
 }) {
   const { source } = useApp();
   const id = useId();
@@ -317,6 +320,7 @@ export function EventLinks({
       {!readOnly && creating !== null && (
         <QuickEvent
           initialTitle={creating}
+          subject={subject}
           dates={days}
           onCancel={() => setCreating(null)}
           onCreated={(e) => {
@@ -337,11 +341,13 @@ export function EventLinks({
  */
 function QuickEvent({
   initialTitle,
+  subject,
   dates,
   onCancel,
   onCreated,
 }: {
   initialTitle: string;
+  subject: string;
   dates: readonly string[];
   onCancel: () => void;
   onCreated: (e: { id: string; title: string }) => void;
@@ -433,7 +439,8 @@ function QuickEvent({
         </div>
       )}
       <p className="field-hint">
-        公開の出来事として作り、このニュースに紐付けます。出演・作品・会場などの詳細は、出来事の画面で入れてください。
+        公開の出来事として作り、{subject}
+        に紐付けます。出演・作品・会場などの詳細は、出来事の画面で入れてください。
       </p>
       {error && (
         <p className="error" role="alert">
