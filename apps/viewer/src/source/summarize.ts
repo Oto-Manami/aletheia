@@ -2,7 +2,8 @@
 //
 // 承認する人に確かめてほしいことを「確認すること」として並べる。
 //   - 日付が無い
-//   - 人物への紐付けが無い（誰についての投稿か分からない）
+//   - 人物への紐付けも、出来事への紐付けも無い（誰・何についての投稿か分からない。ニュースなどは出来事に
+//     紐付ければ人物は無くてよい）
 //   - 機械が付けた、確信度の低い紐付け・言明（人が「合っている」か「違う」かを決める）
 //   - ファンなど第三者の投稿（公開してよいかを決める。決めたことは context.third_party_checked に残す）
 // 機械の提案を人が確かめたことは、提案の evidence.reviewed に残す（承認のときに一緒に記録される）
@@ -63,6 +64,24 @@ function hasPerson(draft: DraftInput): boolean {
 }
 
 /**
+ * 出来事に紐付けている（ニュースなどは、出来事に紐付ければ誰についての投稿かを選ばなくてよい）。
+ * 機械の確信度の低い提案は、人が「合っている」と確かめるまで数えない
+ */
+function hasEvent(draft: DraftInput): boolean {
+  return (draft.links ?? []).some(
+    (l) =>
+      (l.to_type === "event" || l.to_type === "event_item") &&
+      l.accepted !== false &&
+      (!isLowConfidence(l) || l.evidence?.["reviewed"] === true),
+  );
+}
+
+/** 誰・何についての投稿かが分かる（人物か出来事に紐付いている） */
+function hasSubject(draft: DraftInput): boolean {
+  return hasPerson(draft) || hasEvent(draft);
+}
+
+/**
  * 確認することの一覧（確かめ終わったものも含む）。
  * 日付と人物は、下書きを開いた時点で足りていれば出さない（ずっと足りているものは確かめなくてよい）
  */
@@ -97,8 +116,8 @@ export function reviewItems(draft: DraftInput, initial: DraftInput = draft): Rev
       resolved: confirmed || declined,
     });
   }
-  if (!hasPerson(initial)) {
-    items.push({ key: "person", kind: "no_person", resolved: hasPerson(draft) });
+  if (!hasSubject(initial)) {
+    items.push({ key: "person", kind: "no_person", resolved: hasSubject(draft) });
   }
   return items;
 }
@@ -118,7 +137,7 @@ export function draftWarnings(draft: DraftInput): DraftWarning[] {
         case "missing_date":
           return { path: ["post", "published_date"], message: "日付がありません" };
         case "no_person":
-          return { path: ["links"], message: "人物への紐付けがありません" };
+          return { path: ["links"], message: "人物・出来事への紐付けがありません" };
         case "third_party":
           return { path: ["post", "classification"], message: "第三者の投稿です" };
         default:
