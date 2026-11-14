@@ -134,6 +134,12 @@ const stagingQuery = z.object({
 const listQuery = z.object({
   state: z.enum(["triage", "pending", "approved", "rejected", "on_hold"]).default("pending"),
   limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+/**
+ * 振り分け待ち以外の並べ方（振り分け待ちは、言及の強さなどの別の並べ方。triage-list.ts）
+ */
+const intakeSortQuery = z.object({
   /**
    * 並べ方。default は、承認待ち・保留は取り込んだ古い順、承認済み・却下は判断の新しい順。
    * captured_* は取り込んだ日時、published_* は投稿の日時（無ければ日付。分からないものは最後）
@@ -304,6 +310,8 @@ export function createApp(
       if (!t.success) throw new HTTPException(400, { message: "条件が正しくありません" });
       return c.json(await listTriage(db, t.data));
     }
+    const order = intakeSortQuery.safeParse(c.req.query());
+    if (!order.success) throw new HTTPException(400, { message: "条件が正しくありません" });
     // 既定: 承認済み・却下は判断の新しい順（履歴）、それ以外は取り込んだ古い順
     const decided = q.data.state === "approved" || q.data.state === "rejected";
     const published = sql<string>`coalesce(i.draft -> 'post' ->> 'published_at', i.draft -> 'post' ->> 'published_date')`;
@@ -326,7 +334,7 @@ export function createApp(
       ])
       .where("i.state", "=", q.data.state)
       .$call((query) => {
-        switch (q.data.sort) {
+        switch (order.data.sort) {
           case "captured_desc":
             return query.orderBy("i.captured_at", "desc");
           case "captured_asc":
