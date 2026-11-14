@@ -180,6 +180,8 @@ export class DemoSource implements ArchiveSource {
       externalId: item.externalId,
       route: item.route,
       capturedAt: item.capturedAt,
+      publishedAt: item.draft.post.published_at ?? null,
+      publishedDate: item.draft.post.published_date ?? null,
       state: item.state,
       title: draftTitle(item.draft),
       classification: item.draft.post.classification ?? null,
@@ -679,6 +681,15 @@ export class DemoSource implements ArchiveSource {
           channelName: i.channelName,
           channelKind: i.channelKey.split(":")[0] ?? "other",
           role: link.role,
+          // デモ版では、下書きの画像の見本の画像を、縮めた画像と原本の代わりに見せる
+          images: (i.draft.assets ?? [])
+            .filter((a) => a.media_type === "image")
+            .flatMap((a) => {
+              const url = this.previews.get(i.id)?.[a.ref];
+              return url
+                ? [{ assetId: `${i.id}:${a.ref}`, fileAssetId: null, previewUrl: url }]
+                : [];
+            }),
         },
       ];
     });
@@ -695,6 +706,7 @@ export class DemoSource implements ArchiveSource {
         channelName: post.channelName,
         channelKind: "web",
         role: "about",
+        images: [],
       });
     }
     return this.events.get(id, materials);
