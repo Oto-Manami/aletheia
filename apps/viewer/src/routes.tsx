@@ -1,3 +1,4 @@
+import { EventViewPage } from "./pages/EventView.tsx";
 import { Navigate, type RouteObject, useParams, useSearchParams } from "react-router";
 import { useApp } from "./context.tsx";
 import { AssetsPage } from "./pages/Assets.tsx";
@@ -71,8 +72,10 @@ export const routes: RouteObject[] = [
         element: <EventsPage />,
         children: [
           { index: true, element: <EventsEmpty /> },
-          // /events/new は作る画面
-          { path: ":id", element: <EventEditPage /> },
+          // /events/new は作る画面。/events/:id は表示の画面で、「編集」から /events/:id/edit に移る
+          { path: "new", element: <EventEditPage /> },
+          { path: ":id", element: <EventViewPage /> },
+          { path: ":id/edit", element: <EventEditPage /> },
         ],
       },
       { path: "assets", element: <AssetsPage /> },
