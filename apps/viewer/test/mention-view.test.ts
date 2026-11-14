@@ -49,6 +49,13 @@ describe("言及のある段落", () => {
       text: "今日は花子と\nお昼を食べました。",
       marks: [[3, 5]],
       names: ["試験 花子"],
+      // 元の本文での範囲（印を付けるときに残す）
+      range: {
+        asset: "body",
+        text_type: "body",
+        start: text.indexOf("今日は"),
+        end: text.indexOf("。\n\n\n明日") + 1,
+      },
     });
   });
 
@@ -59,6 +66,8 @@ describe("言及のある段落", () => {
     const [p] = mentionParagraphs(draft);
     expect(p!.text.startsWith("…")).toBe(true);
     expect(p!.text.length).toBeLessThan(260);
+    // 範囲は、抜粋した部分（前後の「…」を含まない）
+    expect(long.slice(p!.range.start, p!.range.end)).toBe(p!.text.replace(/^…|…$/g, ""));
   });
 
   it("外した言及は出さない", () => {

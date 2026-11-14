@@ -25,6 +25,18 @@ export function snippetsOf(
   spans: [number, number][],
   context: number = CONTEXT,
 ): TriageSnippet[] {
+  return snippetWindows(text, spans, context).map((w) => w.snippet);
+}
+
+/**
+ * 言及の前後の抜粋と、その抜粋が元の文章のどこからどこまでか（from・to。前後の「…」を含まない）。
+ * 承認の画面で、抜粋に印を付けるときに元の位置を残すのに使う
+ */
+export function snippetWindows(
+  text: string,
+  spans: [number, number][],
+  context: number = CONTEXT,
+): { from: number; to: number; snippet: TriageSnippet }[] {
   const sorted = [...spans].sort((a, b) => a[0] - b[0]);
   const windows: { from: number; to: number; marks: [number, number][] }[] = [];
   let covered = -1;
@@ -46,8 +58,12 @@ export function snippetsOf(
     const head = w.from > 0 ? "…" : "";
     const tail = w.to < text.length ? "…" : "";
     return {
-      text: head + text.slice(w.from, w.to) + tail,
-      marks: w.marks.map(([s, e]) => [s - w.from + head.length, e - w.from + head.length]),
+      from: w.from,
+      to: w.to,
+      snippet: {
+        text: head + text.slice(w.from, w.to) + tail,
+        marks: w.marks.map(([s, e]) => [s - w.from + head.length, e - w.from + head.length]),
+      },
     };
   });
 }

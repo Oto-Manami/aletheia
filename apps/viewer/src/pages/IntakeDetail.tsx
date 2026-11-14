@@ -373,7 +373,7 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
             readOnly={readOnly}
             chosenOnly={detail.chosenImagesOnly}
           />
-          <MentionView draft={draft} ownPost={ownPost} />
+          <MentionView draft={draft} ownPost={ownPost} onChange={setDraft} readOnly={readOnly} />
           <details className="panel panel-pad more">
             <summary className="column-title">
               詳しく見る・直す

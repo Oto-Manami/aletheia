@@ -4,7 +4,7 @@
 // 丸ごと見せる。ブログは空行で話のまとまりを区切ることが多い。長すぎる段落だけ、言及の前後に縮める。
 
 import type { DraftInput } from "@aletheia/intake/draft";
-import { snippetsOf } from "./triage.ts";
+import { snippetWindows } from "./triage.ts";
 import type { TriageSnippet } from "./types.ts";
 
 /** これより長い段落は、言及の前後だけにする */
@@ -19,6 +19,16 @@ interface Evidence {
 export interface MentionParagraph extends TriageSnippet {
   /** この段落で言及されている対象の名前 */
   names: string[];
+  /** 元の本文での範囲（言及の箇所に印を付けるとき、この範囲を残す。設計書 決定記録 0056） */
+  range: ExcerptRange;
+}
+
+/** 本文の中の範囲（素材の ref・本文の種類・何文字目から何文字目まで） */
+export interface ExcerptRange {
+  asset: string;
+  text_type: string;
+  start: number;
+  end: number;
 }
 
 /** 本文を段落（空行で区切る）に分け、元の本文での位置を返す */
@@ -61,7 +71,7 @@ export function mentionParagraphs(
 
   const result: MentionParagraph[] = [];
   for (const [key, entry] of byText) {
-    const [ref, textType] = key.split("\u0000");
+    const [ref = "", textType = ""] = key.split("\u0000");
     const text = (draft.assets ?? [])
       .find((a) => a.ref === ref)
       ?.texts?.find((t) => t.text_type === textType)?.content;
@@ -84,10 +94,19 @@ export function mentionParagraphs(
           marks.push([s, e]);
           covered = e;
         }
-        result.push({ text: body, marks, names });
+        result.push({
+          text: body,
+          marks,
+          names,
+          range: { asset: ref, text_type: textType, start: p.from, end: p.to },
+        });
       } else {
-        for (const snippet of snippetsOf(body, local, LONG_CONTEXT)) {
-          result.push({ ...snippet, names });
+        for (const w of snippetWindows(body, local, LONG_CONTEXT)) {
+          result.push({
+            ...w.snippet,
+            names,
+            range: { asset: ref, text_type: textType, start: p.from + w.from, end: p.from + w.to },
+          });
         }
       }
     }
