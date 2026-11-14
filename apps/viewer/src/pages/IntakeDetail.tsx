@@ -117,12 +117,12 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
   const [draft, setDraftState] = useState<DraftInput>(
     () =>
       (detail.state === "pending" || detail.state === "on_hold"
-        ? decisions.editOf(detail.id)
+        ? decisions.editOf(detail.id, detail.capturedAt)
         : undefined) ?? detail.draft,
   );
   const setDraft = (next: DraftInput) => {
     setDraftState(next);
-    decisions.saveEdit(detail.id, next);
+    decisions.saveEdit(detail.id, detail.capturedAt, next);
   };
   const queued = useQueued(decisions);
   const entry = queued.findLast((e) => e.id === detail.id);
@@ -244,6 +244,8 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
       // 画面で見せたタグ付け（写っている人・本文に出てくる人）は、人が確かめたものとして記録する
       ...(decision === "approve" ? { draft: confirmPeopleTags(draft) } : {}),
       ...(note.trim() ? { note: note.trim() } : {}),
+      // 開いている間に貼り直しで置き換わっていたら、古い内容のまま承認しない（決定記録 0054）
+      basedOn: detail.capturedAt,
     });
     if (!accepted) return;
     // 承認待ちの一覧を見ているときは、まだ判断していない次の下書きへ進む
@@ -475,6 +477,9 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
               {failure && (
                 <div className="error" role="alert">
                   <p>送れませんでした。直したところは残っています。</p>
+                  <button type="button" className="link-button" onClick={reload}>
+                    最新の内容を読み直す
+                  </button>
                   <p>{failure.message}</p>
                   {failure.issues.length > 0 && (
                     <ul>

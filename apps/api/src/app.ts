@@ -90,6 +90,11 @@ const createIntakeBody = z.object({
    * triage で送られた下書きには、発信者と言及の候補を規則で足す。発信者が蓄積対象の人物なら承認待ちから始める
    */
   state: z.enum(["triage", "pending"]).default("pending"),
+  /**
+   * 同じ経路の下書きが承認待ち・保留なら、新しい内容で置き換える（設計書 決定記録 0054）。
+   * Discord の入口から貼り直したときに付ける。自動の取得は付けない（毎週の全件で同じ投稿を送り直すため）
+   */
+  replace_pending: z.boolean().optional(),
 });
 
 const knownBody = z.object({
@@ -103,7 +108,14 @@ const decisionBody = z.object({
   reviewer_id: uuid.optional(),
 });
 
-const approveBody = decisionBody.extend({ draft: z.unknown().optional() });
+const approveBody = decisionBody.extend({
+  draft: z.unknown().optional(),
+  /**
+   * 承認の画面で開いたときの下書きの、取り込んだ日時（captured_at）。今の下書きと違えば断る
+   * （開いている間に、貼り直しで新しい内容に置き換わったとき。置き換えると取り込んだ日時が変わる。決定記録 0054）
+   */
+  based_on: z.iso.datetime({ offset: true }).optional(),
+});
 
 /** 残す。approve を付けると、そのまま承認する（ニュースを出来事に紐付けるとき） */
 const keepBody = approveBody.extend({ approve: z.boolean().optional() });
@@ -122,6 +134,13 @@ const stagingQuery = z.object({
 const listQuery = z.object({
   state: z.enum(["triage", "pending", "approved", "rejected", "on_hold"]).default("pending"),
   limit: z.coerce.number().int().min(1).max(200).default(50),
+  /**
+   * 並べ方。default は、承認待ち・保留は取り込んだ古い順、承認済み・却下は判断の新しい順。
+   * captured_* は取り込んだ日時、published_* は投稿の日時（無ければ日付。分からないものは最後）
+   */
+  sort: z
+    .enum(["default", "captured_desc", "captured_asc", "published_desc", "published_asc"])
+    .default("default"),
 });
 
 /** キーの順に左右されない JSON（データベースの jsonb はキーを並べ替えて返すため） */
@@ -285,8 +304,9 @@ export function createApp(
       if (!t.success) throw new HTTPException(400, { message: "条件が正しくありません" });
       return c.json(await listTriage(db, t.data));
     }
-    // 承認済み・却下は判断の新しい順（履歴）、それ以外は取り込んだ古い順
+    // 既定: 承認済み・却下は判断の新しい順（履歴）、それ以外は取り込んだ古い順
     const decided = q.data.state === "approved" || q.data.state === "rejected";
+    const published = sql<string>`coalesce(i.draft -> 'post' ->> 'published_at', i.draft -> 'post' ->> 'published_date')`;
     const items = await db
       .selectFrom("intake_items as i")
       .innerJoin("channels as ch", "ch.id", "i.channel_id")
@@ -305,7 +325,25 @@ export function createApp(
         reviewerName,
       ])
       .where("i.state", "=", q.data.state)
-      .orderBy(decided ? "i.reviewed_at" : "i.captured_at", decided ? "desc" : "asc")
+      .$call((query) => {
+        switch (q.data.sort) {
+          case "captured_desc":
+            return query.orderBy("i.captured_at", "desc");
+          case "captured_asc":
+            return query.orderBy("i.captured_at", "asc");
+          case "published_desc":
+            return query
+              .orderBy(sql`${published} desc nulls last`)
+              .orderBy("i.captured_at", "desc");
+          case "published_asc":
+            return query.orderBy(sql`${published} asc nulls last`).orderBy("i.captured_at", "asc");
+          default:
+            return query.orderBy(
+              decided ? "i.reviewed_at" : "i.captured_at",
+              decided ? "desc" : "asc",
+            );
+        }
+      })
       .limit(q.data.limit)
       .execute();
     // 一覧は上限までしか返さないので、その状態の本当の件数も返す（画面の件数の表示）
@@ -621,11 +659,42 @@ export function createApp(
           .where("state", "=", "rejected")
           .returning("id")
           .executeTakeFirst();
-    const id = created?.id ?? reopened?.id;
-    if (reopened && before && Array.isArray(before.staged_files)) {
+    // 同じ経路の下書きが承認待ち・保留で、送る側が置き換えてよいと付けたときは、新しい内容で置き換える。
+    // 状態はそのまま。前の内容は変更履歴に残る（設計書 決定記録 0054）
+    const pendingBefore =
+      created || reopened || !body.replace_pending || body.state === "triage"
+        ? undefined
+        : await db
+            .selectFrom("intake_items")
+            .select("staged_files")
+            .where("channel_id", "=", channel.id)
+            .where("external_id", "=", body.external_id)
+            .where("route", "=", body.route)
+            .where("state", "in", ["pending", "on_hold"])
+            .executeTakeFirst();
+    const replaced = !pendingBefore
+      ? undefined
+      : await db
+          .updateTable("intake_items")
+          .set({
+            route_ref: body.route_ref ?? null,
+            captured_at: body.captured_at,
+            draft: JSON.stringify(draft),
+            staged_files: JSON.stringify(body.staged_files),
+          })
+          .where("channel_id", "=", channel.id)
+          .where("external_id", "=", body.external_id)
+          .where("route", "=", body.route)
+          .where("state", "in", ["pending", "on_hold"])
+          .returning(["id", "state"])
+          .executeTakeFirst();
+    const id = created?.id ?? reopened?.id ?? replaced?.id;
+    // 前の下書きの仮置きのファイルのうち、新しい下書きで使わないものは後から消す
+    const previous = reopened ? before : replaced ? pendingBefore : undefined;
+    if (previous && Array.isArray(previous.staged_files)) {
       const keyOf = (f: unknown) => (f as { storage_key?: unknown } | null)?.storage_key;
       const keep = new Set(body.staged_files.map(keyOf));
-      removeLater(before.staged_files.filter((f) => !keep.has(keyOf(f))));
+      removeLater(previous.staged_files.filter((f) => !keep.has(keyOf(f))));
     }
     if (!id) {
       throw new HTTPException(409, { message: "同じ経路から、同じ投稿の下書きが既にあります" });
@@ -634,12 +703,13 @@ export function createApp(
     return c.json(
       {
         id,
-        state,
+        state: replaced?.state ?? state,
         draft_valid: check.success,
         issues: check.error?.issues ?? [],
         ...(reopened ? { reopened: true } : {}),
+        ...(replaced ? { replaced: true } : {}),
       },
-      201,
+      replaced ? 200 : 201,
     );
   });
 
@@ -652,6 +722,7 @@ export function createApp(
         ...(reviewerId ? { reviewerId } : {}),
         ...(body.draft !== undefined ? { draft: body.draft } : {}),
         ...(body.note ? { note: body.note } : {}),
+        ...(body.based_on ? { basedOn: body.based_on } : {}),
       });
       // 承認が確定した後に、ファイルを本来の場所へ移す。失敗しても承認は取り消さない
       const filesReport = files ? await finalizeApprovedFiles(db, files, id, result.postId) : null;
@@ -791,7 +862,12 @@ export function createApp(
       return c.json({ error: err.message, ...(issues ? { issues } : {}) }, err.status);
     }
     if (err instanceof IntakeError) {
-      const status = { not_found: 404, already_decided: 409, invalid_draft: 422 } as const;
+      const status = {
+        not_found: 404,
+        already_decided: 409,
+        invalid_draft: 422,
+        draft_replaced: 409,
+      } as const;
       return c.json(
         { error: err.message, code: err.code, issues: err.issues ?? [] },
         status[err.code],

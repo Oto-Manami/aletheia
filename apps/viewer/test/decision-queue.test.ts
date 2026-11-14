@@ -116,20 +116,22 @@ describe("判断の順番待ちの列", () => {
     const source = fakeSource();
     const queue = new DecisionQueue(source);
     const draft = { post: { title: "直した題名" } } as never;
-    queue.saveEdit("a", draft);
-    expect(queue.editOf("a")).toBe(draft);
+    queue.saveEdit("a", "t1", draft);
+    expect(queue.editOf("a", "t1")).toBe(draft);
+    // 貼り直しで置き換わった下書き（取り込んだ日時が違う）には、前の直しを当てない
+    expect(queue.editOf("a", "t2")).toBeUndefined();
 
     queue.enqueue({ id: "a", title: "A", decision: "approve", draft });
     await tick();
     source.finishNext(new Error("つながりません"));
     await queue.idle();
-    expect(queue.editOf("a")).toBe(draft);
+    expect(queue.editOf("a", "t1")).toBe(draft);
 
     queue.enqueue({ id: "a", title: "A", decision: "approve", draft });
     await tick();
     source.finishNext();
     await queue.idle();
-    expect(queue.editOf("a")).toBeUndefined();
+    expect(queue.editOf("a", "t1")).toBeUndefined();
   });
 
   it("送っている途中のものは閉じられず、終わったものは閉じられる", async () => {

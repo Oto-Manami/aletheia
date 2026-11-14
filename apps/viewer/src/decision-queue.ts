@@ -20,6 +20,8 @@ export interface QueuedDecision {
   decision: Decision;
   draft?: DraftInput;
   note?: string;
+  /** 開いたときの下書きの取り込んだ日時（置き換わっていたら、承認を断ってもらう） */
+  basedOn?: string;
   status: QueueStatus;
   failure?: { message: string; issues: IntakeIssue[] };
   outcome?: ApproveOutcome;
@@ -31,6 +33,7 @@ export interface DecisionRequest {
   decision: Decision;
   draft?: DraftInput;
   note?: string;
+  basedOn?: string;
 }
 
 /** 終わったものを列に残しておく数（進み具合の表示用。失敗したものは閉じるまで残す） */
@@ -42,8 +45,11 @@ export class DecisionQueue {
   /** 1 件ずつ順に送るための鎖。前の 1 件が終わって（成功でも失敗でも）から次を送る */
   private chain: Promise<void> = Promise.resolve();
   private readonly listeners = new Set<() => void>();
-  /** 判断する前の、画面で直している途中の下書き（別の下書きを開いて戻っても、直したところを残す） */
-  private readonly edits = new Map<string, DraftInput>();
+  /**
+   * 判断する前の、画面で直している途中の下書き（別の下書きを開いて戻っても、直したところを残す）。
+   * base は直し始めたときの下書きの取り込んだ日時。貼り直しで置き換わった下書きには、前の直しを当てない
+   */
+  private readonly edits = new Map<string, { base: string; draft: DraftInput }>();
 
   constructor(
     private readonly source: Pick<ArchiveSource, "decide">,
@@ -91,12 +97,13 @@ export class DecisionQueue {
     this.notify();
   }
 
-  editOf(id: string): DraftInput | undefined {
-    return this.edits.get(id);
+  editOf(id: string, base: string): DraftInput | undefined {
+    const edit = this.edits.get(id);
+    return edit && edit.base === base ? edit.draft : undefined;
   }
 
-  saveEdit(id: string, draft: DraftInput): void {
-    this.edits.set(id, draft);
+  saveEdit(id: string, base: string, draft: DraftInput): void {
+    this.edits.set(id, { base, draft });
   }
 
   /** 送り終わるのを待つ（テスト用） */
@@ -112,6 +119,7 @@ export class DecisionQueue {
       const outcome = await this.source.decide(entry.id, entry.decision, {
         ...(entry.draft ? { draft: entry.draft } : {}),
         ...(entry.note ? { note: entry.note } : {}),
+        ...(entry.basedOn ? { basedOn: entry.basedOn } : {}),
       });
       this.edits.delete(entry.id);
       this.update(seq, { status: "done", outcome });

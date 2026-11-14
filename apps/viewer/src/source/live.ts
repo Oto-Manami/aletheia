@@ -23,6 +23,7 @@ import {
   type SourcePreview,
   type ParticipantStatus,
   type IntakeDetail,
+  type IntakeSort,
   type IntakeFile,
   type IntakeIssue,
   type IntakeState,
@@ -266,10 +267,10 @@ export class LiveSource implements ArchiveSource {
     };
   }
 
-  async listIntake(state: IntakeState): Promise<IntakeSummary[]> {
+  async listIntake(state: IntakeState, sort: IntakeSort = "default"): Promise<IntakeSummary[]> {
     const { items } = await this.api<{ items: IntakeRow[] }>(
       "GET",
-      `/intake?${new URLSearchParams({ state, limit: "200" }).toString()}`,
+      `/intake?${new URLSearchParams({ state, limit: "200", sort }).toString()}`,
     );
     return items.map(summarize);
   }
@@ -356,11 +357,12 @@ export class LiveSource implements ArchiveSource {
   async decide(
     id: string,
     decision: Decision,
-    options: { draft?: DraftInput; note?: string } = {},
+    options: { draft?: DraftInput; note?: string; basedOn?: string } = {},
   ): Promise<ApproveOutcome> {
     const body = {
       ...(options.note ? { note: options.note } : {}),
       ...(decision === "approve" && options.draft ? { draft: options.draft } : {}),
+      ...(decision === "approve" && options.basedOn ? { based_on: options.basedOn } : {}),
     };
     const res = await this.api<ApproveResponse>(
       "POST",

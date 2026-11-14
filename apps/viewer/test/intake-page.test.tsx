@@ -240,6 +240,46 @@ describe("承認の順番待ち", () => {
   });
 });
 
+describe("承認の一覧の並べ方と、置き換わった下書き", () => {
+  it("並べ方を選ぶと、その順に並び、URL に残る", async () => {
+    const user = userEvent.setup();
+    const { source, router } = open("/intake");
+    const newest = (await source.listIntake("pending", "captured_desc"))[0]!;
+    const oldest = (await source.listIntake("pending", "captured_asc"))[0]!;
+    expect(newest.id).not.toBe(oldest.id);
+    const list = await screen.findByRole("region", { name: "下書きの一覧" });
+    await waitFor(() =>
+      expect(within(list).getAllByRole("link")[0]!.getAttribute("href")).toContain(oldest.id),
+    );
+
+    await user.selectOptions(within(list).getByLabelText("並べ方"), "captured_desc");
+    await waitFor(() =>
+      expect(within(list).getAllByRole("link")[0]!.getAttribute("href")).toContain(newest.id),
+    );
+    expect(router.state.location.search).toContain("sort=captured_desc");
+    // タブを変えても並べ方は残る
+    await user.click(within(list).getByRole("tab", { name: "保留" }));
+    expect(router.state.location.search).toContain("sort=captured_desc");
+  });
+
+  it("開いている間に貼り直しで置き換わった下書きは、承認できずに理由が出る", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/intake?state=pending");
+    const target = (await source.listIntake("pending")).find((i) => i.reviewReasons.length === 0)!;
+    await user.click(await screen.findByRole("link", { name: new RegExp(target.title ?? "") }));
+    await screen.findByRole("button", { name: "承認する" });
+    // 開いている間に、Discord から貼り直されて取り込んだ日時が変わった
+    const store = (source as unknown as { intakes: { id: string; capturedAt: string }[] }).intakes;
+    store.find((i) => i.id === target.id)!.capturedAt = "2099-01-01T00:00:00.000Z";
+
+    await user.click(screen.getByRole("button", { name: "承認する" }));
+    const progress = await screen.findByRole("region", { name: "判断の進み具合" });
+    expect(await within(progress).findByText("承認できませんでした")).toBeTruthy();
+    expect(within(progress).getByText(/開いている間に新しい内容に置き換わりました/)).toBeTruthy();
+    expect((await source.getIntake(target.id)).state).toBe("pending");
+  });
+});
+
 describe("探す・投稿", () => {
   it("言葉で探し、投稿を開くと、素材を元の順番で見られる", async () => {
     const user = userEvent.setup();

@@ -8,7 +8,7 @@ import { sql, type Transaction } from "kysely";
 import { type Draft, draftSchema } from "./draft.ts";
 import { onlyChosenImages, usesChosenImagesOnly } from "./images.ts";
 
-export type IntakeErrorCode = "not_found" | "already_decided" | "invalid_draft";
+export type IntakeErrorCode = "not_found" | "already_decided" | "invalid_draft" | "draft_replaced";
 
 export class IntakeError extends Error {
   constructor(
@@ -27,6 +27,12 @@ export interface ApproveOptions {
   /** 人が修正した下書き。無ければ保存されている下書きをそのまま使う */
   draft?: unknown;
   note?: string;
+  /**
+   * 承認の画面で開いたときの下書きの、取り込んだ日時（captured_at）。今の下書きと違えば断る。
+   * 開いている間に、貼り直しで新しい内容に置き換わったとき（置き換えると取り込んだ日時が変わる）に、
+   * 古い内容のまま承認しないため（設計書 決定記録 0054）
+   */
+  basedOn?: string | Date;
 }
 
 export interface ApproveResult {
@@ -191,6 +197,15 @@ export async function approveIntakeIn(
 ): Promise<ApproveResult> {
   await lockApprovals(trx);
   const intake = await lockUndecided(trx, intakeId);
+  if (options.basedOn !== undefined) {
+    const opened = new Date(options.basedOn).getTime();
+    if (Number.isNaN(opened) || opened !== new Date(intake.captured_at).getTime()) {
+      throw new IntakeError(
+        "draft_replaced",
+        "この下書きは、開いている間に新しい内容に置き換わりました。開き直してから承認してください",
+      );
+    }
+  }
   // 振り分けで「言及あり」として残したもの・情報源の設定があるものは、写っている人を付けた画像だけを
   // 素材にする（決定記録 0035・0037・0040）
   const chosenOnly = await usesChosenImagesOnly(trx, intake);
