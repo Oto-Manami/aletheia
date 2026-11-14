@@ -118,3 +118,50 @@ async function make(
   }
   return { bytes, contentType: CONTENT_TYPE };
 }
+
+/**
+ * 画像の素材の原本（出来事の画面などで、縮めた画像から開く元の画像）。原本を保存していない素材
+ * （同じ画像を別の素材が保存している、記録だけの素材）は、保存している素材の原本を返す。
+ * 画像でない素材・原本を読めない素材は null
+ */
+export async function originalOf(
+  db: Database,
+  originals: FileStore,
+  assetId: string,
+): Promise<{ bytes: Uint8Array; contentType: string } | null> {
+  const asset = await db
+    .selectFrom("assets")
+    .select(["id", "media_type", "mime_type", "sha256"])
+    .where("id", "=", assetId)
+    .executeTakeFirst();
+  if (!asset || asset.media_type !== "image") return null;
+  const fileOf = (id: string) =>
+    db
+      .selectFrom("asset_files")
+      .select("storage_key")
+      .where("asset_id", "=", id)
+      .where("variant", "=", "original")
+      .where("provider", "=", originals.provider)
+      .executeTakeFirst();
+  let file = await fileOf(asset.id);
+  if (!file && asset.sha256) {
+    const twin = await db
+      .selectFrom("assets as b")
+      .innerJoin("asset_files as f", "f.asset_id", "b.id")
+      .select("f.storage_key")
+      .where("b.sha256", "=", asset.sha256)
+      .where("b.media_type", "=", "image")
+      .where("f.variant", "=", "original")
+      .where("f.provider", "=", originals.provider)
+      .executeTakeFirst();
+    file = twin;
+  }
+  if (!file) return null;
+  try {
+    const bytes = await originals.get(file.storage_key);
+    const contentType = asset.mime_type?.startsWith("image/") ? asset.mime_type : "image/jpeg";
+    return { bytes, contentType };
+  } catch {
+    return null;
+  }
+}

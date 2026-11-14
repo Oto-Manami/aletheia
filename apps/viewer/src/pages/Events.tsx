@@ -1,5 +1,6 @@
 // 出来事の一覧と、作る・直す画面（設計書 決定記録 0027）
 
+import { type GalleryImage, ImageViewer, MaterialThumbs } from "../components/MaterialGallery.tsx";
 import {
   CalendarPlus,
   ChevronDown,
@@ -1431,6 +1432,14 @@ function EventMaterials({
 }) {
   const { materials } = detail;
   const [asking, setAsking] = useState<string | null>(null);
+  // 画像を押したら原本を大きく開く。前後の画像へは、出来事の画像全体の中で移る
+  const [viewing, setViewing] = useState<number | null>(null);
+  const gallery: GalleryImage[] = materials.flatMap((m) =>
+    m.images.map((image) => ({ ...image, postTitle: m.title?.trim() || "（題名なし）" })),
+  );
+  const firstIndex = materials.map((_, i) =>
+    materials.slice(0, i).reduce((n, m) => n + m.images.length, 0),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
@@ -1454,6 +1463,11 @@ function EventMaterials({
                   <span className="event-material-title">{title}</span>
                 )}
                 {date && <span className="quiet event-material-date">{date}</span>}
+                <MaterialThumbs
+                  images={gallery.slice(firstIndex[i], firstIndex[i]! + m.images.length)}
+                  first={firstIndex[i]!}
+                  onOpen={setViewing}
+                />
                 {m.url && (
                   <a
                     href={m.url}
@@ -1517,6 +1531,14 @@ function EventMaterials({
         <p className="error" role="alert">
           {error}
         </p>
+      )}
+      {viewing !== null && (
+        <ImageViewer
+          images={gallery}
+          index={viewing}
+          onMove={setViewing}
+          onClose={() => setViewing(null)}
+        />
       )}
     </div>
   );

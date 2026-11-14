@@ -34,6 +34,9 @@ export interface IntakeSummary {
   externalId: string;
   route: string;
   capturedAt: string;
+  /** 投稿の日時・日付（下書きに書いてあるもの） */
+  publishedAt: string | null;
+  publishedDate: string | null;
   state: IntakeState;
   title: string | null;
   classification: Classification | null;
@@ -400,6 +403,19 @@ export interface EventMaterial {
   /** 情報源の種類（ニュースは web） */
   channelKind: string;
   role: string;
+  /** 投稿の画像（並び順）。縮めた画像で並べ、押すと原本を開く */
+  images: EventMaterialImage[];
+}
+
+/** 出来事に紐付いた投稿の画像 1 枚 */
+export interface EventMaterialImage {
+  assetId: string;
+  /**
+   * 原本を保存している素材（記録だけの素材は、同じ画像を保存している素材）。原本が無ければ null
+   */
+  fileAssetId: string | null;
+  /** 画像の URL（デモ版のみ。本番は縮めた画像・原本を API から読む） */
+  previewUrl?: string;
 }
 
 /** 出来事を作る・直すときに送るもの */
@@ -468,6 +484,8 @@ export interface ArchiveSource {
    * 使い終わったら release を呼ぶ。無ければ、AssetCard.imageUrl を使う（デモ版）
    */
   assetThumbnail?(assetId: string): Promise<{ url: string; release: () => void } | null>;
+  /** 画像の素材の原本（縮めた画像から開く元の画像）。読めなければ null */
+  assetOriginal?(assetId: string): Promise<{ url: string; release: () => void } | null>;
   /**
    * 下書きに付いたファイル（取り込んだ画像・保存した Web ページ）を読む。数が多く大きいので、下書きとは別に読み、
    * 読めたものから onFile で知らせる。戻り値を呼ぶと、読むのをやめて片付ける。

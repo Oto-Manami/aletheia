@@ -1,7 +1,7 @@
 import { Link, NavLink, Outlet, useMatch, useOutletContext, useSearchParams } from "react-router";
 import { Tags } from "../components/Tags.tsx";
 import { useApp } from "../context.tsx";
-import { formatInstant, routeLabel } from "../format.ts";
+import { formatInstant, formatPublished, routeLabel } from "../format.ts";
 import type { QueuedDecision } from "../decision-queue.ts";
 import type { Decision, IntakeSort, IntakeState } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
@@ -165,7 +165,10 @@ export function IntakePage() {
                     <span className="intake-meta">
                       {item.channelName}
                       <span className="sep" aria-hidden="true" />
-                      {formatInstant(item.capturedAt)}
+                      {/* 投稿の日時で並べているときは、並びの元の投稿の日時を出す（取り込んだ日時と分ける） */}
+                      {sort.startsWith("published")
+                        ? `投稿 ${formatPublished(item) ?? "日時なし"}`
+                        : formatInstant(item.capturedAt)}
                       <span className="sep" aria-hidden="true" />
                       {routeLabel(item.route)}
                     </span>

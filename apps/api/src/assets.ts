@@ -17,7 +17,7 @@ import { sql } from "kysely";
 import { z } from "zod";
 import type { AuthEnv } from "./auth.ts";
 import { inTransaction } from "./events.ts";
-import { thumbnailOf } from "./thumbnails.ts";
+import { originalOf, thumbnailOf } from "./thumbnails.ts";
 
 /** 外せない素材の種類（投稿の中身そのもの） */
 const KEPT_MEDIA = new Set(["text", "webpage"]);
@@ -50,6 +50,29 @@ export function registerAssetRoutes(
         // ログインした人の手元にだけ残す
         "cache-control": "private, max-age=604800",
         "x-content-type-options": "nosniff",
+      },
+    });
+  });
+
+  /**
+   * 画像の素材の原本（縮めた画像から開く元の画像）。縮めた画像と同じ範囲（ログインした利用者の全員）に返す。
+   * 画像だけを返す（ページ・動画は保存先で開く）
+   */
+  app.get("/assets/:id/original", async (c) => {
+    if (!files) throw new HTTPException(503, { message: "ファイルの保存先が設定されていません" });
+    const id = z.uuid().safeParse(c.req.param("id"));
+    if (!id.success) throw new HTTPException(404, { message: "見つかりません" });
+    const original = await originalOf(db, files, id.data);
+    if (!original) throw new HTTPException(404, { message: "見つかりません" });
+    return new Response(original.bytes, {
+      headers: {
+        "content-type": original.contentType,
+        "content-length": String(original.bytes.byteLength),
+        "cache-control": "private, max-age=604800",
+        "x-content-type-options": "nosniff",
+        // 画像の中に書かれたスクリプトなどを動かさない
+        "content-security-policy":
+          "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox",
       },
     });
   });

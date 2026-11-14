@@ -664,10 +664,30 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       channel_name: string;
       channel_kind: string;
       role: string;
+      images: { asset_id: string; file_asset_id: string | null }[];
     }>`
       select distinct on (p.id)
         p.id as post_id, p.title, p.url, p.published_at, p.published_date,
-        ch.name as channel_name, ch.kind as channel_kind, l.role
+        ch.name as channel_name, ch.kind as channel_kind, l.role,
+        -- 投稿の画像の素材（並び順）。原本を保存している素材（記録だけの素材は、同じ画像を保存している素材）
+        coalesce((
+          select json_agg(json_build_object(
+            'asset_id', a.id,
+            'file_asset_id', case
+              when exists (
+                select 1 from public.asset_files f where f.asset_id = a.id and f.variant = 'original'
+              ) then a.id
+              else (
+                select b.id from public.assets b
+                join public.asset_files bf on bf.asset_id = b.id and bf.variant = 'original'
+                where a.sha256 is not null and b.sha256 = a.sha256 and b.media_type = 'image'
+                limit 1
+              )
+            end
+          ) order by a.position nulls last, a.created_at)
+          from public.assets a
+          where a.post_id = p.id and a.media_type = 'image'
+        ), '[]'::json) as images
       from public.links l
       join public.posts p
         on (l.from_type = 'post' and p.id = l.from_id)

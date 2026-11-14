@@ -165,6 +165,8 @@ function summarize(row: IntakeRow): IntakeSummary {
     externalId: row.external_id,
     route: row.route,
     capturedAt: row.captured_at,
+    publishedAt: row.draft.post?.published_at ?? null,
+    publishedDate: row.draft.post?.published_date ?? null,
     state: row.state,
     title: draftTitle(row.draft),
     classification: row.draft.post?.classification ?? null,
@@ -234,6 +236,16 @@ export class LiveSource implements ArchiveSource {
       const next = this.thumbnailWaiters.shift();
       if (next) next();
       else this.thumbnailSlots++;
+    }
+  }
+
+  async assetOriginal(assetId: string): Promise<{ url: string; release: () => void } | null> {
+    try {
+      const blob = await this.apiBlob(`/assets/${encodeURIComponent(assetId)}/original`);
+      const url = URL.createObjectURL(blob);
+      return { url, release: () => URL.revokeObjectURL(url) };
+    } catch {
+      return null;
     }
   }
 
@@ -913,6 +925,10 @@ export class LiveSource implements ArchiveSource {
         channelName: m.channel_name,
         channelKind: m.channel_kind,
         role: m.role,
+        images: (m.images ?? []).map((i) => ({
+          assetId: i.asset_id,
+          fileAssetId: i.file_asset_id,
+        })),
       })),
     };
   }
@@ -1147,5 +1163,6 @@ interface EventDetailResponse {
     channel_name: string;
     channel_kind: string;
     role: string;
+    images?: { asset_id: string; file_asset_id: string | null }[];
   }[];
 }

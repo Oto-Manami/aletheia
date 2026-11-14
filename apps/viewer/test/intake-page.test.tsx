@@ -257,6 +257,16 @@ describe("承認の一覧の並べ方と、置き換わった下書き", () => {
       expect(within(list).getAllByRole("link")[0]!.getAttribute("href")).toContain(newest.id),
     );
     expect(router.state.location.search).toContain("sort=captured_desc");
+    // 投稿の日時で並べると、行には投稿の日時を出す
+    await user.selectOptions(within(list).getByLabelText("並べ方"), "published_desc");
+    await waitFor(() =>
+      expect(
+        [...list.querySelectorAll(".intake-row .intake-meta")].every((m) =>
+          m.textContent?.includes("投稿 "),
+        ),
+      ).toBe(true),
+    );
+    await user.selectOptions(within(list).getByLabelText("並べ方"), "captured_desc");
     // タブを変えても並べ方は残る
     await user.click(within(list).getByRole("tab", { name: "保留" }));
     expect(router.state.location.search).toContain("sort=captured_desc");
