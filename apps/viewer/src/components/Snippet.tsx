@@ -4,9 +4,12 @@ import type { TriageSnippet } from "../source/types.ts";
 export function Snippet({
   snippet,
   className = "triage-snippet",
+  inline = false,
 }: {
   snippet: TriageSnippet;
   className?: string;
+  /** ボタンの中に置くときは span にする（ボタンの中に段落は置けない） */
+  inline?: boolean;
 }) {
   const parts: React.ReactNode[] = [];
   let at = 0;
@@ -16,5 +19,5 @@ export function Snippet({
     at = e;
   });
   if (at < snippet.text.length) parts.push(snippet.text.slice(at));
-  return <p className={className}>{parts}</p>;
+  return inline ? <span className={className}>{parts}</span> : <p className={className}>{parts}</p>;
 }

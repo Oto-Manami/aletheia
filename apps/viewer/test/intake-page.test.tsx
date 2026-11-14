@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Ctx } from "../src/context.tsx";
 import { routes } from "../src/routes.tsx";
 import { DemoSource } from "../src/source/demo.ts";
+import { mentionParagraphs } from "../src/source/mention-view.ts";
 import type { Viewer } from "../src/source/types.ts";
 
 afterEach(cleanup);
@@ -297,6 +298,51 @@ describe("承認の一覧の並べ方と、置き換わった下書き", () => {
     expect(await within(progress).findByText("承認できませんでした")).toBeTruthy();
     expect(within(progress).getByText(/開いている間に新しい内容に置き換わりました/)).toBeTruthy();
     expect((await source.getIntake(target.id)).state).toBe("pending");
+  });
+});
+
+describe("言及している箇所の印", () => {
+  it("言及の段落を押すと「関係あり」の印が付き、承認すると言及の根拠に残る。付けなくても承認できる", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/intake");
+    // 言及の段落があり、確認することが無い下書き（架空のデータ）
+    // 本人の記事では言及の段落を出さないので、ほかの人の記事から選ぶ
+    const subjects = new Set((await source.listArchiveSubjects()).map((s) => s.id));
+    let target: { id: string; title: string | null } | null = null;
+    for (const item of await source.listIntake("pending")) {
+      if (item.reviewReasons.length > 0) continue;
+      const detail = await source.getIntake(item.id);
+      const own = (detail.draft.links ?? []).some(
+        (l) => l.role === "author" && subjects.has(l.to_id),
+      );
+      if (
+        !own &&
+        mentionParagraphs(detail.draft, (l) => l.evidence?.["purpose"] !== "tag").length > 0
+      ) {
+        target = item;
+        break;
+      }
+    }
+    expect(target).not.toBeNull();
+    await user.click(await screen.findByRole("link", { name: new RegExp(target!.title ?? "") }));
+    const tickets = await screen.findByRole("list", { name: "言及している段落" });
+    const first = within(tickets).getAllByRole("button")[0]!;
+    expect(first.getAttribute("aria-pressed")).toBe("false");
+    await user.click(first);
+    expect(first.getAttribute("aria-pressed")).toBe("true");
+    expect(within(first).getByText("関係あり")).toBeTruthy();
+    expect(screen.getByText(/印を付けた段落 1 件/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "承認する" }));
+    await within(await screen.findByRole("region", { name: "判断の進み具合" })).findByText(
+      "送り終わりました",
+    );
+    const approved = await source.getIntake(target!.id);
+    const excerpts = (approved.draft.links ?? []).flatMap((l) =>
+      Array.isArray(l.evidence?.["excerpts"]) ? (l.evidence["excerpts"] as { text: string }[]) : [],
+    );
+    expect(excerpts.length).toBeGreaterThan(0);
+    expect(excerpts[0]!.text.length).toBeGreaterThan(0);
   });
 });
 
