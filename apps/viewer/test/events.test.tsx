@@ -339,3 +339,56 @@ describe("出来事", () => {
     expect(within(nav).queryByRole("link", { name: "出来事" })).toBeNull();
   });
 });
+
+describe("出来事に紐付いた素材の画像", () => {
+  it("投稿の画像を縮めた画像で並べ、押すと原本を大きく開いて前後に移れる。Esc で閉じる", async () => {
+    const user = userEvent.setup();
+    const source = new DemoSource(0);
+    const eventId = "e1000000-0000-4000-8000-000000000001";
+    // 写真のある下書きを、出来事に紐付ける（架空のデータ）
+    const pending = await source.listIntake("pending");
+    let withPhotos: { id: string; title: string | null; count: number } | null = null;
+    for (const item of pending) {
+      const detail = await source.getIntake(item.id);
+      const count = (detail.draft.assets ?? []).filter(
+        (a) => a.media_type === "image" && detail.previews[a.ref],
+      ).length;
+      if (count >= 2) {
+        withPhotos = { id: item.id, title: item.title, count };
+        break;
+      }
+    }
+    expect(withPhotos).not.toBeNull();
+    const store = (
+      source as unknown as {
+        intakes: { id: string; draft: { links?: Record<string, unknown>[] } }[];
+      }
+    ).intakes;
+    const draft = store.find((i) => i.id === withPhotos!.id)!.draft;
+    draft.links = [
+      ...(draft.links ?? []),
+      { from: "post", to_type: "event", to_id: eventId, role: "about", origin: "human" },
+    ];
+
+    open(`/events/${eventId}`, member, source);
+    const thumbs = await screen.findAllByRole("button", { name: /の画像 \d+ を大きく開く/ });
+    expect(thumbs.length).toBeGreaterThanOrEqual(withPhotos!.count);
+
+    await user.click(thumbs[0]!);
+    const viewer = await screen.findByRole("dialog", { name: "元の画像" });
+    expect(within(viewer).getByRole("img", { name: /の画像 1$/ })).toBeTruthy();
+    expect(within(viewer).getByRole("link", { name: "元の画像を新しいタブで開く" })).toBeTruthy();
+    expect(within(viewer).getByRole("button", { name: "前の画像" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+
+    await user.click(within(viewer).getByRole("button", { name: "次の画像" }));
+    expect(within(viewer).getByRole("img", { name: /の画像 2$/ })).toBeTruthy();
+    await user.keyboard("{ArrowLeft}");
+    expect(within(viewer).getByRole("img", { name: /の画像 1$/ })).toBeTruthy();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "元の画像" })).toBeNull());
+  });
+});

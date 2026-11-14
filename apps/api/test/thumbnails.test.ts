@@ -102,3 +102,80 @@ describe("縮めた画像", () => {
       ).toBe(404);
     }));
 });
+
+describe("原本と、出来事の素材の画像", () => {
+  it("原本をそのまま返す。記録だけの素材は、同じ画像を保存している素材の原本を返す", () =>
+    withApi(async (ctx) => {
+      const bytes = await picture(1200, 900);
+      const assetId = await approvedImage(ctx, bytes);
+      const res = await ctx.call("GET", `/assets/${assetId}/original`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/jpeg");
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+
+      // 同じ画像を、別の投稿が記録だけ持っている（架空の投稿）
+      const { rows } = await ctx.c.query<{ id: string }>(
+        `with src as (select post_id, sha256 from public.assets where id = $1),
+              p as (
+                insert into public.posts (channel_id, external_id, classification)
+                select channel_id, 'twin-7002', 'public' from public.posts
+                where id = (select post_id from src) returning id
+              )
+         insert into public.assets (post_id, position, media_type, file_policy, sha256, classification)
+         select p.id, 1, 'image', 'reference_only', (select sha256 from src), 'public' from p
+         returning id`,
+        [assetId],
+      );
+      const twin = await ctx.call("GET", `/assets/${rows[0]!.id}/original`);
+      expect(twin.status).toBe(200);
+      expect(new Uint8Array(await twin.arrayBuffer())).toEqual(bytes);
+    }));
+
+  it("ログインした利用者（閲覧者を含む）に返し、ログインなしには返さない。無い素材は 404", () =>
+    withApi(async (ctx) => {
+      const assetId = await approvedImage(ctx, await picture(400, 300));
+      const viewer = await tokenFor(
+        await discordUser(ctx.c, "88888888-8888-4888-8888-888888888888", "viewer"),
+      );
+      expect((await ctx.call("GET", `/assets/${assetId}/original`, undefined, viewer)).status).toBe(
+        200,
+      );
+      expect((await ctx.call("GET", `/assets/${assetId}/original`, undefined, null)).status).toBe(
+        401,
+      );
+      expect(
+        (await ctx.call("GET", "/assets/00000000-0000-4000-8000-000000000000/original")).status,
+      ).toBe(404);
+    }));
+
+  it("出来事の素材に、投稿の画像（原本を持つ素材）を並び順で付けて返す", () =>
+    withApi(async (ctx) => {
+      const assetId = await approvedImage(ctx, await picture(640, 480));
+      const { rows } = await ctx.c.query<{ post_id: string }>(
+        "select post_id from public.assets where id = $1",
+        [assetId],
+      );
+      const created = await ctx.call("POST", "/events", {
+        kind: "episode",
+        title: "試験の番組 第 1 回",
+        starts_on: "2026-11-01",
+        date_precision: "day",
+        classification: "public",
+      });
+      const { id: eventId } = (await created.json()) as { id: string };
+      expect(
+        (await ctx.call("POST", `/events/${eventId}/materials`, { post_id: rows[0]!.post_id }))
+          .status,
+      ).toBe(201);
+      const detail = (await (await ctx.call("GET", `/events/${eventId}`)).json()) as {
+        materials: { post_id: string; images: { asset_id: string; file_asset_id: string }[] }[];
+      };
+      expect(detail.materials).toEqual([
+        expect.objectContaining({
+          post_id: rows[0]!.post_id,
+          images: [{ asset_id: assetId, file_asset_id: assetId }],
+        }),
+      ]);
+    }));
+});
