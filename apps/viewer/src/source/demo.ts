@@ -436,6 +436,13 @@ export class DemoSource implements ArchiveSource {
     return structuredClone(post);
   }
 
+  /** デモ版の投稿は、紐付けを投稿と素材で分けていないので、すべて投稿のものとして返す */
+  async getAssetLinks(_assetId: string, postId: string | null) {
+    await this.delay();
+    const post = this.posts.find((p) => p.id === postId);
+    return { asset: [], post: structuredClone(post?.links ?? []) };
+  }
+
   async removeAsset(assetId: string): Promise<void> {
     await this.delay();
     const post = this.posts.find((p) => p.assets.some((a) => a.id === assetId));

@@ -648,6 +648,32 @@ export class LiveSource implements ArchiveSource {
     };
   }
 
+  async getAssetLinks(assetId: string, postId: string | null) {
+    const rows = rowsOf<{
+      role: string;
+      from_type: string;
+      to_type: RefLabel["type"];
+      to_id: string;
+    }>(
+      await this.supabase
+        .from("links")
+        .select("role, from_type, to_type, to_id")
+        .eq("review_state", "accepted")
+        .or(
+          [
+            `and(from_type.eq.asset,from_id.eq.${assetId})`,
+            ...(postId ? [`and(from_type.eq.post,from_id.eq.${postId})`] : []),
+          ].join(","),
+        ),
+    );
+    const labels = await this.labels(rows.map((l) => ({ id: l.to_id, type: l.to_type })));
+    const all = rows.map((l, i) => ({ from: l.from_type, role: l.role, target: labels[i]! }));
+    return {
+      asset: all.filter((l) => l.from === "asset").map(({ role, target }) => ({ role, target })),
+      post: all.filter((l) => l.from === "post").map(({ role, target }) => ({ role, target })),
+    };
+  }
+
   async createInvite(note?: string) {
     const [row] = rpcRows<{ id: string; token: string; expires_at: string }>(
       await this.supabase.rpc("create_invite", { note: note ?? null }),

@@ -5,7 +5,7 @@
 // - 開いた画面では、前後の画像へ移れ、原本を新しいタブで開く・ダウンロードできる
 
 import { ChevronLeft, ChevronRight, Download, ExternalLink, ImageOff, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useApp } from "../context.tsx";
 import type { EventMaterialImage } from "../source/types.ts";
 
@@ -162,11 +162,14 @@ export function ImageViewer({
   index,
   onMove,
   onClose,
+  aside,
 }: {
   images: GalleryImage[];
   index: number;
   onMove: (index: number) => void;
   onClose: () => void;
+  /** 画像の横（狭い画面では下）に出すもの（紐付いている素材など） */
+  aside?: (image: GalleryImage, index: number) => ReactNode;
 }) {
   const image = images[index] ?? null;
   const url = useImage(image, "original");
@@ -187,7 +190,7 @@ export function ImageViewer({
   return (
     <div className="image-viewer" role="dialog" aria-modal="true" aria-label="元の画像">
       <div className="image-viewer-backdrop" aria-hidden="true" onClick={onClose} />
-      <div className="image-viewer-panel">
+      <div className={`image-viewer-panel ${aside ? "has-aside" : ""}`}>
         <header className="image-viewer-head">
           <span className="image-viewer-title">
             {image.postTitle}
@@ -256,6 +259,11 @@ export function ImageViewer({
             <ChevronRight size={24} aria-hidden="true" />
           </button>
         </div>
+        {aside && (
+          <aside className="image-viewer-aside" aria-label="紐付いているもの">
+            {aside(image, index)}
+          </aside>
+        )}
       </div>
     </div>
   );

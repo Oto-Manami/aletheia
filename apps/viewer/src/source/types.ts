@@ -490,6 +490,17 @@ export interface ArchiveSource {
    * 使い終わったら release を呼ぶ。無ければ、AssetCard.imageUrl を使う（デモ版）
    */
   assetThumbnail?(assetId: string): Promise<{ url: string; release: () => void } | null>;
+  /**
+   * 素材に紐付いているもの（アセットの画面で画像を開いたときに横に出す）。asset は素材から（写っている人・出来事など）、
+   * post はその素材の投稿から（書いた人・言及・出来事など）
+   */
+  getAssetLinks(
+    assetId: string,
+    postId: string | null,
+  ): Promise<{
+    asset: { role: string; target: RefLabel }[];
+    post: { role: string; target: RefLabel }[];
+  }>;
   /** 画像の素材の原本（縮めた画像から開く元の画像）。読めなければ null */
   assetOriginal?(assetId: string): Promise<{ url: string; release: () => void } | null>;
   /**
