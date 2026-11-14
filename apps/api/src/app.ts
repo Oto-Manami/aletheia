@@ -95,6 +95,11 @@ const createIntakeBody = z.object({
    * Discord の入口から貼り直したときに付ける。自動の取得は付けない（毎週の全件で同じ投稿を送り直すため）
    */
   replace_pending: z.boolean().optional(),
+  /**
+   * 人が入れたいと判断して送った（Discord の入口に貼った）。振り分けで「言及なし」と確認済みの記事も取り込み、
+   * その記録を消す（設計書 決定記録 0055）。自動の取得は付けない
+   */
+  override_no_mention: z.boolean().optional(),
 });
 
 const knownBody = z.object({
@@ -601,12 +606,21 @@ export function createApp(
     if (!channel) {
       throw new HTTPException(422, { message: `情報源が登録されていません: ${body.channel_key}` });
     }
-    // 振り分けで「言及なし」と確認済みの記事は、取り込み直さない
+    // 振り分けで「言及なし」と確認済みの記事は、取り込み直さない。人が入れたいと判断して送ったとき
+    // （Discord の入口）は取り込み、「言及なし」の記録を消す（変更履歴に残る。決定記録 0055）
     if (await isCheckedNoMention(db, channel.id, body.external_id)) {
-      return c.json(
-        { error: "この記事は振り分けで「言及なし」と確認済みです", code: "checked_no_mention" },
-        409,
-      );
+      if (!body.override_no_mention) {
+        return c.json(
+          { error: "この記事は振り分けで「言及なし」と確認済みです", code: "checked_no_mention" },
+          409,
+        );
+      }
+      await db
+        .deleteFrom("coverage_checks")
+        .where("channel_id", "=", channel.id)
+        .where("external_id", "=", body.external_id)
+        .where("result", "=", "no_mention")
+        .execute();
     }
     let draft: unknown = body.draft;
     let state = body.state;

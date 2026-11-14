@@ -116,6 +116,38 @@ describe("振り分け", () => {
       expect((await ctx.call("POST", `/intake/${id}/restore`, {})).status).toBe(409);
     }));
 
+  it("「言及なし」と確認済みの記事も、人が入れたいと判断して送れば取り込み、記録を消す（決定記録 0055）", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const { id } = await triageDraft(ctx, d, "203");
+      expect((await ctx.call("POST", `/intake/${id}/no-mention`, {})).status).toBe(200);
+
+      const fromDiscord = {
+        channel_key: "sns:test_account",
+        external_id: "203",
+        route: "discord",
+        route_ref: "discord-message-203",
+        captured_at: "2026-10-15T00:00:00+09:00",
+        draft: { version: 1, post: { classification: "public" } },
+      };
+      // 付けていなければ、これまでどおり断る
+      expect((await ctx.call("POST", "/intake", fromDiscord)).status).toBe(409);
+
+      const res = await ctx.call("POST", "/intake", { ...fromDiscord, override_no_mention: true });
+      expect(res.status).toBe(201);
+      expect(await res.json()).toMatchObject({ state: "pending" });
+      const { rows } = await ctx.c.query<{ n: number }>(
+        `select count(*)::int as n from public.coverage_checks
+          where external_id = '203' and result = 'no_mention'`,
+      );
+      expect(rows[0]!.n).toBe(0);
+      const history = await ctx.c.query<{ result: string }>(
+        `select old_row ->> 'result' as result from app.history
+          where table_name = 'coverage_checks' and old_row ->> 'external_id' = '203'`,
+      );
+      expect(history.rows).toContainEqual({ result: "no_mention" });
+    }));
+
   it("置き場から押し出された下書きは、仮置きのファイルを後から消す", () =>
     withApi(async (ctx) => {
       const d = await seed(ctx.c);
