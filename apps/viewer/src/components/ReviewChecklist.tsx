@@ -375,9 +375,9 @@ export function ReviewChecklist(props: ReviewChecklistProps) {
                 )}
                 {item.kind === "no_person" && (
                   <>
-                    <p className="check-title">誰についての投稿かを選ぶ</p>
+                    <p className="check-title">誰・何についての投稿かを選ぶ</p>
                     <p className="check-desc">
-                      人物への紐付けがありません。登場する人・書いた人を名前で探して足してください。
+                      人物にも出来事にも紐付いていません。登場する人・書いた人を名前で探して足すか、右の「出来事」で出来事に紐付けてください（ニュースなどは出来事に紐付ければ、人物は無くてかまいません）。
                     </p>
                     {!item.resolved && !readOnly && (
                       <AddLink

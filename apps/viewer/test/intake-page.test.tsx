@@ -66,16 +66,15 @@ describe("承認の画面", () => {
     expect(approved.draft.statements?.[0]?.evidence?.["reviewed"]).toBe(true);
   });
 
-  it("日付と人物が無い下書きは、その場で入れると承認できる", async () => {
+  it("日付が無い下書きは、その場で入れると承認できる。出来事に紐付いたニュースは人物を選ばなくてよい", async () => {
     const user = userEvent.setup();
     open("/intake");
     await user.click(await screen.findByRole("link", { name: /2 日目のレポート/ }));
     const checklist = await screen.findByRole("region", { name: "確認すること" });
+    // 出来事に紐付いているので、誰・何についての投稿かは聞かない
+    expect(within(checklist).queryByText("誰・何についての投稿かを選ぶ")).toBeNull();
 
     await user.type(within(checklist).getByLabelText("日付"), "2026-10-11");
-    await user.type(within(checklist).getByLabelText("人物の名前"), "試験 花子");
-    await user.click(within(checklist).getByRole("button", { name: "探す" }));
-    await user.click(await within(checklist).findByRole("button", { name: "試験 花子 を足す" }));
 
     expect(within(checklist).getByText("すべて確認済み")).toBeTruthy();
     expect(screen.getByRole("button", { name: "承認する" })).toHaveProperty("disabled", false);
