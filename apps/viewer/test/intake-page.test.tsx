@@ -248,15 +248,17 @@ describe("承認の一覧の並べ方と、置き換わった下書き", () => {
     const oldest = (await source.listIntake("pending", "captured_asc"))[0]!;
     expect(newest.id).not.toBe(oldest.id);
     const list = await screen.findByRole("region", { name: "下書きの一覧" });
-    await waitFor(() =>
-      expect(within(list).getAllByRole("link")[0]!.getAttribute("href")).toContain(oldest.id),
-    );
-
-    await user.selectOptions(within(list).getByLabelText("並べ方"), "captured_desc");
+    // 承認待ちの既定は、取り込んだ新しい順（URL には書かない）
     await waitFor(() =>
       expect(within(list).getAllByRole("link")[0]!.getAttribute("href")).toContain(newest.id),
     );
-    expect(router.state.location.search).toContain("sort=captured_desc");
+    expect(router.state.location.search).not.toContain("sort=");
+
+    await user.selectOptions(within(list).getByLabelText("並べ方"), "captured_asc");
+    await waitFor(() =>
+      expect(within(list).getAllByRole("link")[0]!.getAttribute("href")).toContain(oldest.id),
+    );
+    expect(router.state.location.search).toContain("sort=captured_asc");
     // 投稿の日時で並べると、行には投稿の日時を出す
     await user.selectOptions(within(list).getByLabelText("並べ方"), "published_desc");
     await waitFor(() =>
@@ -266,10 +268,18 @@ describe("承認の一覧の並べ方と、置き換わった下書き", () => {
         ),
       ).toBe(true),
     );
-    await user.selectOptions(within(list).getByLabelText("並べ方"), "captured_desc");
+    await user.selectOptions(within(list).getByLabelText("並べ方"), "captured_asc");
     // タブを変えても並べ方は残る
     await user.click(within(list).getByRole("tab", { name: "保留" }));
-    expect(router.state.location.search).toContain("sort=captured_desc");
+    expect(router.state.location.search).toContain("sort=captured_asc");
+    // 承認済みの既定は、判断の新しい順
+    await user.click(within(list).getByRole("tab", { name: "承認済み" }));
+    await user.selectOptions(within(list).getByLabelText("並べ方"), "default");
+    expect(router.state.location.search).not.toContain("sort=");
+    expect(
+      within(list).getByRole<HTMLSelectElement>("combobox", { name: "並べ方" }).selectedOptions[0]
+        ?.textContent,
+    ).toBe("判断の新しい順（既定）");
   });
 
   it("開いている間に貼り直しで置き換わった下書きは、承認できずに理由が出る", async () => {

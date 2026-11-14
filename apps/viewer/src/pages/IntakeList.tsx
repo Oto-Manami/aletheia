@@ -40,14 +40,22 @@ export function queueLabel(entry: QueuedDecision): string {
   }
 }
 
-/** 並べ方の選択肢。既定の名前は、タブ（承認待ち・保留か、判断済みか）で変える */
+/** 並べ方の選択肢。default（判断の新しい順）は、承認済み・却下のタブだけ */
 const SORTS: { sort: IntakeSort; label: string }[] = [
-  { sort: "default", label: "" },
+  { sort: "default", label: "判断の新しい順" },
   { sort: "captured_desc", label: "取り込んだ新しい順" },
   { sort: "captured_asc", label: "取り込んだ古い順" },
   { sort: "published_desc", label: "投稿の日時の新しい順" },
   { sort: "published_asc", label: "投稿の日時の古い順" },
 ];
+
+/** タブごとの並べ方の選択肢と既定。承認待ち・保留は取り込んだ新しい順、承認済み・却下は判断の新しい順 */
+function sortsOf(state: IntakeState): { options: typeof SORTS; initial: IntakeSort } {
+  const decided = state === "approved" || state === "rejected";
+  return decided
+    ? { options: SORTS, initial: "default" }
+    : { options: SORTS.filter((s) => s.sort !== "default"), initial: "captured_desc" };
+}
 
 const DECIDED_LABELS: Partial<Record<IntakeState, string>> = {
   approved: "承認",
@@ -60,8 +68,8 @@ export function IntakePage() {
   const layout = useLayout();
   const [params, setParams] = useSearchParams();
   const state = STATES.find((s) => s.state === params.get("state"))?.state ?? "pending";
-  const sort = SORTS.find((s) => s.sort === params.get("sort"))?.sort ?? "default";
-  const decidedTab = state === "approved" || state === "rejected";
+  const sorts = sortsOf(state);
+  const sort = sorts.options.find((s) => s.sort === params.get("sort"))?.sort ?? sorts.initial;
   const detail = useMatch("/intake/:id");
   // 判断が終わるたびに、今の一覧を見せたまま裏で読み直す（画面は読み直さない）
   const [list] = useLoad(
@@ -72,10 +80,14 @@ export function IntakePage() {
   /** URL の条件を変える（タブ・並べ方。既定のものは URL に書かない） */
   const choose = (next: { state?: IntakeState; sort?: IntakeSort }) => {
     const s = next.state ?? state;
-    const o = next.sort ?? sort;
+    const target = sortsOf(s);
+    // 選んだ並べ方は、移った先のタブにもあれば続ける
+    const o = target.options.some((x) => x.sort === (next.sort ?? sort))
+      ? (next.sort ?? sort)
+      : target.initial;
     setParams({
       ...(s !== "pending" ? { state: s } : {}),
-      ...(o !== "default" ? { sort: o } : {}),
+      ...(o !== target.initial ? { sort: o } : {}),
     });
   };
   const queued = useQueued(layout.decisions);
@@ -120,13 +132,9 @@ export function IntakePage() {
         <label className="intake-sort">
           並べ方
           <select value={sort} onChange={(e) => choose({ sort: e.target.value as IntakeSort })}>
-            {SORTS.map((s) => (
+            {sorts.options.map((s) => (
               <option key={s.sort} value={s.sort}>
-                {s.sort === "default"
-                  ? decidedTab
-                    ? "判断の新しい順（既定）"
-                    : "取り込んだ古い順（既定）"
-                  : s.label}
+                {s.sort === sorts.initial ? `${s.label}（既定）` : s.label}
               </option>
             ))}
           </select>
