@@ -20,6 +20,13 @@ export interface DiscardedItem {
 export type Decision = "approve" | "reject" | "hold";
 
 /** 承認待ちなどの一覧の 1 行 */
+/**
+ * 承認の一覧の並べ方。default は、承認待ち・保留は取り込んだ古い順、承認済み・却下は判断の新しい順。
+ * captured_* は取り込んだ日時、published_* は投稿の日時（分からないものは最後）
+ */
+export type IntakeSort =
+  "default" | "captured_desc" | "captured_asc" | "published_desc" | "published_asc";
+
 export interface IntakeSummary {
   id: string;
   channelKey: string;
@@ -452,7 +459,7 @@ export interface ArchiveSource {
   readonly demo: boolean;
   viewer(): Promise<Viewer>;
   /** 一覧（古い順。上限 200 件。承認済み・却下は判断の新しい順） */
-  listIntake(state: IntakeState): Promise<IntakeSummary[]>;
+  listIntake(state: IntakeState, sort?: IntakeSort): Promise<IntakeSummary[]>;
   /** その状態の本当の件数（一覧の上限に関わらない） */
   countIntake(state: IntakeState): Promise<number>;
   getIntake(id: string): Promise<IntakeDetail>;
@@ -467,11 +474,14 @@ export interface ArchiveSource {
    * 無ければ、getIntake の previews・pageHtml だけを使う（デモ版）
    */
   loadIntakeFiles?(detail: IntakeDetail, onFile: (file: IntakeFile) => void): () => void;
-  /** 承認・却下・保留。承認では、直した下書きを一緒に送れる。filesFailed は保存できなかったファイルの数 */
+  /**
+   * 承認・却下・保留。承認では、直した下書きを一緒に送れる。filesFailed は保存できなかったファイルの数。
+   * basedOn は、開いたときの下書きの取り込んだ日時。開いている間に置き換わっていたら、承認を断る（決定記録 0054）
+   */
   decide(
     id: string,
     decision: Decision,
-    options?: { draft?: DraftInput; note?: string },
+    options?: { draft?: DraftInput; note?: string; basedOn?: string },
   ): Promise<ApproveOutcome>;
   /** 却下を取り消し、承認待ちに戻す（却下した直近 10 件だけ。決定記録 0043） */
   reopenIntake(id: string): Promise<void>;

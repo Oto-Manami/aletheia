@@ -3,7 +3,7 @@ import { Tags } from "../components/Tags.tsx";
 import { useApp } from "../context.tsx";
 import { formatInstant, routeLabel } from "../format.ts";
 import type { QueuedDecision } from "../decision-queue.ts";
-import type { Decision, IntakeState } from "../source/types.ts";
+import type { Decision, IntakeSort, IntakeState } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 import { type LayoutOutlet, useLayout, useQueued } from "./Layout.tsx";
 
@@ -40,6 +40,15 @@ export function queueLabel(entry: QueuedDecision): string {
   }
 }
 
+/** 並べ方の選択肢。既定の名前は、タブ（承認待ち・保留か、判断済みか）で変える */
+const SORTS: { sort: IntakeSort; label: string }[] = [
+  { sort: "default", label: "" },
+  { sort: "captured_desc", label: "取り込んだ新しい順" },
+  { sort: "captured_asc", label: "取り込んだ古い順" },
+  { sort: "published_desc", label: "投稿の日時の新しい順" },
+  { sort: "published_asc", label: "投稿の日時の古い順" },
+];
+
 const DECIDED_LABELS: Partial<Record<IntakeState, string>> = {
   approved: "承認",
   rejected: "却下",
@@ -51,9 +60,24 @@ export function IntakePage() {
   const layout = useLayout();
   const [params, setParams] = useSearchParams();
   const state = STATES.find((s) => s.state === params.get("state"))?.state ?? "pending";
+  const sort = SORTS.find((s) => s.sort === params.get("sort"))?.sort ?? "default";
+  const decidedTab = state === "approved" || state === "rejected";
   const detail = useMatch("/intake/:id");
   // 判断が終わるたびに、今の一覧を見せたまま裏で読み直す（画面は読み直さない）
-  const [list] = useLoad(() => source.listIntake(state), [source, state], [layout.version]);
+  const [list] = useLoad(
+    () => source.listIntake(state, sort),
+    [source, state, sort],
+    [layout.version],
+  );
+  /** URL の条件を変える（タブ・並べ方。既定のものは URL に書かない） */
+  const choose = (next: { state?: IntakeState; sort?: IntakeSort }) => {
+    const s = next.state ?? state;
+    const o = next.sort ?? sort;
+    setParams({
+      ...(s !== "pending" ? { state: s } : {}),
+      ...(o !== "default" ? { sort: o } : {}),
+    });
+  };
   const queued = useQueued(layout.decisions);
   const entryOf = (id: string) => queued.findLast((e) => e.id === id);
 
@@ -87,12 +111,31 @@ export function IntakePage() {
               role="tab"
               aria-selected={s.state === state}
               className="tab"
-              onClick={() => setParams(s.state === "pending" ? {} : { state: s.state })}
+              onClick={() => choose({ state: s.state })}
             >
               {s.label}
             </button>
           ))}
         </div>
+        <label className="intake-sort">
+          並べ方
+          <select value={sort} onChange={(e) => choose({ sort: e.target.value as IntakeSort })}>
+            {SORTS.map((s) => (
+              <option key={s.sort} value={s.sort}>
+                {s.sort === "default"
+                  ? decidedTab
+                    ? "判断の新しい順（既定）"
+                    : "取り込んだ古い順（既定）"
+                  : s.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {list.status === "ready" && list.data.length >= 200 && (
+          <p className="quiet">
+            200 件まで出しています。並べ方を変えると、ほかの下書きも見られます。
+          </p>
+        )}
         {list.status === "loading" && <p className="quiet">読み込んでいます</p>}
         {list.status === "error" && (
           <p className="error" role="alert">

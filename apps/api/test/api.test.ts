@@ -171,6 +171,78 @@ describe("下書き", () => {
       expect((await call("POST", "/intake", newIntake(d))).status).toBe(409);
     }));
 
+  it("置き換えてよいと付けて届いたら、承認待ち・保留の下書きを新しい内容で置き換える（決定記録 0054）", () =>
+    withApi(async ({ c, call }) => {
+      const d = await seed(c);
+      const first = (await (await call("POST", "/intake", newIntake(d))).json()) as { id: string };
+
+      // 付けていなければ、これまでどおり断る
+      expect((await call("POST", "/intake", newIntake(d))).status).toBe(409);
+
+      const again = { ...newIntake(d), replace_pending: true, route_ref: "discord-message-2" };
+      again.draft.post.title = "貼り直した題名";
+      const res = await call("POST", "/intake", again);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ id: first.id, state: "pending", replaced: true });
+      const { rows } = await c.query<{ title: string; route_ref: string }>(
+        `select draft -> 'post' ->> 'title' as title, route_ref from public.intake_items where id = $1`,
+        [first.id],
+      );
+      expect(rows).toEqual([{ title: "貼り直した題名", route_ref: "discord-message-2" }]);
+      const history = await c.query<{ title: string }>(
+        `select old_row -> 'draft' -> 'post' ->> 'title' as title
+           from app.history where table_name = 'intake_items' and row_id = $1 order by id`,
+        [first.id],
+      );
+      expect(history.rows).toContainEqual({ title: "お菓子の日" });
+
+      // 保留も置き換え、状態は保留のまま
+      expect((await call("POST", `/intake/${first.id}/hold`, {})).status).toBe(200);
+      const held = await call("POST", "/intake", { ...again, replace_pending: true });
+      expect(await held.json()).toMatchObject({ id: first.id, state: "on_hold", replaced: true });
+    }));
+
+  it("承認済みのもの・振り分けから始まるものは、置き換えてよいと付いていても置き換えない", () =>
+    withApi(async ({ c, call }) => {
+      const d = await seed(c);
+      const first = (await (await call("POST", "/intake", newIntake(d))).json()) as { id: string };
+      expect((await call("POST", `/intake/${first.id}/approve`, {})).status).toBe(200);
+      expect(
+        (await call("POST", "/intake", { ...newIntake(d), replace_pending: true })).status,
+      ).toBe(409);
+
+      const other = newIntake(d, "9002");
+      expect((await call("POST", "/intake", other)).status).toBe(201);
+      expect(
+        (await call("POST", "/intake", { ...other, state: "triage", replace_pending: true }))
+          .status,
+      ).toBe(409);
+    }));
+
+  it("並べ方を選べる（取り込んだ日時・投稿の日時。投稿の日時が無いものは最後）", () =>
+    withApi(async ({ c, call }) => {
+      const d = await seed(c);
+      const make = (id: string, captured: string, date: string | null) => {
+        const body = { ...newIntake(d, id), captured_at: captured };
+        if (date) body.draft.post.published_date = date;
+        else delete (body.draft.post as { published_date?: string }).published_date;
+        return call("POST", "/intake", body);
+      };
+      await make("a", "2026-10-01T10:00:00+09:00", "2026-09-01");
+      await make("b", "2026-10-03T10:00:00+09:00", "2026-08-01");
+      await make("c", "2026-10-02T10:00:00+09:00", null);
+      const order = async (sort: string) => {
+        const res = await call("GET", `/intake?state=pending&sort=${sort}`);
+        const { items } = (await res.json()) as { items: { external_id: string }[] };
+        return items.map((i) => i.external_id).filter((x) => ["a", "b", "c"].includes(x));
+      };
+      expect(await order("default")).toEqual(["a", "c", "b"]);
+      expect(await order("captured_desc")).toEqual(["b", "c", "a"]);
+      expect(await order("published_desc")).toEqual(["a", "b", "c"]);
+      expect(await order("published_asc")).toEqual(["b", "a", "c"]);
+      expect((await call("GET", "/intake?sort=nope")).status).toBe(400);
+    }));
+
   it("形の足りない下書きも作れるが、そのことを返す（人が補ってから承認する）", () =>
     withApi(async ({ c, call }) => {
       const d = await seed(c);
@@ -255,6 +327,35 @@ describe("承認・却下・保留", () => {
         (await call("POST", "/intake/00000000-0000-4000-8000-000000000000/approve", {})).status,
       ).toBe(404);
       expect((await call("POST", "/intake/not-a-uuid/approve", {})).status).toBe(404);
+    }));
+
+  it("開いたときの版を付けて承認する。開いている間に置き換わっていたら断る（決定記録 0054）", () =>
+    withApi(async ({ c, call }) => {
+      const d = await seed(c);
+      const { id } = (await (await call("POST", "/intake", newIntake(d))).json()) as { id: string };
+      const opened = (await (await call("GET", `/intake/${id}`)).json()) as {
+        item: { captured_at: string };
+      };
+      // 貼り直しは新しいメッセージなので、取り込んだ日時が変わる
+      const again = {
+        ...newIntake(d),
+        replace_pending: true,
+        captured_at: "2026-10-13T08:00:00+09:00",
+      };
+      again.draft.post.title = "置き換わった題名";
+      expect((await call("POST", "/intake", again)).status).toBe(200);
+
+      const stale = await call("POST", `/intake/${id}/approve`, {
+        based_on: opened.item.captured_at,
+      });
+      expect(stale.status).toBe(409);
+      expect(await stale.json()).toMatchObject({ code: "draft_replaced" });
+
+      const now = (await (await call("GET", `/intake/${id}`)).json()) as {
+        item: { captured_at: string };
+      };
+      const ok = await call("POST", `/intake/${id}/approve`, { based_on: now.item.captured_at });
+      expect(ok.status).toBe(200);
     }));
 
   it("人が修正した下書きで承認できる", () =>

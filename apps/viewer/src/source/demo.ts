@@ -42,6 +42,7 @@ import {
   type EventMaterial,
   type EventInput,
   type IntakeDetail,
+  type IntakeSort,
   type IntakeIssue,
   type IntakeState,
   type IntakeSummary,
@@ -201,11 +202,32 @@ export class DemoSource implements ArchiveSource {
     });
   }
 
-  async listIntake(state: IntakeState): Promise<IntakeSummary[]> {
+  async listIntake(state: IntakeState, sort: IntakeSort = "default"): Promise<IntakeSummary[]> {
     await this.delay();
+    // API と同じ並べ方（投稿の日時が分からないものは最後）
+    const published = (i: DemoIntake) =>
+      i.draft.post.published_at ?? i.draft.post.published_date ?? null;
+    const byPublished = (dir: 1 | -1) => (a: DemoIntake, b: DemoIntake) => {
+      const pa = published(a);
+      const pb = published(b);
+      if (pa === pb) return dir * a.capturedAt.localeCompare(b.capturedAt);
+      if (pa === null) return 1;
+      if (pb === null) return -1;
+      return dir * pa.localeCompare(pb);
+    };
+    const decided = state === "approved" || state === "rejected";
+    const compare: Record<IntakeSort, (a: DemoIntake, b: DemoIntake) => number> = {
+      default: decided
+        ? (a, b) => (b.reviewedAt ?? "").localeCompare(a.reviewedAt ?? "")
+        : (a, b) => a.capturedAt.localeCompare(b.capturedAt),
+      captured_desc: (a, b) => b.capturedAt.localeCompare(a.capturedAt),
+      captured_asc: (a, b) => a.capturedAt.localeCompare(b.capturedAt),
+      published_desc: byPublished(-1),
+      published_asc: byPublished(1),
+    };
     return this.intakes
       .filter((i) => i.state === state)
-      .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt))
+      .sort(compare[sort])
       .map((i) => this.summary(i));
   }
 
@@ -250,12 +272,19 @@ export class DemoSource implements ArchiveSource {
   async decide(
     id: string,
     decision: Decision,
-    options: { draft?: DraftInput; note?: string } = {},
+    options: { draft?: DraftInput; note?: string; basedOn?: string } = {},
   ): Promise<ApproveOutcome> {
     await this.delay();
     const item = this.find(id);
     if (item.state === "approved" || item.state === "rejected") {
       throw new SourceError("この下書きは既に判断済みです", 409);
+    }
+    // 開いている間に置き換わっていたら断る（API と同じ。決定記録 0054）
+    if (decision === "approve" && options.basedOn && options.basedOn !== item.capturedAt) {
+      throw new SourceError(
+        "この下書きは、開いている間に新しい内容に置き換わりました。開き直してから承認してください",
+        409,
+      );
     }
     if (decision === "approve") {
       const draft = options.draft ?? item.draft;
