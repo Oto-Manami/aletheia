@@ -148,6 +148,12 @@ export interface AssetCard {
   imageUrl: string | null;
   /** 保存した原本を開く URL */
   openUrl: string | null;
+  /** 元のページの URL（投稿の URL） */
+  pageUrl: string | null;
+  /** 保存した原本の大きさ（バイト） */
+  byteSize: number | null;
+  /** 保存した（承認した）日時 */
+  savedAt: string | null;
 }
 
 export interface AssetFilter {

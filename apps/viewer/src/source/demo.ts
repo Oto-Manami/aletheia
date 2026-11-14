@@ -406,6 +406,9 @@ export class DemoSource implements ArchiveSource {
             title: a.title,
             imageUrl: a.mediaType === "image" ? a.previewUrl : null,
             openUrl: a.openUrl,
+            pageUrl: p.url,
+            byteSize: a.byteSize,
+            savedAt: p.capturedAt,
           })),
       )
       .sort((a, b) =>
