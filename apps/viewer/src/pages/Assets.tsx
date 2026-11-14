@@ -2,12 +2,14 @@
 //
 // 画像は、保存した原本から作った縮めた画像を表示する（元のサイトが消えても見られる。保存した原本は保存先で開く）。
 // 同じファイルの重複（記録だけの素材）は出さない。参加者だけが見られる。
+// 原文（HTML）は画像のように見せられないので、ページ 1 件を 1 行にした一覧で見せる。
 
 import { ExternalLink, FileText, Film, Globe, ImageOff, Music } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApp } from "../context.tsx";
-import { formatPublished, MEDIA_LABELS } from "../format.ts";
+import { formatBytes } from "../capture.ts";
+import { formatInstant, formatPublished, MEDIA_LABELS } from "../format.ts";
 import type { AssetCard, AssetFilter } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 
@@ -99,6 +101,61 @@ function Tile({ asset }: { asset: AssetCard }) {
           <ExternalLink size={14} aria-hidden="true" />
         </a>
       )}
+    </li>
+  );
+}
+
+/** 元のサイトの名前（ドメイン）。読めなければ null */
+function siteOf(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+/** 原文（HTML）の 1 行。題名・情報源・日付・元のサイト・保存した日・大きさと、開くためのリンク */
+function PageRow({ asset }: { asset: AssetCard }) {
+  const title = asset.postTitle?.trim() || asset.title?.trim() || "（題名なし）";
+  const date = formatPublished(asset);
+  const site = siteOf(asset.pageUrl);
+  const size = formatBytes(asset.byteSize);
+  return (
+    <li className="asset-page">
+      <span className="asset-page-icon" aria-hidden="true">
+        <Globe size={18} />
+      </span>
+      <span className="asset-page-main">
+        {asset.postId ? (
+          <Link to={`/posts/${asset.postId}`} className="asset-page-title">
+            {title}
+          </Link>
+        ) : (
+          <span className="asset-page-title">{title}</span>
+        )}
+        <span className="asset-page-meta">
+          <span>{asset.channelName}</span>
+          {date && <span>{date}</span>}
+          {site && <span>{site}</span>}
+        </span>
+        <span className="asset-page-meta quiet">
+          {asset.savedAt && <span>{formatInstant(asset.savedAt)} に保存</span>}
+          {size && <span>{size}</span>}
+        </span>
+      </span>
+      <span className="asset-page-links">
+        {asset.pageUrl && (
+          <a href={asset.pageUrl} target="_blank" rel="noreferrer noopener" className="ext-link">
+            元のページ <ExternalLink size={12} aria-hidden="true" />
+          </a>
+        )}
+        {asset.openUrl && (
+          <a href={asset.openUrl} target="_blank" rel="noreferrer noopener" className="ext-link">
+            保存した原文を開く <ExternalLink size={12} aria-hidden="true" />
+          </a>
+        )}
+      </span>
     </li>
   );
 }
@@ -245,13 +302,20 @@ export function AssetsPage() {
             : "まだ保存した画像はありません。承認すると、ここに並びます。"}
         </p>
       )}
-      {items.length > 0 && (
-        <ul className="asset-grid" aria-label="アセット">
-          {items.map((a) => (
-            <Tile key={a.id} asset={a} />
-          ))}
-        </ul>
-      )}
+      {items.length > 0 &&
+        (type === "webpage" ? (
+          <ul className="panel asset-pages" aria-label="アセット">
+            {items.map((a) => (
+              <PageRow key={a.id} asset={a} />
+            ))}
+          </ul>
+        ) : (
+          <ul className="asset-grid" aria-label="アセット">
+            {items.map((a) => (
+              <Tile key={a.id} asset={a} />
+            ))}
+          </ul>
+        ))}
       {error && (
         <p className="error" role="alert">
           {error}

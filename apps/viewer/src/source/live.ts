@@ -522,7 +522,7 @@ export class LiveSource implements ArchiveSource {
     let q = this.supabase
       .from("assets")
       .select(
-        "id, media_type, title, attributes, posts!inner(id, title, published_at, published_date, channel_id, channels(name)), asset_files(variant, provider, storage_key)",
+        "id, media_type, title, attributes, created_at, posts!inner(id, title, url, published_at, published_date, channel_id, channels(name)), asset_files(variant, provider, storage_key, byte_size)",
       )
       .neq("file_policy", "reference_only")
       .order("created_at", { ascending: false });
@@ -534,14 +534,21 @@ export class LiveSource implements ArchiveSource {
       media_type: string;
       title: string | null;
       attributes: Record<string, unknown> | null;
+      created_at: string;
       posts: {
         id: string;
         title: string | null;
+        url: string | null;
         published_at: string | null;
         published_date: string | null;
         channels: { name: string } | null;
       } | null;
-      asset_files: { variant: string; provider: string; storage_key: string }[];
+      asset_files: {
+        variant: string;
+        provider: string;
+        storage_key: string;
+        byte_size: number | null;
+      }[];
     }>(await q);
     const hasMore = ids ? hasMoreLinks : rows.length > page.limit;
     const items = (ids ? rows : rows.slice(0, page.limit)).map((a) => {
@@ -557,6 +564,9 @@ export class LiveSource implements ArchiveSource {
         title: a.title,
         imageUrl: a.media_type === "image" && typeof source === "string" ? source : null,
         openUrl: openUrlOf(a.asset_files.find((f) => f.variant === "original")),
+        pageUrl: a.posts?.url ?? null,
+        byteSize: a.asset_files.find((f) => f.variant === "original")?.byte_size ?? null,
+        savedAt: a.created_at,
       };
     });
     return { items, hasMore };
