@@ -53,7 +53,8 @@ export function EventsPage() {
   const query = params.get("q") ?? "";
   const kind = params.get("kind") ?? "";
   const [typed, setTyped] = useState(query);
-  const detail = useMatch("/events/:id");
+  // 表示の画面（/events/:id）と編集の画面（/events/:id/edit）
+  const detail = useMatch("/events/:id/*");
   const [list] = useLoad(
     // 日程（まとまりの各日・各部）は一覧に出さず、まとまりの画面で見せる（設計書 決定記録 0034）
     () => source.listEvents({ query, kind, schedule: "hide" }),
@@ -438,6 +439,7 @@ export function EventEditPage() {
   const isNew = !id || id === "new";
   const { source, viewer } = useApp();
   const layout = useLayout();
+  const navigate = useNavigate();
   const [params] = useSearchParams();
   const parentId = params.get("parent");
   const [loaded, reload] = useLoad(async () => {
@@ -486,6 +488,19 @@ export function EventEditPage() {
         detail={loaded.data.detail}
         initial={loaded.data.form}
         onSaved={(text) => {
+          // 直したら、表示の画面に戻って知らせる
+          layout.changed();
+          if (loaded.data.detail) {
+            void navigate(
+              { pathname: `/events/${loaded.data.detail.id}`, search: listSearch(params) },
+              { state: { notice: text } },
+            );
+            return;
+          }
+          setSaved({ key: location.key, text });
+          reload();
+        }}
+        onNotice={(text) => {
           setSaved({ key: location.key, text });
           layout.changed();
           reload();
@@ -503,11 +518,15 @@ function EventForm({
   detail,
   initial,
   onSaved,
+  onNotice,
   onMaterialsChanged,
 }: {
   detail: EventDetail | null;
   initial: FormState;
+  /** 保存した（直したら表示の画面に戻る） */
   onSaved: (notice: string) => void;
+  /** 編集の画面に残ったまま知らせる（日程を足したなど。出来事を読み直す） */
+  onNotice: (notice: string) => void;
   /** 素材を紐付けた・外した（出来事を読み直す。入力の途中のものは残す） */
   onMaterialsChanged: () => void;
 }) {
@@ -581,10 +600,20 @@ function EventForm({
       }}
     >
       <div className="event-form-head">
-        <Link className="back-link" to={{ pathname: "/events", search: listSearch(params) }}>
-          <ChevronLeft size={16} aria-hidden="true" />
-          一覧に戻る
-        </Link>
+        {detail ? (
+          <Link
+            className="back-link"
+            to={{ pathname: `/events/${detail.id}`, search: listSearch(params) }}
+          >
+            <ChevronLeft size={16} aria-hidden="true" />
+            表示に戻る
+          </Link>
+        ) : (
+          <Link className="back-link" to={{ pathname: "/events", search: listSearch(params) }}>
+            <ChevronLeft size={16} aria-hidden="true" />
+            一覧に戻る
+          </Link>
+        )}
         {detail?.parentId && isScheduleParent(detail.parentKind) && (
           <Link className="event-schedule-of" to={`/events/${detail.parentId}`}>
             「{detail.parentTitle ?? "（題名なし）"}」の日程
@@ -831,7 +860,7 @@ function EventForm({
           <Schedule
             detail={detail}
             readOnly={readOnly}
-            onAdded={(label) => onSaved(`日程「${label}」を足しました`)}
+            onAdded={(label) => onNotice(`日程「${label}」を足しました`)}
           />
         )}
 
@@ -1610,7 +1639,8 @@ function DeleteEvent({ detail }: { detail: EventDetail }) {
 }
 
 /** 一覧の絞り込み（探す文字・種類）だけを残す */
-function listSearch(params: URLSearchParams): string {
+/** 一覧の条件（探す言葉・種類）。画面を移っても残す */
+export function listSearch(params: URLSearchParams): string {
   const keep = new URLSearchParams();
   for (const k of ["q", "kind"]) {
     const v = params.get(k);

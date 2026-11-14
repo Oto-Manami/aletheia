@@ -3055,6 +3055,84 @@ details.more[open] > summary {
   flex: none;
 }
 
+/* 出来事の表示の画面（題名と日付 → 画像 → 出典の記事 → 日程） */
+.event-view {
+  display: grid;
+  gap: 20px;
+}
+.event-view-head {
+  display: grid;
+  gap: 6px;
+}
+.event-view-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.event-view-nav .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.event-view-title {
+  margin: 4px 0 0;
+  font-size: 20px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+.event-view-when {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text);
+}
+.event-view-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.event-view-section {
+  display: grid;
+  gap: 10px;
+}
+.event-view-section h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.event-gallery-picture {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  cursor: zoom-in;
+}
+.event-gallery-picture:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.event-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.event-sources li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 8px 10px;
+}
+.event-sources li + li {
+  border-top: 1px solid var(--border);
+}
+
 /* 素材の画像（縮めた画像。押すと原本を大きく開く） */
 .event-materials .material-thumbs {
   order: 10;

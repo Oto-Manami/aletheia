@@ -12,6 +12,8 @@ import type { EventMaterialImage } from "../source/types.ts";
 /** 画面に並べる 1 枚（どの投稿の画像か） */
 export interface GalleryImage extends EventMaterialImage {
   postTitle: string;
+  /** タイルの下に出す、情報源と日付（出来事の表示の画面） */
+  caption?: string;
 }
 
 /** 画像を読む。previewUrl があればそれ（デモ版）、無ければ API から読む。undefined は読んでいる途中、null は読めない */
@@ -98,6 +100,57 @@ export function MaterialThumbs({
     <ul className="material-thumbs" aria-label="画像">
       {images.map((image, i) => (
         <Thumb key={image.assetId} image={image} index={first + i} onOpen={onOpen} />
+      ))}
+    </ul>
+  );
+}
+
+function GridTile({
+  image,
+  index,
+  onOpen,
+}: {
+  image: GalleryImage;
+  index: number;
+  onOpen: (index: number) => void;
+}) {
+  const url = useImage(image, "thumbnail");
+  return (
+    <li className="asset-tile">
+      <button
+        type="button"
+        className="asset-tile-picture event-gallery-picture"
+        onClick={() => onOpen(index)}
+        aria-label={`「${image.postTitle}」の画像 ${index + 1} を大きく開く`}
+      >
+        {url ? (
+          <img src={url} alt="" loading="lazy" />
+        ) : (
+          <span className="asset-tile-empty">
+            {url === undefined ? "読み込んでいます" : "画像を表示できません"}
+          </span>
+        )}
+      </button>
+      <span className="asset-tile-meta">
+        <span className="asset-tile-title">{image.postTitle}</span>
+        {image.caption && <span className="asset-tile-sub quiet">{image.caption}</span>}
+      </span>
+    </li>
+  );
+}
+
+/** 画像をアセットの画面と同じ形のタイルで並べる（出来事の表示の画面） */
+export function GalleryGrid({
+  images,
+  onOpen,
+}: {
+  images: GalleryImage[];
+  onOpen: (index: number) => void;
+}) {
+  return (
+    <ul className="asset-grid event-gallery">
+      {images.map((image, i) => (
+        <GridTile key={image.assetId} image={image} index={i} onOpen={onOpen} />
       ))}
     </ul>
   );
