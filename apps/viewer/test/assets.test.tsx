@@ -79,6 +79,31 @@ describe("アセットの一覧", () => {
     await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/posts\//));
   });
 
+  it("画像を押すと、その場で大きく開き、横に投稿・写っている人などの紐付きを出す。前後に移れ、Esc で閉じる", async () => {
+    const user = userEvent.setup();
+    open();
+    await screen.findByRole("list", { name: "アセット" });
+    const zooms = screen.getAllByRole("button", { name: /の画像を大きく開く/ });
+    expect(zooms.length).toBeGreaterThan(1);
+
+    await user.click(zooms[0]!);
+    const viewer = await screen.findByRole("dialog", { name: "元の画像" });
+    expect(within(viewer).getByRole("img")).toBeTruthy();
+    const aside = within(viewer).getByRole("complementary", { name: "紐付いているもの" });
+    expect(within(aside).getByText("投稿")).toBeTruthy();
+    // 投稿の画面へのリンクと、紐付いている人
+    expect(within(aside).getAllByRole("link")[0]!.getAttribute("href")).toMatch(/^\/posts\//);
+    // 紐付きを読み終えると、投稿のほかに人・出来事などの見出しが並ぶ
+    await waitFor(() =>
+      expect(within(aside).getAllByRole("heading", { level: 4 }).length).toBeGreaterThan(1),
+    );
+
+    await user.click(within(viewer).getByRole("button", { name: "次の画像" }));
+    expect(within(viewer).getByText(/2 \/ /)).toBeTruthy();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "元の画像" })).toBeNull());
+  });
+
   it("参加者として登録されていない人には、一覧もメニューも出さない", async () => {
     open({ ...member, isMember: false });
     expect(

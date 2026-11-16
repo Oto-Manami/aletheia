@@ -3294,6 +3294,61 @@ details.more[open] > summary {
   max-height: calc(100vh - 120px);
   object-fit: contain;
 }
+/* 横に紐付いているものを出すとき（アセットの画面） */
+.image-viewer-panel.has-aside {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.image-viewer-panel.has-aside .image-viewer-head {
+  grid-column: 1 / -1;
+}
+.image-viewer-aside {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 12px 14px;
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  max-height: calc(100vh - 80px);
+  font-size: 13px;
+}
+.image-viewer-aside h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.image-viewer-aside ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+.image-viewer-aside .asset-info-post {
+  display: grid;
+  gap: 2px;
+}
+.image-viewer-aside .asset-info-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+}
+@media (max-width: 800px) {
+  .image-viewer-panel.has-aside {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+  .image-viewer-aside {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    max-height: none;
+  }
+}
+
 .image-viewer-nav:disabled {
   visibility: hidden;
 }
@@ -3838,6 +3893,13 @@ details.more[open] > summary {
   display: block;
 }
 
+button.asset-tile-zoom {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  cursor: zoom-in;
+}
+button.asset-tile-zoom:focus-visible,
 a.asset-tile-picture:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
@@ -3859,6 +3921,13 @@ a.asset-tile-picture:focus-visible {
   display: grid;
   gap: 2px;
   min-width: 0;
+}
+
+a.asset-tile-title {
+  text-decoration: none;
+}
+a.asset-tile-title:hover {
+  text-decoration: underline;
 }
 
 .asset-tile-title {
