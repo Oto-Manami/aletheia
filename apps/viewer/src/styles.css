@@ -4209,3 +4209,157 @@ a.asset-tile-title:hover {
   gap: 4px;
   font-size: 14px;
 }
+
+/* ---------------------------------------------------------------- 出来事の記事（決定記録 0058） */
+
+.event-article {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  background: var(--subtle);
+}
+
+.event-article-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.event-article-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-article-meta {
+  font-size: 12px;
+  margin: 4px 0 8px;
+}
+
+.article-group-title,
+.article-day-date {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 14px 0 6px;
+}
+
+.article-day {
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+}
+
+.article-day-edit {
+  display: grid;
+  gap: 6px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 0;
+  padding: 4px 0 12px;
+}
+
+.article-day-edit textarea,
+.article-edit > textarea,
+.setlist-edit textarea {
+  width: 100%;
+}
+
+.article-fields {
+  display: grid;
+  grid-template-columns: 7em minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.article-fields dt {
+  color: var(--muted);
+  font-size: 12px;
+  padding-top: 2px;
+}
+
+.article-fields dd {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.article-text {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.article-streams {
+  margin: 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 4px;
+}
+
+.article-stream-edit {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: start;
+}
+
+.article-stream-edit textarea {
+  grid-column: 1 / 3;
+}
+
+.article-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+
+.article-edit {
+  display: grid;
+  gap: 8px;
+}
+
+.setlist {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 14px;
+}
+
+.setlist-song {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.setlist-no {
+  min-width: 2.5em;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.setlist-section {
+  margin-top: 6px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.setlist-edit {
+  display: grid;
+  gap: 6px;
+}
+
+.setlist-edit textarea {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+}
+
+.pick-thumbs .material-thumb.is-on {
+  outline: 3px solid var(--count-ink);
+  outline-offset: 1px;
+}

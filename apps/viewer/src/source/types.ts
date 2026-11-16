@@ -481,6 +481,51 @@ export interface NewEntity {
   classification: Classification;
 }
 
+/** 出来事の記事（設計書 決定記録 0058）。ミーグリの日ごとの欄（同じ日の部はまとめる） */
+export interface ArticleDay {
+  date: string;
+  outfitNote: string;
+  /** 服装の分かる写真（素材の ID） */
+  outfitAssets: string[];
+  content: string;
+  /** 同じ日の配信 */
+  streams: { url: string; title: string; note: string }[];
+}
+
+export interface EventArticle {
+  /** 自由記述 */
+  body: string;
+  days: ArticleDay[];
+  updatedAt: string | null;
+  authorName: string | null;
+}
+
+/** 中身の並び（セットリスト）の 1 行 */
+export interface SetlistItem {
+  id: string | null;
+  /** song（曲）・mc・section（アンコールなどの区切り）など */
+  itemType: string;
+  workId: string | null;
+  workName: string | null;
+  title: string | null;
+  note: string | null;
+}
+
+/** 記事に出すセットリスト（まとまりと、その日程） */
+export interface ArticleSetlist {
+  eventId: string;
+  title: string | null;
+  startsOn: string | null;
+  part: string | null;
+  isSchedule: boolean;
+  items: SetlistItem[];
+}
+
+export interface EventArticleView {
+  article: EventArticle | null;
+  setlists: ArticleSetlist[];
+}
+
 /** 楽曲リスト（設計書 決定記録 0059） */
 export interface SongTrack {
   songId: string;
@@ -551,6 +596,11 @@ export interface ArchiveSource {
   /** その状態の本当の件数（一覧の上限に関わらない） */
   countIntake(state: IntakeState): Promise<number>;
   getIntake(id: string): Promise<IntakeDetail>;
+  /** 出来事の記事と、記事に出すセットリスト（設計書 決定記録 0058） */
+  getEventArticle?(eventId: string): Promise<EventArticleView>;
+  saveEventArticle?(eventId: string, article: { body: string; days: ArticleDay[] }): Promise<void>;
+  /** 中身の並び（セットリスト）だけを入れ替える */
+  saveEventItems?(eventId: string, items: SetlistItem[]): Promise<void>;
   /** 楽曲リスト（設計書 決定記録 0059） */
   listSongs?(): Promise<SongList>;
   getSong?(id: string): Promise<SongDetail>;

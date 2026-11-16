@@ -125,8 +125,16 @@ export interface Articles {
   body: Generated<string>;
   classification: Generated<Classification>;
   created_at: Generated<Timestamp>;
+  /**
+   * 出来事の記事のとき、その出来事（1 つの出来事に 1 つ。決定記録 0058）
+   */
+  event_id: string | null;
   id: Generated<string>;
   published_at: Timestamp | null;
+  /**
+   * 型の欄の値（ミーグリの日ごとの服装・内容・同じ日の配信など。決定記録 0058）
+   */
+  sections: Generated<Json>;
   slug: string;
   status: Generated<string>;
   title: string;

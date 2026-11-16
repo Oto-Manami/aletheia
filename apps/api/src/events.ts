@@ -43,7 +43,7 @@ export const PARTICIPANT_STATUSES = [
  * 中身の並び（セットリストの曲など。設計書 決定記録 0034）の 1 行。id があれば既にある行を直し、
  * 無ければ足す。作品（曲など）を選ぶか、題名を書く
  */
-const itemInput = z
+export const itemInput = z
   .object({
     id: z.uuid().nullish(),
     item_type: key,
@@ -249,7 +249,7 @@ export function inTransaction<T>(
 }
 
 /** 指している人物・作品などが、決められた種類で実在するか（統合済みのものは選べない） */
-async function assertEntityTypes(
+export async function assertEntityTypes(
   trx: Kysely<DB>,
   ids: string[],
   types: readonly string[],
@@ -310,7 +310,11 @@ async function validateRefs(trx: Kysely<DB>, input: EventInput, selfId: string |
  * 中身の並びを、送られた並びに合わせる。既にある行は id で直し、無くなった行は外す。
  * 素材が紐付いている行（誌面のスキャン → 記事など）は外さずに断る
  */
-async function syncItems(trx: Trx, eventId: string, input: EventInput): Promise<void> {
+export async function syncItems(
+  trx: Trx,
+  eventId: string,
+  input: Pick<EventInput, "items" | "classification">,
+): Promise<void> {
   const items = input.items;
   if (!items) return;
   const existing = await trx
@@ -809,6 +813,8 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       }
       await trx.deleteFrom("event_participants").where("event_id", "=", id.data).execute();
       await trx.deleteFrom("event_items").where("event_id", "=", id.data).execute();
+      // 出来事の記事（決定記録 0058）も一緒に消す（変更履歴に残る）
+      await trx.deleteFrom("articles").where("event_id", "=", id.data).execute();
       await trx.deleteFrom("events").where("id", "=", id.data).execute();
     });
     return c.json({ ok: true });

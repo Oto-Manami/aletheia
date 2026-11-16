@@ -1,10 +1,11 @@
 // 出来事の表示の画面。開いたときは中身を見せ、直すときは「編集」から編集の画面（EventEditPage）に移る
 //
-// 並び: 題名と日付 → 紐付いた画像（アセットの画面と同じ形のタイル。押すと原本を開く） → 出典の記事 → 日程
+// 並び: 題名と日付 → 記事（まとまりだけ。決定記録 0058） → 紐付いた画像（アセットの画面と同じ形のタイル。押すと原本を開く） → 出典の記事 → 日程
 
 import { ChevronLeft, ExternalLink, Pencil } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router";
+import { EventArticleSection } from "../components/EventArticle.tsx";
 import { type GalleryImage, GalleryGrid, ImageViewer } from "../components/MaterialGallery.tsx";
 import { useApp } from "../context.tsx";
 import {
@@ -114,6 +115,8 @@ function EventView({ detail }: { detail: EventDetail }) {
           {detail.classification === "private" && <span className="tag tag-private">非公開</span>}
         </p>
       </header>
+
+      <EventArticleSection detail={detail} gallery={gallery} onOpenImage={setViewing} />
 
       <section className="event-view-section" aria-labelledby="event-view-images">
         <h3 id="event-view-images">画像（{gallery.length} 枚）</h3>
