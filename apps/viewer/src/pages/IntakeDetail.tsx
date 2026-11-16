@@ -49,23 +49,23 @@ function issuesOf(draft: DraftInput): IntakeIssue[] {
       }));
 }
 
-/** 承認すると何を保存するかを、ふだんの言葉で（紐付ける人は右側の一覧に出ている） */
 /**
- * 承認すると保存するもの。chosenOnly（振り分けで残したもの・情報源の設定があるもの）は、写っている人を付けた画像だけを保存する
- * （設計書 決定記録 0037。承認の処理と同じ規則）
+ * 承認すると保存するもの。chosenOnly（振り分けで残したもの・情報源の設定があるもの）は、写っている人を付けた
+ * 画像・動画だけを保存する（設計書 決定記録 0037・0057。承認の処理と同じ規則）
  */
 function approvalSentence(draft: DraftInput, chosenOnly: boolean): string {
   const assets = draft.assets ?? [];
-  const images = assets.filter((a) => a.media_type === "image");
-  const photos = chosenOnly
-    ? images.filter((a) => appearsOf(draft, a.ref).length > 0).length
-    : images.length;
-  const skipped = images.length - photos;
-  const videos = assets.filter((a) => a.media_type === "video").length;
+  const keptOf = (type: string) => {
+    const all = assets.filter((a) => a.media_type === type);
+    const kept = chosenOnly ? all.filter((a) => appearsOf(draft, a.ref).length > 0) : all;
+    return { kept: kept.length, skipped: all.length - kept.length };
+  };
+  const photos = keptOf("image");
+  const videos = keptOf("video");
   const kept = [
     assets.some((a) => (a.texts ?? []).length > 0) ? "本文" : null,
-    photos > 0 ? `写真 ${photos} 枚` : null,
-    videos > 0 ? `動画 ${videos} 本` : null,
+    photos.kept > 0 ? `写真 ${photos.kept} 枚` : null,
+    videos.kept > 0 ? `動画 ${videos.kept} 本` : null,
     assets.some((a) => a.media_type === "webpage") ? "記事のページ" : null,
   ].filter(Boolean);
   const other = assets.filter(
@@ -77,8 +77,12 @@ function approvalSentence(draft: DraftInput, chosenOnly: boolean): string {
   ).length;
   if (other > 0) kept.push(`素材 ${other} 件`);
   const sentence = `承認すると、${kept.join("・") || "投稿"}を保存します。`;
-  return skipped > 0
-    ? `${sentence}写っている人を付けていない写真 ${skipped} 枚は保存しません。`
+  const skipped = [
+    photos.skipped > 0 ? `写真 ${photos.skipped} 枚` : null,
+    videos.skipped > 0 ? `動画 ${videos.skipped} 本` : null,
+  ].filter(Boolean);
+  return skipped.length > 0
+    ? `${sentence}写っている人を付けていない${skipped.join("・")}は保存しません。`
     : sentence;
 }
 
@@ -378,6 +382,10 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
             previews={previews}
             readOnly={readOnly}
             chosenOnly={detail.chosenImagesOnly}
+            {...(detail.playUrls ? { playUrls: detail.playUrls } : {})}
+            {...(source.loadIntakeMedia
+              ? { loadMedia: (sha256: string) => source.loadIntakeMedia!(detail.id, sha256) }
+              : {})}
           />
           <MentionView draft={draft} ownPost={ownPost} onChange={setDraft} readOnly={readOnly} />
           <details className="panel panel-pad more">

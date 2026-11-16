@@ -91,6 +91,7 @@ interface IntakeDetailRow {
   review_note: string | null;
   reviewed_at?: string | null;
   reviewed_by_name?: string | null;
+  staged_files?: unknown;
 }
 
 interface ChannelRow {
@@ -145,6 +146,36 @@ interface PostRow {
   availability: string | null;
   classification: Classification;
   channels: { name: string; availability: string } | null;
+}
+
+/** 保存先で動画を再生する URL（画面に重ねて出す。Drive は、権限のある人だけが見られる） */
+export function playUrlOf(
+  file: { provider: string; storage_key: string } | undefined,
+): string | null {
+  if (file?.provider === "gdrive") {
+    return `https://drive.google.com/file/d/${encodeURIComponent(file.storage_key)}/preview`;
+  }
+  return null;
+}
+
+/** 下書きの動画ごとの、仮置きのファイルを保存先で再生する URL */
+export function stagedPlayUrls(draft: DraftInput, stagedFiles: unknown): Record<string, string> {
+  const staged = (Array.isArray(stagedFiles) ? stagedFiles : []).flatMap((f: unknown) => {
+    const o = f as { provider?: unknown; storage_key?: unknown; sha256?: unknown } | null;
+    return o &&
+      typeof o.provider === "string" &&
+      typeof o.storage_key === "string" &&
+      typeof o.sha256 === "string"
+      ? [{ provider: o.provider, storage_key: o.storage_key, sha256: o.sha256 }]
+      : [];
+  });
+  const urls: Record<string, string> = {};
+  for (const a of draft.assets ?? []) {
+    if (a.media_type !== "video" || !a.sha256) continue;
+    const url = playUrlOf(staged.find((s) => s.sha256 === a.sha256));
+    if (url) urls[a.ref] = url;
+  }
+  return urls;
 }
 
 /** 保存先で原本を開く URL（Drive は、権限のある人だけが開ける） */
@@ -325,18 +356,23 @@ export class LiveSource implements ArchiveSource {
       // 取り込んだファイルは数が多く大きいので、別に読む（loadIntakeFiles）
       previews: {},
       pageHtml: {},
+      playUrls: stagedPlayUrls(item.draft, item.staged_files),
       channelAvailability: channel?.availability ?? null,
       chosenImagesOnly: chosen_images_only === true,
     };
   }
 
   loadIntakeFiles(detail: IntakeDetail, onFile: (file: IntakeFile) => void): () => void {
-    // 取り込んだファイルがある素材（SHA-256 が付いている画像と、保存した Web ページ）
-    const targets = (detail.draft.assets ?? []).flatMap((a) =>
-      a.sha256 && (a.media_type === "image" || a.media_type === "webpage")
+    // 取り込んだファイルがある素材（SHA-256 が付いている画像と、保存した Web ページ）と、動画の表紙の画像
+    const targets = (detail.draft.assets ?? []).flatMap((a) => {
+      const poster = a.attributes?.["poster_sha256"];
+      if (a.media_type === "video" && typeof poster === "string") {
+        return [{ ref: a.ref, sha256: poster, page: false }];
+      }
+      return a.sha256 && (a.media_type === "image" || a.media_type === "webpage")
         ? [{ ref: a.ref, sha256: a.sha256, page: a.media_type === "webpage" }]
-        : [],
-    );
+        : [];
+    });
     const urls: string[] = [];
     let stopped = false;
     const next = async (): Promise<void> => {

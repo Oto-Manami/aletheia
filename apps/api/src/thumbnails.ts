@@ -6,6 +6,7 @@
 //   次からは置いたものを返す
 // - 縮めた画像の保存先は、原本の保存先と別にできる（thumbnailFiles。配信の速い保存先に替えられるように）
 // - 縮めた画像は原本から作り直せる。読めなくなっていたら作り直す
+// - 動画は、取り込んだときに残した表紙の画像（variant = preview）から作る（設計書 決定記録 0057）
 
 import { createHash } from "node:crypto";
 import type { Database } from "@aletheia/db/client";
@@ -41,7 +42,7 @@ const making = new Map<string, Promise<Thumbnail | null>>();
 
 /**
  * 素材の縮めた画像を返す。まだ無ければ原本から作って置く。
- * 画像でない素材・原本を保存していない素材・原本を読めない素材は null
+ * 画像・動画でない素材・元のファイル（動画は表紙の画像）を保存していない素材・読めない素材は null
  */
 export function thumbnailOf(
   db: Database,
@@ -67,12 +68,14 @@ async function make(
     .select(["id", "media_type", "classification"])
     .where("id", "=", assetId)
     .executeTakeFirst();
-  if (!asset || asset.media_type !== "image") return null;
+  if (!asset || (asset.media_type !== "image" && asset.media_type !== "video")) return null;
+  // 縮める元: 画像は原本、動画は表紙の画像
+  const sourceVariant = asset.media_type === "video" ? "preview" : "original";
   const rows = await db
     .selectFrom("asset_files")
     .select(["id", "variant", "provider", "storage_key"])
     .where("asset_id", "=", assetId)
-    .where("variant", "in", ["original", "thumbnail"])
+    .where("variant", "in", [sourceVariant, "thumbnail"])
     .execute();
 
   const existing = rows.find(
@@ -87,7 +90,9 @@ async function make(
     }
   }
 
-  const original = rows.find((f) => f.variant === "original" && f.provider === originals.provider);
+  const original = rows.find(
+    (f) => f.variant === sourceVariant && f.provider === originals.provider,
+  );
   if (!original) return null;
   let bytes: Uint8Array;
   try {

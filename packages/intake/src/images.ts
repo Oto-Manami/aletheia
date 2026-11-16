@@ -1,7 +1,7 @@
 // 承認のときの画像の規則（設計書 決定記録 0035・0037・0040）
 //
-// 次のものは、写っている人を付けた画像（appears を採用したもの）だけを素材として残す。記事のページ（webpage）・
-// 本文（text）・動画などの画像以外はすべて残す。
+// 次のものは、写っている人を付けた画像・動画（appears を採用したもの）だけを素材として残す。記事のページ
+// （webpage）・本文（text）などはすべて残す（動画を含めたのは決定記録 0057）。
 // - 振り分け（全件を取り込む経路。メンバーのブログ・公式サイトのニュースなど）で「言及あり」として残したもの
 // - 情報源の設定（channels.config.chosen_images_only = true）があるもの。経路を問わない（Discord の入口を含む）
 // それ以外（本人のブログ・人が送った下書きなど）は、すべての画像を残す。
@@ -43,10 +43,13 @@ export async function usesChosenImagesOnly(
   return triaged !== undefined;
 }
 
+/** 写っている人を付けて選ぶ素材（画像と動画。決定記録 0057） */
+export const CHOSEN_MEDIA_TYPES: readonly string[] = ["image", "video"];
+
 /**
- * 写っている人を付けていない画像を、下書きの素材から外す。外した画像から出ている紐付けも外す。
- * 外さなかった画像のファイル（仮置き）は承認の後に保存し、外した画像のファイルは保存せずに消す
- * （apps/api の finalizeApprovedFiles）
+ * 写っている人を付けていない画像・動画を、下書きの素材から外す。外した素材から出ている紐付けも外す。
+ * 外さなかった素材のファイル（仮置き）は承認の後に保存し、外した素材のファイル（動画の表紙の画像を含む）は
+ * 保存せずに消す（apps/api の finalizeApprovedFiles）
  */
 export function onlyChosenImages(draft: Draft): Draft {
   const assetOf = (l: Draft["links"][number]) => (l.from === "post" ? null : l.from.asset);
@@ -54,7 +57,9 @@ export function onlyChosenImages(draft: Draft): Draft {
     draft.links.filter((l) => l.role === "appears" && l.accepted !== false).map(assetOf),
   );
   const dropped = new Set(
-    draft.assets.filter((a) => a.media_type === "image" && !chosen.has(a.ref)).map((a) => a.ref),
+    draft.assets
+      .filter((a) => CHOSEN_MEDIA_TYPES.includes(a.media_type) && !chosen.has(a.ref))
+      .map((a) => a.ref),
   );
   if (dropped.size === 0) return draft;
   return {

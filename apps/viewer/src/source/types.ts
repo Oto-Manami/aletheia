@@ -75,11 +75,16 @@ export interface IntakeDetail extends IntakeSummary {
   previews: Record<string, string>;
   /** 素材（下書きの ref）ごとの、保存した Web ページの HTML */
   pageHtml: Record<string, string>;
+  /**
+   * 動画（下書きの ref）ごとの、保存先で再生する URL（仮置きのファイル。Drive は権限のある人だけが開ける）。
+   * 保存先で再生できないとき（手元の保存先など）は無い（決定記録 0057）
+   */
+  playUrls?: Record<string, string>;
   /** 情報源の有料・無料の既定（無料の情報源なら、承認の画面で公開区分を選ばせない） */
   channelAvailability: string | null;
   /**
-   * 写っている人を付けた画像だけを素材にするか（振り分けで残したもの・情報源の設定があるもの。設計書 決定記録 0037・0040）。
-   * 付けていない画像は、承認しても保存しない
+   * 写っている人を付けた画像・動画だけを素材にするか（振り分けで残したもの・情報源の設定があるもの。設計書 決定記録 0037・0040・0057）。
+   * 付けていない画像・動画は、承認しても保存しない
    */
   chosenImagesOnly: boolean;
 }

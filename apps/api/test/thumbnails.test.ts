@@ -179,3 +179,66 @@ describe("原本と、出来事の素材の画像", () => {
       ]);
     }));
 });
+
+describe("動画の表紙の画像（決定記録 0057）", () => {
+  it("承認すると原本の隣に variant = preview で残し、一覧の縮めた画像はそこから作る", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const put = async (index: number, name: string, bytes: Uint8Array, type: string) =>
+        (await (
+          await ctx.upload(
+            `/files/staging?route=discord&ref=7101&index=${index}&name=${name}`,
+            bytes,
+            type,
+          )
+        ).json()) as StagedFile;
+      const video = await put(1, "video.mp4", new TextEncoder().encode("架空の動画"), "video/mp4");
+      const poster = await put(2, "poster.jpg", await picture(1280, 720), "image/jpeg");
+      const created = await ctx.call("POST", "/intake", {
+        channel_key: "sns:test_account",
+        external_id: "7101",
+        route: "discord",
+        captured_at: "2026-10-12T21:35:00+09:00",
+        staged_files: [video, poster],
+        draft: {
+          version: 1,
+          post: { published_at: "2026-10-12T21:30:00+09:00", classification: "public" },
+          assets: [
+            {
+              ref: "v1",
+              media_type: "video",
+              sha256: video.sha256,
+              attributes: { poster_sha256: poster.sha256 },
+            },
+          ],
+          links: [
+            { from: "post", to_type: "entity", to_id: d.person, role: "author", origin: "rule" },
+          ],
+        },
+      });
+      const { id } = (await created.json()) as { id: string };
+      const approved = await ctx.call("POST", `/intake/${id}/approve`, {});
+      const body = (await approved.json()) as {
+        files: unknown;
+        assetIds: Record<string, string>;
+      };
+      expect(body.files).toEqual({ stored: 2, duplicates: 0, failed: [] });
+      expect(ctx.files.pathOf(video.storage_key)).toBe(
+        "sns/test_account/2026-10/20261012-2130_7101_01.mp4",
+      );
+      expect(ctx.files.pathOf(poster.storage_key)).toBe(
+        "sns/test_account/2026-10/20261012-2130_7101_01_poster.jpg",
+      );
+      const assetId = body.assetIds["v1"]!;
+      const { rows } = await ctx.c.query(
+        "select variant from public.asset_files where asset_id = $1 order by variant",
+        [assetId],
+      );
+      expect(rows.map((r) => (r as { variant: string }).variant)).toEqual(["original", "preview"]);
+
+      const thumb = await ctx.call("GET", `/assets/${assetId}/thumbnail`);
+      expect(thumb.status).toBe(200);
+      const meta = await sharp(Buffer.from(await thumb.arrayBuffer())).metadata();
+      expect([meta.width, meta.height]).toEqual([THUMBNAIL_EDGE, 270]);
+    }));
+});
