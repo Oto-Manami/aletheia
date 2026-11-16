@@ -486,6 +486,11 @@ export interface ArchiveSource {
   countIntake(state: IntakeState): Promise<number>;
   getIntake(id: string): Promise<IntakeDetail>;
   /**
+   * 下書きに付いた動画・音声（仮置きのファイル）を読み、再生用の URL を返す。大きいので、承認の画面で
+   * 「読み込んで再生」を押したときだけ読む。使い終わった URL は呼ぶ側が片付ける
+   */
+  loadIntakeMedia?(intakeId: string, sha256: string): Promise<string>;
+  /**
    * 素材の縮めた画像（保存した原本から作ったもの）の表示用の URL を返す。読めなければ null。
    * 使い終わったら release を呼ぶ。無ければ、AssetCard.imageUrl を使う（デモ版）
    */

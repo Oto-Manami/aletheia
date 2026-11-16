@@ -366,6 +366,11 @@ export class LiveSource implements ArchiveSource {
     };
   }
 
+  async loadIntakeMedia(intakeId: string, sha256: string): Promise<string> {
+    const blob = await this.apiBlob(`/intake/${encodeURIComponent(intakeId)}/files/${sha256}`);
+    return URL.createObjectURL(blob);
+  }
+
   async decide(
     id: string,
     decision: Decision,
