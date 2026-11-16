@@ -1175,6 +1175,7 @@ function Setlist({
         types={["work"]}
         createType="work"
         defaultSubtype="song"
+        onlySubtypes={["song"]}
         value={null}
         addMode
         exclude={[]}

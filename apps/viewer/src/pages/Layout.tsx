@@ -5,6 +5,7 @@ import {
   Inbox,
   LogOut,
   Menu,
+  Music,
   Newspaper,
   Search,
   Settings,
@@ -128,6 +129,12 @@ export function Layout() {
             <NavLink to="/events" className="nav-item" onClick={close}>
               <CalendarDays size={16} aria-hidden="true" />
               出来事
+            </NavLink>
+          )}
+          {viewer.isMember && (
+            <NavLink to="/songs" className="nav-item" onClick={close}>
+              <Music size={16} aria-hidden="true" />
+              楽曲
             </NavLink>
           )}
           {viewer.isMember && (
