@@ -1010,6 +1010,18 @@ select:disabled {
   color: var(--muted);
 }
 
+.source-media video,
+.source-media audio {
+  width: 100%;
+  max-height: 70vh;
+  border-radius: var(--radius);
+  background: #000;
+}
+
+.source-media audio {
+  background: none;
+}
+
 .source-text.is-private {
   padding: 12px;
   border: 1px dashed var(--border-strong);

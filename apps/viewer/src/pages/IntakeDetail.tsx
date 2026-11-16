@@ -61,13 +61,19 @@ function approvalSentence(draft: DraftInput, chosenOnly: boolean): string {
     ? images.filter((a) => appearsOf(draft, a.ref).length > 0).length
     : images.length;
   const skipped = images.length - photos;
+  const videos = assets.filter((a) => a.media_type === "video").length;
   const kept = [
     assets.some((a) => (a.texts ?? []).length > 0) ? "本文" : null,
     photos > 0 ? `写真 ${photos} 枚` : null,
+    videos > 0 ? `動画 ${videos} 本` : null,
     assets.some((a) => a.media_type === "webpage") ? "記事のページ" : null,
   ].filter(Boolean);
   const other = assets.filter(
-    (a) => a.media_type !== "image" && a.media_type !== "webpage" && (a.texts ?? []).length === 0,
+    (a) =>
+      a.media_type !== "image" &&
+      a.media_type !== "webpage" &&
+      a.media_type !== "video" &&
+      (a.texts ?? []).length === 0,
   ).length;
   if (other > 0) kept.push(`素材 ${other} 件`);
   const sentence = `承認すると、${kept.join("・") || "投稿"}を保存します。`;
@@ -379,7 +385,14 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
               詳しく見る・直す
               <span className="dirty">元の投稿・保存の状況、日付・URL・公開区分など</span>
             </summary>
-            <SourcePreview draft={draft} previews={previews} pageHtml={pageHtml} />
+            <SourcePreview
+              draft={draft}
+              previews={previews}
+              pageHtml={pageHtml}
+              {...(source.loadIntakeMedia
+                ? { loadMedia: (sha256: string) => source.loadIntakeMedia!(detail.id, sha256) }
+                : {})}
+            />
             <DraftEditor
               draft={draft}
               onChange={setDraft}
