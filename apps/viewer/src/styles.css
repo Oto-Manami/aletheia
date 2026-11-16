@@ -2718,6 +2718,39 @@ details.more[open] > summary {
   text-align: center;
 }
 
+/* 動画の表紙の画像に重ねる印と、下の再生のボタン（決定記録 0057） */
+.photo-tag-video {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+}
+
+.photo-tag-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  font-size: 12px;
+}
+
+.video-player-body iframe,
+.video-player-body video {
+  display: block;
+  width: min(100%, calc((100vh - 120px) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  max-height: calc(100vh - 120px);
+  border: 0;
+  background: #000;
+}
+
 /* 承認済み・却下・保留の一覧の、判断した日時と人（履歴） */
 .intake-reviewed {
   font-size: 12px;

@@ -212,6 +212,72 @@ describe("承認・却下の後の移動", () => {
       expect(ctx.files.pathOf(otherFile.storage_key)).toBeUndefined();
     }));
 
+  it("情報源の設定がある情報源は、動画も写っている人を付けたものだけを保存し、表紙の画像も一緒に消す", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      await ctx.c.query(
+        `update public.channels set config = config || '{"chosen_images_only": true}'
+          where key = 'sns:test_account'`,
+      );
+      const put = async (index: number, content: string, name: string, type: string) =>
+        (await (
+          await ctx.upload(
+            `/files/staging?route=discord&ref=4104&index=${index}&name=${name}`,
+            new TextEncoder().encode(content),
+            type,
+          )
+        ).json()) as StagedFile;
+      const v1 = await put(1, "写っている動画", "v1.mp4", "video/mp4");
+      const p1 = await put(2, "写っている動画の表紙", "p1.jpg", "image/jpeg");
+      const v2 = await put(3, "写っていない動画", "v2.mp4", "video/mp4");
+      const p2 = await put(4, "写っていない動画の表紙", "p2.jpg", "image/jpeg");
+      const res = await ctx.call("POST", "/intake", {
+        channel_key: "sns:test_account",
+        external_id: "4104",
+        route: "discord",
+        captured_at: "2026-10-12T21:35:00+09:00",
+        staged_files: [v1, p1, v2, p2],
+        draft: {
+          version: 1,
+          post: { published_at: "2026-10-12T21:30:00+09:00", classification: "public" },
+          assets: [
+            {
+              ref: "v1",
+              media_type: "video",
+              sha256: v1.sha256,
+              attributes: { poster_sha256: p1.sha256 },
+            },
+            {
+              ref: "v2",
+              media_type: "video",
+              sha256: v2.sha256,
+              attributes: { poster_sha256: p2.sha256 },
+            },
+          ],
+          links: [
+            {
+              from: { asset: "v1" },
+              to_type: "entity",
+              to_id: d.person,
+              role: "appears",
+              origin: "human",
+              confidence: 1,
+            },
+          ],
+        },
+      });
+      const { id } = (await res.json()) as { id: string };
+      const approved = await ctx.call("POST", `/intake/${id}/approve`, {});
+      const body = (await approved.json()) as { files: unknown; assetIds: Record<string, string> };
+      expect(Object.keys(body.assetIds)).toEqual(["v1"]);
+      expect(body.files).toEqual({ stored: 2, duplicates: 0, unselected: 2, failed: [] });
+      expect(ctx.files.trashed.has(v2.storage_key)).toBe(true);
+      expect(ctx.files.trashed.has(p2.storage_key)).toBe(true);
+      expect(ctx.files.pathOf(p1.storage_key)).toBe(
+        "sns/test_account/2026-10/20261012-2130_4104_01_poster.jpg",
+      );
+    }));
+
   it("情報源の設定が無ければ、人が送った下書きの画像はすべて保存する", () =>
     withApi(async (ctx) => {
       const d = await seed(ctx.c);

@@ -37,9 +37,11 @@ export function appearsOf(draft: DraftInput, ref: string): string[] {
     .map((l) => l.to_id);
 }
 
-/** 写真の素材（ref） */
+/** 写っている人を付ける素材（ref）。写真と動画（動画は表紙の画像で並べる。決定記録 0057） */
 export function imageRefsOf(draft: DraftInput): string[] {
-  return (draft.assets ?? []).filter((a) => a.media_type === "image").map((a) => a.ref);
+  return (draft.assets ?? [])
+    .filter((a) => a.media_type === "image" || a.media_type === "video")
+    .map((a) => a.ref);
 }
 
 function setLink(

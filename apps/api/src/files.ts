@@ -21,6 +21,7 @@ import {
   stagingLocation,
 } from "@aletheia/storage";
 import { HTTPException } from "hono/http-exception";
+import { sql } from "kysely";
 import { z } from "zod";
 
 export const stagedFileSchema = z.object({
@@ -179,6 +180,7 @@ export async function finalizeApprovedFiles(
       "a.sha256",
       "a.classification",
       "a.file_policy",
+      sql<string | null>`a.attributes ->> 'poster_sha256'`.as("poster_sha256"),
       eb
         .exists(
           eb
@@ -188,12 +190,30 @@ export async function finalizeApprovedFiles(
             .where("f.variant", "=", "original"),
         )
         .as("has_original"),
+      eb
+        .exists(
+          eb
+            .selectFrom("asset_files as f")
+            .select("f.id")
+            .whereRef("f.asset_id", "=", "a.id")
+            .where("f.variant", "=", "preview"),
+        )
+        .as("has_preview"),
     ])
     .where("a.post_id", "=", postId)
-    .where(
-      "a.sha256",
-      "in",
-      staged.map((s) => s.sha256),
+    .where((eb) =>
+      eb.or([
+        eb(
+          "a.sha256",
+          "in",
+          staged.map((s) => s.sha256),
+        ),
+        eb(
+          sql<string>`a.attributes ->> 'poster_sha256'`,
+          "in",
+          staged.map((s) => s.sha256),
+        ),
+      ]),
     )
     .execute();
 
@@ -203,10 +223,44 @@ export async function finalizeApprovedFiles(
       const asset = assets.find(
         (a) => a.sha256 === file.sha256 && a.file_policy === "stored" && !a.has_original,
       );
+      // 動画の表紙の画像。原本の隣に置き、variant = preview で記録する（設計書 決定記録 0057）
+      const posterOf = assets.find(
+        (a) => a.poster_sha256 === file.sha256 && a.file_policy === "stored" && !a.has_preview,
+      );
       // 動かす・消す前に、まだ仮置きの場所にあるかを確かめ直す（決定記録 0048）。原本を待っている素材が
       // 無いもの（保存済み・前の回で片付けたもの）は、仮置きの場所に無くても失敗にしない（やり直しに使う）
       if (!(await isStaged(files, file.storage_key, intake.route))) {
         if (asset) report.failed.push({ storage_key: file.storage_key, error: NOT_STAGED });
+        continue;
+      }
+      if (!asset && posterOf) {
+        const place = finalLocation({
+          channelKind: intake.kind,
+          channelKey: intake.key,
+          externalId: intake.external_id,
+          publishedAt: post.published_at,
+          publishedDate: post.published_date,
+          capturedAt: intake.captured_at,
+          position: posterOf.position ?? 1,
+          extension: extensionOf(file.name, file.content_type),
+          suffix: "poster",
+        });
+        const moved = await files.move(file.storage_key, place.folder, place.name);
+        await db
+          .insertInto("asset_files")
+          .values({
+            asset_id: posterOf.id,
+            variant: "preview",
+            provider: files.provider,
+            storage_key: moved.key,
+            sha256: file.sha256,
+            byte_size: file.size,
+            verified_at: new Date(),
+            classification: posterOf.classification,
+          })
+          .execute();
+        posterOf.has_preview = true;
+        report.stored++;
         continue;
       }
       if (!asset) {

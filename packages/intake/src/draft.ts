@@ -61,6 +61,8 @@ const assetAttributes = z
     page_label: z.string().min(1).optional(),
     clip_from: z.number().min(0).optional(),
     clip_to: z.number().positive().optional(),
+    /** 動画の表紙の画像（仮置きのファイルの SHA-256）。承認すると variant = preview で残す（決定記録 0057） */
+    poster_sha256: sha256.optional(),
   })
   .refine(
     (a) => a.page_to === undefined || (a.page_from !== undefined && a.page_to >= a.page_from),

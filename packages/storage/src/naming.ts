@@ -49,6 +49,8 @@ export interface FinalPlace {
   /** 投稿の中での並び順（1 から） */
   position: number;
   extension: string;
+  /** 原本の隣に置く派生のファイル（動画の表紙の画像の poster など）。名前の連番の後に付ける */
+  suffix?: string;
 }
 
 export function finalLocation(p: FinalPlace): { folder: FolderPath; name: string } {
@@ -69,7 +71,7 @@ export function finalLocation(p: FinalPlace): { folder: FolderPath; name: string
   const ext = safeSegment(p.extension.replace(/^\./, "").toLowerCase()) || "bin";
   return {
     folder: [safeSegment(p.channelKind), ownerOf(p.channelKey), month],
-    name: `${stamp}_${safeSegment(p.externalId)}_${String(p.position).padStart(2, "0")}.${ext}`,
+    name: `${stamp}_${safeSegment(p.externalId)}_${String(p.position).padStart(2, "0")}${p.suffix ? `_${safeSegment(p.suffix)}` : ""}.${ext}`,
   };
 }
 
