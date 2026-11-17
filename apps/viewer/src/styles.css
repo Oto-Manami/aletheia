@@ -4354,11 +4354,6 @@ a.asset-tile-title:hover {
   gap: 6px;
 }
 
-.setlist-edit textarea {
-  font-family: ui-monospace, monospace;
-  font-size: 13px;
-}
-
 .pick-thumbs .material-thumb.is-on {
   outline: 3px solid var(--count-ink);
   outline-offset: 1px;
@@ -4494,4 +4489,98 @@ button.participation {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 6px;
+}
+
+/* ---------------------------------------------------------------- セットリストを選んで入れる（決定記録 0061） */
+
+.setlist-editing > li {
+  align-items: center;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.setlist-editing .setlist-section,
+.setlist-editing .setlist-other {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setlist-note-input {
+  flex: 1 1 8em;
+  min-width: 6em;
+  max-width: 16em;
+  font-size: 12px;
+  padding: 2px 6px;
+}
+
+.setlist-row-actions {
+  display: inline-flex;
+  margin-left: auto;
+}
+
+.setlist-row-actions .icon-button {
+  margin-left: 0;
+}
+
+.setlist-row-actions .icon-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.setlist-add {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.setlist-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+
+.setlist-search,
+.setlist-release {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.setlist-search input {
+  min-width: 14em;
+}
+
+.setlist-choices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.setlist-choices .chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.setlist-choices .chip:hover,
+.setlist-choices .chip:focus-visible {
+  border-color: var(--count-ink);
 }

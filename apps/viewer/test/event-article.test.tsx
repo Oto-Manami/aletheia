@@ -1,4 +1,4 @@
-// 出来事の記事とセットリストの書き方（設計書 決定記録 0058）。曲名・出来事はすべて架空
+// 出来事の記事（設計書 決定記録 0058）。出来事はすべて架空
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
@@ -6,59 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { articleDays, EventArticleSection } from "../src/components/EventArticle.tsx";
 import { Ctx } from "../src/context.tsx";
 import { DemoSource } from "../src/source/demo.ts";
-import { formatSetlist, parseSetlist, songIndex } from "../src/source/setlist.ts";
-import type { EventArticleView, EventDetail, SetlistItem } from "../src/source/types.ts";
+import type { EventArticleView, EventDetail } from "../src/source/types.ts";
 
 afterEach(cleanup);
-
-const SONGS = songIndex([
-  { id: "s1", name: "架空の歌", performed: 0, appeared: 0, notAppearing: 0, inRelease: true },
-  { id: "s2", name: "ミホン ソング", performed: 0, appeared: 0, notAppearing: 0, inRelease: true },
-]);
-
-describe("セットリストを文字で書く", () => {
-  it("番号・区切り・MC・メモを読み、曲名は表記の揺れを吸収して楽曲リストと照らし合わせる", () => {
-    const items = parseSetlist(
-      [
-        "M1. 架空の歌（センター: 架空）",
-        "MC1",
-        "ミホンソング",
-        "",
-        "アンコール",
-        "EN1 知らない曲",
-      ].join("\n"),
-      SONGS,
-    );
-    expect(items.map((i) => [i.itemType, i.workId, i.title, i.note])).toEqual([
-      ["song", "s1", null, "センター: 架空"],
-      ["mc", null, "MC1", null],
-      ["song", "s2", null, null],
-      ["section", null, "アンコール", null],
-      ["song", null, "知らない曲", null],
-    ]);
-  });
-
-  it("書き出した文字を読み直すと同じ並びになり、同じ行は ID を引き継ぐ", () => {
-    const before: SetlistItem[] = [
-      { id: "i1", itemType: "song", workId: "s1", workName: "架空の歌", title: null, note: "メモ" },
-      {
-        id: "i2",
-        itemType: "section",
-        workId: null,
-        workName: null,
-        title: "アンコール",
-        note: null,
-      },
-      { id: "i3", itemType: "song", workId: null, workName: null, title: "知らない曲", note: null },
-    ];
-    const text = formatSetlist(before);
-    expect(text).toBe("M1. 架空の歌（メモ）\n【アンコール】\nM2. 知らない曲");
-    expect(parseSetlist(text, SONGS, before)).toEqual(before);
-    // 並べ替えても、同じ行の ID は引き継ぐ
-    const swapped = parseSetlist("知らない曲\n架空の歌", SONGS, before);
-    expect(swapped.map((i) => i.id)).toEqual(["i3", "i1"]);
-  });
-});
 
 function detail(over: Partial<EventDetail>): EventDetail {
   return {
