@@ -26,6 +26,7 @@
 // | GET      | /intake/:id/files/:sha256 | 下書きに付いた仮置きのファイルの中身（作業者・運営者） |
 // | GET/POST | /events・/entities        | 出来事と作品・相手を作る・直す（events.ts） |
 // | GET/POST | /songs                    | 楽曲リスト（songs.ts） |
+// | GET/POST | /events/:id/article       | 出来事の記事とセットリスト（articles.ts） |
 
 import type { Database } from "@aletheia/db/client";
 import {
@@ -61,6 +62,7 @@ import {
   requireMember,
   writesNeedWorker,
 } from "./auth.ts";
+import { registerArticleRoutes } from "./articles.ts";
 import { registerAssetRoutes } from "./assets.ts";
 import { serial } from "./serial.ts";
 import { matchUrl } from "./urls.ts";
@@ -264,6 +266,7 @@ export function createApp(
   app.use("/songs", requireMember(db, auth), writesNeedWorker);
   app.use("/songs/*", requireMember(db, auth), writesNeedWorker);
   registerEventRoutes(app, db);
+  registerArticleRoutes(app, db);
   registerSongRoutes(app, db);
   registerAssetRoutes(app, db, files, options.thumbnailFiles);
 

@@ -8,6 +8,7 @@ import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import { triageItemOf } from "./triage.ts";
 import {
   type ApproveOutcome,
+  type ArticleDay,
   type ArchiveSource,
   type AssetCard,
   type AssetFilter,
@@ -16,6 +17,7 @@ import {
   type Decision,
   type DiscardedItem,
   type EntityOption,
+  type EventArticleView,
   type EventDetail,
   type EventInput,
   type EventSummary,
@@ -35,6 +37,7 @@ import {
   type RefLabel,
   type Role,
   type SearchHit,
+  type SetlistItem,
   type SongDetail,
   type SongImportResult,
   type SongList,
@@ -403,6 +406,101 @@ export class LiveSource implements ArchiveSource {
       stopped = true;
       for (const url of urls) URL.revokeObjectURL(url);
     };
+  }
+
+  async getEventArticle(eventId: string): Promise<EventArticleView> {
+    const res = await this.api<{
+      article: {
+        body: string;
+        sections: {
+          days?: {
+            date: string;
+            outfit_note: string;
+            outfit_assets: string[];
+            content: string;
+            streams: { url: string; title: string; note: string }[];
+          }[];
+        };
+        updated_at: string;
+        author_name: string | null;
+      } | null;
+      setlists: {
+        event_id: string;
+        title: string | null;
+        starts_on: string | null;
+        part: string | null;
+        is_schedule: boolean;
+        items: {
+          id: string;
+          item_type: string;
+          work_id: string | null;
+          work_name: string | null;
+          title: string | null;
+          note: string | null;
+        }[];
+      }[];
+    }>("GET", `/events/${encodeURIComponent(eventId)}/article`);
+    return {
+      article: res.article
+        ? {
+            body: res.article.body,
+            days: (res.article.sections.days ?? []).map((d) => ({
+              date: d.date,
+              outfitNote: d.outfit_note,
+              outfitAssets: d.outfit_assets,
+              content: d.content,
+              streams: d.streams,
+            })),
+            updatedAt: res.article.updated_at,
+            authorName: res.article.author_name,
+          }
+        : null,
+      setlists: res.setlists.map((s) => ({
+        eventId: s.event_id,
+        title: s.title,
+        startsOn: s.starts_on,
+        part: s.part,
+        isSchedule: s.is_schedule,
+        items: s.items.map((i) => ({
+          id: i.id,
+          itemType: i.item_type,
+          workId: i.work_id,
+          workName: i.work_name,
+          title: i.title,
+          note: i.note,
+        })),
+      })),
+    };
+  }
+
+  async saveEventArticle(
+    eventId: string,
+    article: { body: string; days: ArticleDay[] },
+  ): Promise<void> {
+    await this.api("POST", `/events/${encodeURIComponent(eventId)}/article`, {
+      body: article.body,
+      sections: {
+        days: article.days.map((d) => ({
+          date: d.date,
+          outfit_note: d.outfitNote,
+          outfit_assets: d.outfitAssets,
+          content: d.content,
+          streams: d.streams,
+        })),
+      },
+    });
+  }
+
+  async saveEventItems(eventId: string, items: SetlistItem[]): Promise<void> {
+    await this.api("POST", `/events/${encodeURIComponent(eventId)}/items`, {
+      items: items.map((i) => ({
+        id: i.id,
+        item_type: i.itemType,
+        work_id: i.workId,
+        title: i.workId ? null : i.title,
+        note: i.note,
+      })),
+    });
   }
 
   async listSongs(): Promise<SongList> {
