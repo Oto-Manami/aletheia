@@ -26,6 +26,7 @@
 // | GET      | /intake/:id/files/:sha256 | 下書きに付いた仮置きのファイルの中身（作業者・運営者） |
 // | GET/POST | /events・/entities        | 出来事と作品・相手を作る・直す（events.ts） |
 // | GET/POST | /songs                    | 楽曲リスト（songs.ts） |
+// | GET      | /dashboard                | ダッシュボード（dashboard.ts） |
 // | GET/POST | /events/:id/article       | 出来事の記事（articles.ts） |
 // | GET/POST | /events/:id/setlists・/event-items | セットリストと曲ごとの参加（setlists.ts） |
 
@@ -70,6 +71,7 @@ import { matchUrl } from "./urls.ts";
 import { registerEventRoutes } from "./events.ts";
 import { registerSetlistRoutes } from "./setlists.ts";
 import { registerSongRoutes } from "./songs.ts";
+import { registerDashboardRoutes } from "./dashboard.ts";
 import { listTriage, SOURCE_KINDS, triageListQuery } from "./triage-list.ts";
 import {
   assertStagedFiles,
@@ -265,6 +267,7 @@ export function createApp(
   app.use("/entities", requireMember(db, auth), writesNeedWorker);
   app.use("/assets/*", requireMember(db, auth), writesNeedWorker);
   app.use("/posts/*", requireMember(db, auth), writesNeedWorker);
+  app.use("/dashboard", requireMember(db, auth), writesNeedWorker);
   app.use("/songs", requireMember(db, auth), writesNeedWorker);
   app.use("/event-items/*", requireMember(db, auth), writesNeedWorker);
   app.use("/songs/*", requireMember(db, auth), writesNeedWorker);
@@ -272,6 +275,7 @@ export function createApp(
   registerArticleRoutes(app, db);
   registerSetlistRoutes(app, db);
   registerSongRoutes(app, db);
+  registerDashboardRoutes(app, db);
   registerAssetRoutes(app, db, files, options.thumbnailFiles);
 
   /** 承認済みの投稿のファイルの保存をやり直す（承認の後に保存できなかったもの。仮置きの場所に残っていれば移す） */

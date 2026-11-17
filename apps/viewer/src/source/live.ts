@@ -8,6 +8,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import { triageItemOf } from "./triage.ts";
 import {
+  type Dashboard,
+  type DashboardEvent,
   type ApproveOutcome,
   type ArticleDay,
   type ArchiveSource,
@@ -551,6 +553,108 @@ export class LiveSource implements ArchiveSource {
         note: i.note,
       })),
     });
+  }
+
+  async getDashboard(): Promise<Dashboard> {
+    interface Ev {
+      id: string;
+      title: string | null;
+      parent_id: string | null;
+      parent_title: string | null;
+      starts_on: string | null;
+      songs?: number;
+    }
+    const ev = (e: Ev): DashboardEvent => ({
+      id: e.id,
+      title: e.title,
+      parentId: e.parent_id,
+      parentTitle: e.parent_title,
+      startsOn: e.starts_on,
+      ...(e.songs !== undefined ? { songs: e.songs } : {}),
+    });
+    const r = await this.api<{
+      subject: { id: string; name: string } | null;
+      tasks: null | {
+        pending: number;
+        pending_oldest: string | null;
+        triage: { blog: number; news: number };
+        missing_files: {
+          count: number;
+          posts: { id: string; title: string | null; published_at: string | null; files: number }[];
+        };
+        unknown_participation: { count: number; events: Ev[] } | null;
+        setlist_missing: { count: number; events: Ev[] } | null;
+        overdue: { count: number; events: Ev[] };
+      };
+      data: {
+        posts: { channel_id: string; name: string; kind: string; count: number }[];
+        assets: { media_type: string; count: number }[];
+        events: { kind: string; count: number }[];
+        schedules: number;
+        people: number;
+        songs: number;
+        posts_range: { oldest: string | null; newest: string | null };
+      };
+      recent: {
+        days: { date: string; approved: number; rejected: number; discarded: number }[];
+        approved: {
+          post_id: string | null;
+          title: string | null;
+          channel: string;
+          reviewed_at: string;
+        }[];
+      };
+    }>("GET", "/dashboard");
+    const t = r.tasks;
+    return {
+      subject: r.subject,
+      tasks: t && {
+        pending: t.pending,
+        pendingOldest: t.pending_oldest,
+        triage: t.triage,
+        missingFiles: {
+          count: t.missing_files.count,
+          posts: t.missing_files.posts.map((p) => ({
+            id: p.id,
+            title: p.title,
+            publishedAt: p.published_at,
+            files: p.files,
+          })),
+        },
+        unknownParticipation: t.unknown_participation && {
+          count: t.unknown_participation.count,
+          events: t.unknown_participation.events.map(ev),
+        },
+        setlistMissing: t.setlist_missing && {
+          count: t.setlist_missing.count,
+          events: t.setlist_missing.events.map(ev),
+        },
+        overdue: { count: t.overdue.count, events: t.overdue.events.map(ev) },
+      },
+      data: {
+        posts: r.data.posts.map((p) => ({
+          channelId: p.channel_id,
+          name: p.name,
+          kind: p.kind,
+          count: p.count,
+        })),
+        assets: r.data.assets.map((a) => ({ mediaType: a.media_type, count: a.count })),
+        events: r.data.events,
+        schedules: r.data.schedules,
+        people: r.data.people,
+        songs: r.data.songs,
+        postsRange: r.data.posts_range,
+      },
+      recent: {
+        days: r.recent.days,
+        approved: r.recent.approved.map((a) => ({
+          postId: a.post_id,
+          title: a.title,
+          channel: a.channel,
+          reviewedAt: a.reviewed_at,
+        })),
+      },
+    };
   }
 
   async listSongs(): Promise<SongList> {
