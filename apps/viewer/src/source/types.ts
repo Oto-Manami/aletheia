@@ -537,6 +537,53 @@ export interface EventSetlistsView {
   setlists: EventSetlist[];
 }
 
+/** 作品の一覧の 1 行（設計書 決定記録 0065） */
+export interface WorkSummary {
+  id: string;
+  name: string;
+  subtype: string | null;
+  /** その作品を指す回・号（出来事）の数 */
+  events: number;
+  /** いちばん新しい回・号の日付 */
+  latest: string | null;
+  /** 紐付いた素材の数（目安） */
+  materials: number;
+}
+
+/** 作品の画面（設計書 決定記録 0065） */
+export interface WorkView {
+  work: { id: string; name: string; subtype: string | null; reading: string | null };
+  subject: { id: string; name: string } | null;
+  events: {
+    id: string;
+    title: string | null;
+    kind: string;
+    startsOn: string | null;
+    datePrecision: string | null;
+    episodeNumber: number | null;
+    parentId: string | null;
+    subjectStatus: string | null;
+    materials: number;
+  }[];
+  /** 回・号（とその中身）に紐付いた投稿の画像と、作品に直接紐付けた素材（新しい順） */
+  images: {
+    assetId: string;
+    fileAssetId: string | null;
+    postId: string;
+    postTitle: string | null;
+    publishedAt: string | null;
+    publishedDate: string | null;
+    channelName: string;
+    /** どの回・号のものか。作品に直接紐付けたものは null */
+    eventId: string | null;
+    eventTitle: string | null;
+    eventStartsOn: string | null;
+    subjectAppears: boolean;
+  }[];
+  /** 出し切れなかった画像があるか */
+  moreImages: boolean;
+}
+
 /** ダッシュボードの例に出す出来事（設計書 決定記録 0063） */
 export interface DashboardEvent {
   id: string;
@@ -682,6 +729,9 @@ export interface ArchiveSource {
   getEventSetlists?(eventId: string): Promise<EventSetlistsView>;
   /** 連載・企画（シリーズ）の一覧（決定記録 0064） */
   listSeries?(): Promise<RefLabel[]>;
+  /** 作品の一覧と作品の画面（決定記録 0065） */
+  listWorks?(filter: { subtype?: string; query?: string }): Promise<WorkSummary[]>;
+  getWork?(id: string): Promise<WorkView>;
   /** ダッシュボード（決定記録 0063） */
   getDashboard?(): Promise<Dashboard>;
   /** 曲ごとの参加を付ける・外す（null は未確認に戻す） */

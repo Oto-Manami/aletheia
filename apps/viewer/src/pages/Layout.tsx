@@ -10,6 +10,7 @@ import {
   Newspaper,
   Search,
   Settings,
+  Tv,
   X,
 } from "lucide-react";
 import { Suspense, useCallback, useEffect, useState, useSyncExternalStore } from "react";
@@ -143,6 +144,12 @@ export function Layout() {
             <NavLink to="/songs" className="nav-item" onClick={close}>
               <Music size={16} aria-hidden="true" />
               楽曲
+            </NavLink>
+          )}
+          {viewer.isMember && (
+            <NavLink to="/works" className="nav-item" onClick={close}>
+              <Tv size={16} aria-hidden="true" />
+              作品
             </NavLink>
           )}
           {viewer.isMember && (

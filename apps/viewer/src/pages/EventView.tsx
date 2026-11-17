@@ -120,7 +120,12 @@ function EventView({ detail }: { detail: EventDetail }) {
         <p className="event-view-meta">
           <span className="tag">{EVENT_KIND_LABELS[detail.kind] ?? detail.kind}</span>
           {detail.part && <span>{detail.part}</span>}
-          {detail.workName && <span>{detail.workName}</span>}
+          {detail.workName &&
+            (detail.workId ? (
+              <Link to={`/works/${detail.workId}`}>{detail.workName}</Link>
+            ) : (
+              <span>{detail.workName}</span>
+            ))}
           {detail.venueName && <span>{detail.venueName}</span>}
           {detail.classification === "private" && <span className="tag tag-private">非公開</span>}
         </p>
