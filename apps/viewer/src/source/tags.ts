@@ -47,7 +47,7 @@ export function imageRefsOf(draft: DraftInput): string[] {
 function setLink(
   draft: DraftInput,
   from: "post" | { asset: string },
-  role: "mentioned" | "appears",
+  role: "mentioned" | "appears" | "series" | "photographer",
   entityId: string,
   on: boolean,
 ): DraftInput {
@@ -105,6 +105,66 @@ export function setAppears(
 /** すべての写真に、その人を写っているとして付ける（本人のブログなど） */
 export function setAppearsAll(draft: DraftInput, entityId: string, on: boolean): DraftInput {
   return imageRefsOf(draft).reduce((d, ref) => setAppears(d, ref, entityId, on), draft);
+}
+
+// ---------------------------------------------------------------- シリーズと撮影した人（決定記録 0064）
+
+function assetTargets(draft: DraftInput, ref: string, role: string): string[] {
+  return (draft.links ?? [])
+    .filter(
+      (l) =>
+        isAssetLink(l, ref) && l.role === role && l.to_type === "entity" && l.accepted !== false,
+    )
+    .map((l) => l.to_id);
+}
+
+/** 下書きのどれかの写真に付いているシリーズ（付けた順） */
+export function seriesOf(draft: DraftInput): string[] {
+  const ids = (draft.links ?? [])
+    .filter(
+      (l) =>
+        typeof l.from === "object" &&
+        l.role === "series" &&
+        l.to_type === "entity" &&
+        l.accepted !== false,
+    )
+    .map((l) => l.to_id);
+  return [...new Set(ids)];
+}
+
+/** その写真が入っているシリーズ */
+export function seriesOfAsset(draft: DraftInput, ref: string): string[] {
+  return assetTargets(draft, ref, "series");
+}
+
+/** 写真をシリーズに入れる・外す */
+export function setSeries(
+  draft: DraftInput,
+  ref: string,
+  seriesId: string,
+  on: boolean,
+): DraftInput {
+  return setLink(draft, { asset: ref }, "series", seriesId, on);
+}
+
+/** すべての写真・動画を、シリーズに入れる・外す */
+export function setSeriesAll(draft: DraftInput, seriesId: string, on: boolean): DraftInput {
+  return imageRefsOf(draft).reduce((d, ref) => setSeries(d, ref, seriesId, on), draft);
+}
+
+/** その写真を撮影した人 */
+export function photographersOf(draft: DraftInput, ref: string): string[] {
+  return assetTargets(draft, ref, "photographer");
+}
+
+/** 写真を撮影した人を付ける・外す */
+export function setPhotographer(
+  draft: DraftInput,
+  ref: string,
+  personId: string,
+  on: boolean,
+): DraftInput {
+  return setLink(draft, { asset: ref }, "photographer", personId, on);
 }
 
 /**

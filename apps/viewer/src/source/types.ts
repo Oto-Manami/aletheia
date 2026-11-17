@@ -167,6 +167,8 @@ export interface AssetFilter {
   channelId?: string;
   /** 写っている人（appears で紐付いた人物） */
   personId?: string;
+  /** 連載・企画（series で紐付いたシリーズ。決定記録 0064） */
+  seriesId?: string;
 }
 
 export interface PostView {
@@ -678,6 +680,8 @@ export interface ArchiveSource {
   saveEventItems?(eventId: string, items: SetlistItem[]): Promise<void>;
   /** 出来事のセットリストと、曲ごとの参加（決定記録 0060） */
   getEventSetlists?(eventId: string): Promise<EventSetlistsView>;
+  /** 連載・企画（シリーズ）の一覧（決定記録 0064） */
+  listSeries?(): Promise<RefLabel[]>;
   /** ダッシュボード（決定記録 0063） */
   getDashboard?(): Promise<Dashboard>;
   /** 曲ごとの参加を付ける・外す（null は未確認に戻す） */

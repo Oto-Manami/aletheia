@@ -382,6 +382,7 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
             previews={previews}
             readOnly={readOnly}
             chosenOnly={detail.chosenImagesOnly}
+            pickSeries
             {...(detail.playUrls ? { playUrls: detail.playUrls } : {})}
             {...(source.loadIntakeMedia
               ? { loadMedia: (sha256: string) => source.loadIntakeMedia!(detail.id, sha256) }
