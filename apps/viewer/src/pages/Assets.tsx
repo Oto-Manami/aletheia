@@ -124,7 +124,16 @@ function Tile({ asset, onOpen }: { asset: AssetCard; onOpen?: () => void }) {
 }
 
 /** 名前を並べる（無ければ出さない） */
-function Names({ title, refs }: { title: string; refs: RefLabel[] }) {
+function Names({
+  title,
+  refs,
+  linkOf,
+}: {
+  title: string;
+  refs: RefLabel[];
+  /** 名前から開く先（無ければ出来事だけを開く） */
+  linkOf?: (r: RefLabel) => string;
+}) {
   if (refs.length === 0) return null;
   return (
     <section>
@@ -132,8 +141,8 @@ function Names({ title, refs }: { title: string; refs: RefLabel[] }) {
       <ul>
         {refs.map((r) => (
           <li key={r.id}>
-            {r.type === "event" ? (
-              <Link to={`/events/${r.id}`} className="tag">
+            {linkOf || r.type === "event" ? (
+              <Link to={linkOf ? linkOf(r) : `/events/${r.id}`} className="tag">
                 {r.label}
               </Link>
             ) : (
@@ -198,6 +207,15 @@ function AssetInfo({ asset }: { asset: AssetCard }) {
           <Names
             title="写っている人"
             refs={of((l) => l.role === "appears" && l.target.type === "entity")}
+          />
+          <Names
+            title="撮影した人"
+            refs={of((l) => l.role === "photographer" && l.target.type === "entity")}
+          />
+          <Names
+            title="シリーズ"
+            refs={of((l) => l.role === "series" && l.target.type === "entity")}
+            linkOf={(r) => `/assets?series=${encodeURIComponent(r.id)}`}
           />
           <Names
             title="出来事"
@@ -279,17 +297,19 @@ export function AssetsPage() {
   const type = TYPES.find((t) => t.key === params.get("type"))?.key ?? "image";
   const channelId = params.get("channel") ?? "";
   const personId = params.get("person") ?? "";
+  const seriesId = params.get("series") ?? "";
   const filter: AssetFilter = {
     mediaType: type,
     ...(channelId ? { channelId } : {}),
     ...(personId ? { personId } : {}),
+    ...(seriesId ? { seriesId } : {}),
   };
 
   const [first] = useLoad(
     () => source.listAssets(filter, { offset: 0, limit: PAGE }),
-    [source, type, channelId, personId],
+    [source, type, channelId, personId, seriesId],
     [],
-    `assets:${JSON.stringify([type, channelId, personId])}`,
+    `assets:${JSON.stringify([type, channelId, personId, seriesId])}`,
   );
   // 「もっと見る」で足した分（条件が変わったら捨てる）
   const [extra, setExtra] = useState<{ key: string; items: AssetCard[]; hasMore: boolean }>({
@@ -297,22 +317,32 @@ export function AssetsPage() {
     items: [],
     hasMore: false,
   });
-  const key = `${type}|${channelId}|${personId}`;
+  const key = `${type}|${channelId}|${personId}|${seriesId}`;
   const more = extra.key === key ? extra : { key, items: [], hasMore: false };
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 大きく開いている画像（一覧の画像の中での番号）
   const [viewing, setViewing] = useState<number | null>(null);
 
-  const [options] = useLoad(async () => {
-    const [channels, subjects, members] = await Promise.all([
-      source.listChannels(),
-      source.listArchiveSubjects(),
-      source.listTagCandidates(),
-    ]);
-    const seen = new Set(subjects.map((s) => s.id));
-    return { channels, people: [...subjects, ...members.filter((m) => !seen.has(m.id))] };
-  }, [source]);
+  const [options] = useLoad(
+    async () => {
+      const [channels, subjects, members, series] = await Promise.all([
+        source.listChannels(),
+        source.listArchiveSubjects(),
+        source.listTagCandidates(),
+        source.listSeries ? source.listSeries() : Promise.resolve([]),
+      ]);
+      const seen = new Set(subjects.map((s) => s.id));
+      return {
+        channels,
+        people: [...subjects, ...members.filter((m) => !seen.has(m.id))],
+        series,
+      };
+    },
+    [source],
+    [],
+    "asset-options",
+  );
 
   if (!viewer.isMember) {
     return (
@@ -323,7 +353,12 @@ export function AssetsPage() {
     );
   }
 
-  const setView = (patch: { type?: string; channel?: string; person?: string }) => {
+  const setView = (patch: {
+    type?: string;
+    channel?: string;
+    person?: string;
+    series?: string;
+  }) => {
     const next = new URLSearchParams(params);
     for (const [k, v] of Object.entries(patch)) {
       if (!v || (k === "type" && v === "image")) next.delete(k);
@@ -396,6 +431,23 @@ export function AssetsPage() {
                 ))}
             </select>
           </span>
+          {options.status === "ready" && options.data.series.length > 0 && (
+            <span className="triage-select">
+              <label htmlFor="assets-series">シリーズ</label>
+              <select
+                id="assets-series"
+                value={seriesId}
+                onChange={(e) => setView({ series: e.target.value })}
+              >
+                <option value="">指定しない</option>
+                {options.data.series.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.label}
+                  </option>
+                ))}
+              </select>
+            </span>
+          )}
           <span className="triage-select">
             <label htmlFor="assets-person">写っている人</label>
             <select

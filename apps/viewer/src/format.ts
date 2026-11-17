@@ -69,6 +69,8 @@ export const ROLE_LABELS: Record<string, string> = {
   about: "その出来事について",
   part_of: "中身の一部",
   wears: "身に着けている",
+  series: "シリーズ（連載・企画）",
+  photographer: "撮影した人",
   tagged: "分類",
 };
 
@@ -184,6 +186,7 @@ export const ENTITY_SUBTYPE_LABELS: Record<string, Record<string, string>> = {
     radio_program: "ラジオ番組",
     web_program: "配信番組",
     magazine: "雑誌",
+    series: "連載・企画（シリーズ）",
     drama: "ドラマ",
     film: "映画",
     stage: "舞台",

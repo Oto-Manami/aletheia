@@ -903,23 +903,44 @@ export class LiveSource implements ArchiveSource {
     const type = filter.mediaType ?? "image";
     let ids: string[] | null = null;
     let hasMoreLinks = false;
-    if (filter.personId) {
-      // 写っている人で絞るときは、紐付けを新しい順に区切って取り、そのアセットを読む
+    // シリーズ（決定記録 0064）か写っている人で絞るときは、紐付けを新しい順に区切って取り、そのアセットを読む
+    const by = filter.seriesId
+      ? { role: "series", to: filter.seriesId }
+      : filter.personId
+        ? { role: "appears", to: filter.personId }
+        : null;
+    if (by) {
       const links = rowsOf<{ from_id: string }>(
         await this.supabase
           .from("links")
           .select("from_id")
           .eq("from_type", "asset")
           .eq("to_type", "entity")
-          .eq("to_id", filter.personId)
-          .eq("role", "appears")
+          .eq("to_id", by.to)
+          .eq("role", by.role)
           .eq("review_state", "accepted")
           .order("created_at", { ascending: false })
           .range(page.offset, page.offset + page.limit),
       );
       hasMoreLinks = links.length > page.limit;
       ids = links.slice(0, page.limit).map((l) => l.from_id);
-      if (ids.length === 0) return { items: [], hasMore: false };
+      // シリーズと写っている人の両方なら、区切った分のうち、その人が写っているものだけにする
+      if (filter.seriesId && filter.personId && ids.length > 0) {
+        const both = rowsOf<{ from_id: string }>(
+          await this.supabase
+            .from("links")
+            .select("from_id")
+            .eq("from_type", "asset")
+            .eq("to_type", "entity")
+            .eq("to_id", filter.personId)
+            .eq("role", "appears")
+            .eq("review_state", "accepted")
+            .in("from_id", ids),
+        );
+        const keep = new Set(both.map((l) => l.from_id));
+        ids = ids.filter((id) => keep.has(id));
+      }
+      if (ids.length === 0) return { items: [], hasMore: hasMoreLinks };
     }
     let q = this.supabase
       .from("assets")
@@ -1048,6 +1069,20 @@ export class LiveSource implements ArchiveSource {
       assets: assetViews,
       links: links.map((l, i) => ({ role: l.role, target: labels[i]! })),
     };
+  }
+
+  /** 連載・企画（シリーズ）の一覧（決定記録 0064） */
+  async listSeries(): Promise<RefLabel[]> {
+    const rows = rowsOf<{ id: string; canonical_name: string }>(
+      await this.supabase
+        .from("entities")
+        .select("id, canonical_name")
+        .eq("type", "work")
+        .eq("subtype", "series")
+        .is("merged_into", null)
+        .order("canonical_name"),
+    );
+    return rows.map((r) => ({ id: r.id, type: "entity" as const, label: r.canonical_name }));
   }
 
   async getAssetLinks(assetId: string, postId: string | null) {

@@ -4776,3 +4776,39 @@ button.participation {
 .dashboard-bar.is-other {
   background: var(--border-strong);
 }
+
+/* ---------------------------------------------------------------- シリーズと撮影した人（決定記録 0064） */
+
+.photo-series {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 12px;
+  font-size: 13px;
+}
+
+.photo-series-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.photo-series .person-chip .icon-button {
+  margin: 0 -4px 0 0;
+  padding: 0;
+}
+
+.photo-series .field {
+  margin: 0;
+}
+
+.photo-tag-series {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.photo-tag-series .person-chip {
+  font-size: 12px;
+}
