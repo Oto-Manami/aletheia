@@ -157,6 +157,8 @@ function AssetInfo({ asset }: { asset: AssetCard }) {
   const [links] = useLoad(
     () => source.getAssetLinks(asset.id, asset.postId),
     [source, asset.id, asset.postId],
+    [],
+    `asset-links:${asset.id}:${asset.postId}`,
   );
   const title = asset.postTitle?.trim() || asset.title?.trim() || "（題名なし）";
   const date = formatPublished(asset);
@@ -286,6 +288,8 @@ export function AssetsPage() {
   const [first] = useLoad(
     () => source.listAssets(filter, { offset: 0, limit: PAGE }),
     [source, type, channelId, personId],
+    [],
+    `assets:${JSON.stringify([type, channelId, personId])}`,
   );
   // 「もっと見る」で足した分（条件が変わったら捨てる）
   const [extra, setExtra] = useState<{ key: string; items: AssetCard[]; hasMore: boolean }>({

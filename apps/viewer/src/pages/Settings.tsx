@@ -2,7 +2,8 @@
 
 import { NavLink, Outlet } from "react-router";
 import { useApp } from "../context.tsx";
-import { useState } from "react";
+import { PageLoading } from "./Layout.tsx";
+import { Suspense, useState } from "react";
 import { applyTheme, loadTheme, type Theme } from "../theme.ts";
 
 export function SettingsPage() {
@@ -22,7 +23,9 @@ export function SettingsPage() {
           </NavLink>
         )}
       </nav>
-      <Outlet />
+      <Suspense fallback={<PageLoading />}>
+        <Outlet />
+      </Suspense>
     </section>
   );
 }

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Link, NavLink, Outlet, useMatch, useOutletContext, useSearchParams } from "react-router";
 import { Tags } from "../components/Tags.tsx";
 import { useApp } from "../context.tsx";
@@ -5,7 +6,7 @@ import { formatInstant, formatPublished, routeLabel } from "../format.ts";
 import type { QueuedDecision } from "../decision-queue.ts";
 import type { Decision, IntakeSort, IntakeState } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
-import { type LayoutOutlet, useLayout, useQueued } from "./Layout.tsx";
+import { type LayoutOutlet, PageLoading, useLayout, useQueued } from "./Layout.tsx";
 
 const STATES: { state: IntakeState; label: string }[] = [
   { state: "pending", label: "承認待ち" },
@@ -76,6 +77,7 @@ export function IntakePage() {
     () => source.listIntake(state, sort),
     [source, state, sort],
     [layout.version],
+    `intake-list:${state}:${sort}`,
   );
   /** URL の条件を変える（タブ・並べ方。既定のものは URL に書かない） */
   const choose = (next: { state?: IntakeState; sort?: IntakeSort }) => {
@@ -210,14 +212,16 @@ export function IntakePage() {
       {/* 別のものを開いたら、中身は先頭から見せる（中身の欄だけがスクロールするため） */}
       <section key={detail?.params.id ?? ""} className="split-detail" aria-label="下書きの中身">
         {detail ? (
-          <Outlet
-            context={
-              {
-                ...layout,
-                listIds: list.status === "ready" ? list.data.map((i) => i.id) : null,
-              } satisfies IntakeOutlet
-            }
-          />
+          <Suspense fallback={<PageLoading />}>
+            <Outlet
+              context={
+                {
+                  ...layout,
+                  listIds: list.status === "ready" ? list.data.map((i) => i.id) : null,
+                } satisfies IntakeOutlet
+              }
+            />
+          </Suspense>
         ) : (
           <p className="quiet split-empty">左の一覧から下書きを選んでください。</p>
         )}

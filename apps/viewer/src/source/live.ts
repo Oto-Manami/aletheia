@@ -2,6 +2,7 @@
 //
 // データベースの行レベルセキュリティが見える範囲を決める。承認の画面は管理者だけが使える（API が確かめる）。
 
+import { clearLoadCache } from "../load-cache.ts";
 import type { DraftInput } from "@aletheia/intake/draft";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
@@ -252,14 +253,29 @@ export class LiveSource implements ArchiveSource {
         json.issues ?? [],
       );
     }
+    // 変えたら、覚えた画面のデータを捨てる（決定記録 0062）
+    if (method !== "GET") clearLoadCache();
     return json as T;
   }
 
   /** 縮めた画像を同時に読む数（保存先に負担をかけない） */
   private thumbnailSlots = 6;
   private readonly thumbnailWaiters: (() => void)[] = [];
+  /**
+   * 読んだ縮めた画像を、タブを開いている間だけ覚える（決定記録 0062）。メモリにだけ持ち、数に上限を置く。
+   * 縮めた画像は素材ごとに変わらないので、変更をしても捨てない
+   */
+  private readonly thumbnailBlobs = new Map<string, Blob>();
+  private static readonly THUMBNAIL_LIMIT = 600;
 
   async assetThumbnail(assetId: string): Promise<{ url: string; release: () => void } | null> {
+    const known = this.thumbnailBlobs.get(assetId);
+    if (known) {
+      this.thumbnailBlobs.delete(assetId);
+      this.thumbnailBlobs.set(assetId, known);
+      const url = URL.createObjectURL(known);
+      return { url, release: () => URL.revokeObjectURL(url) };
+    }
     if (this.thumbnailSlots === 0) {
       await new Promise<void>((resolve) => this.thumbnailWaiters.push(resolve));
     } else {
@@ -267,6 +283,12 @@ export class LiveSource implements ArchiveSource {
     }
     try {
       const blob = await this.apiBlob(`/assets/${encodeURIComponent(assetId)}/thumbnail`);
+      this.thumbnailBlobs.set(assetId, blob);
+      while (this.thumbnailBlobs.size > LiveSource.THUMBNAIL_LIMIT) {
+        const oldest = this.thumbnailBlobs.keys().next().value;
+        if (oldest === undefined) break;
+        this.thumbnailBlobs.delete(oldest);
+      }
       const url = URL.createObjectURL(blob);
       return { url, release: () => URL.revokeObjectURL(url) };
     } catch {
@@ -1285,7 +1307,13 @@ export class LiveSource implements ArchiveSource {
     return result.id;
   }
 
+  /** 覚えた縮めた画像を捨てる（ログアウト・利用者が替わったとき） */
+  forgetThumbnails(): void {
+    this.thumbnailBlobs.clear();
+  }
+
   async removeAsset(assetId: string): Promise<void> {
+    this.thumbnailBlobs.delete(assetId);
     await this.api("POST", `/assets/${encodeURIComponent(assetId)}/remove`, {});
   }
 

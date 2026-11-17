@@ -563,10 +563,14 @@ export function EventSetlistsSection({
         ? source.getEventSetlists(detail.id)
         : Promise.resolve<EventSetlistsView | null>(null),
     [source, detail.id],
+    [],
+    `setlists:${detail.id}`,
   );
   const [songs] = useLoad(
     () => (source.listSongs ? source.listSongs() : Promise.resolve<SongList | null>(null)),
     [source],
+    [],
+    "songs",
   );
   const [open, setOpen] = useState<string | null>(focus);
   const songList = songs.status === "ready" ? songs.data : null;

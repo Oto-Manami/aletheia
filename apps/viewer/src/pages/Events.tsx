@@ -2,7 +2,7 @@
 
 import { type GalleryImage, ImageViewer, MaterialThumbs } from "../components/MaterialGallery.tsx";
 import { CalendarPlus, ChevronLeft, ExternalLink, Plus, X } from "lucide-react";
-import { type KeyboardEvent, useEffect, useId, useState } from "react";
+import { type KeyboardEvent, Suspense, useEffect, useId, useState } from "react";
 import {
   Link,
   NavLink,
@@ -36,7 +36,7 @@ import type {
   SourcePreview,
 } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
-import { useLayout } from "./Layout.tsx";
+import { PageLoading, useLayout } from "./Layout.tsx";
 
 export function EventsPage() {
   const { source, viewer } = useApp();
@@ -53,6 +53,7 @@ export function EventsPage() {
     [source, query, kind],
     // 承認などで変わったときは、今の一覧を見せたまま裏で読み直す
     [layout.version],
+    `events:${JSON.stringify([query, kind])}`,
   );
 
   // 入力が落ち着いてから URL に反映して探す
@@ -153,7 +154,9 @@ export function EventsPage() {
       </section>
       {/* 別のものを開いたら、中身は先頭から見せる（中身の欄だけがスクロールするため） */}
       <section key={detail?.params.id ?? ""} className="split-detail" aria-label="出来事">
-        <Outlet context={layout} />
+        <Suspense fallback={<PageLoading />}>
+          <Outlet context={layout} />
+        </Suspense>
       </section>
     </div>
   );

@@ -175,10 +175,10 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
     (location.state as { done?: string } | null)?.done ?? null,
   );
   const [labels, setLabels] = useState(new Map<string, string>());
-  const [candidates] = useLoad(() => source.listTagCandidates(), [source]);
+  const [candidates] = useLoad(() => source.listTagCandidates(), [source], [], "tag-candidates");
   const candidateList = candidates.status === "ready" ? candidates.data : [];
   // 写真を押して印を付ける人（蓄積対象の人物）
-  const [subjects] = useLoad(() => source.listArchiveSubjects(), [source]);
+  const [subjects] = useLoad(() => source.listArchiveSubjects(), [source], [], "archive-subjects");
   const subjectList = subjects.status === "ready" ? subjects.data : [];
   const ownPost = authorsOf(draft).some((a) => subjectList.some((s) => s.id === a));
   const photoSubject =
