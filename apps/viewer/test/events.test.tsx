@@ -72,7 +72,7 @@ describe("出来事", () => {
     expect(rows()[0]?.textContent).toContain("ラジオ「仮の時間」第 12 回");
   });
 
-  it("まとまりの画面に日程が並び、日付・部・会場だけで日程を足せる。日程の画面からまとまりに戻れる", async () => {
+  it("まとまりの画面に日程が並び、日付・部・会場だけで日程を足せる。日程はまとまりの画面で開く", async () => {
     const user = userEvent.setup();
     const { source } = open("/events/e1000000-0000-4000-8000-000000000003/edit");
     await screen.findByRole("heading", { name: "出来事を直す" });
@@ -100,12 +100,11 @@ describe("出来事", () => {
       subjectStatus: "scheduled",
     });
 
-    // 日程を開くと表示の画面。そこからまとまりに戻れ、「編集」で日程を直せる
+    // 日程を開くと、まとまりの画面でその日程が開く（日程の専用の画面は無い。決定記録 0060）。
+    // そこから日付・会場・出演を直せる
     await user.click(within(screen.getByRole("list", { name: "日程" })).getAllByRole("link")[1]!);
-    expect(
-      await screen.findByRole("link", { name: "「冬の試験公演（架空ホール）」の日程" }),
-    ).toBeTruthy();
-    await user.click(screen.getByRole("link", { name: "編集" }));
+    expect(await screen.findByRole("button", { expanded: true, name: /夜公演/ })).toBeTruthy();
+    await user.click(screen.getByRole("link", { name: "日付・会場・出演を直す" }));
     expect(await screen.findByRole("heading", { name: "日程を直す" })).toBeTruthy();
     expect(screen.getByLabelText<HTMLInputElement>("部（任意）").value).toBe("夜公演");
     expect(screen.getByRole("link", { name: "「冬の試験公演（架空ホール）」の日程" })).toBeTruthy();
@@ -284,39 +283,6 @@ describe("出来事", () => {
     const list = within(materials.parentElement as HTMLElement).getAllByRole("listitem");
     expect(list.length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /紐付いている素材 \d+ 件/ })).toBeTruthy();
-  });
-
-  it("日程にセットリストを入れられる。曲はその場で作れ、並べ替え・メモ・外すができる", async () => {
-    const user = userEvent.setup();
-    const { source } = open("/events/e1000000-0000-4000-8000-000000000011/edit");
-    await screen.findByRole("heading", { name: "日程を直す" });
-    expect(screen.getByRole("heading", { name: "セットリスト" })).toBeTruthy();
-
-    for (const name of ["試験の曲 A", "試験の曲 B"]) {
-      await user.type(screen.getByLabelText("曲を足す"), name);
-      await user.click(await screen.findByRole("button", { name: `「${name}」を新しく作る` }));
-      const create = screen.getByRole("group", { name: `「${name}」を作る` });
-      await user.click(within(create).getByRole("radio", { name: "公開" }));
-      await user.click(within(create).getByRole("button", { name: "作って選ぶ" }));
-      await within(screen.getByRole("list", { name: "セットリスト" })).findByText(name);
-    }
-    await user.click(screen.getByRole("button", { name: "試験の曲 B を上へ" }));
-    await user.type(screen.getByLabelText("試験の曲 A のメモ"), "アンコール");
-    await user.click(screen.getByRole("button", { name: "直す" }));
-    expect(await screen.findByText("直しました")).toBeTruthy();
-
-    const saved = await source.getEvent("e1000000-0000-4000-8000-000000000011");
-    expect(saved.items.map((i) => [i.workName, i.note])).toEqual([
-      ["試験の曲 B", null],
-      ["試験の曲 A", "アンコール"],
-    ]);
-
-    // まとまりには、全日程で共通の曲として入れる
-    cleanup();
-    open("/events/e1000000-0000-4000-8000-000000000003/edit");
-    expect(
-      await screen.findByRole("heading", { name: "セットリスト（全日程で共通の曲）" }),
-    ).toBeTruthy();
   });
 
   it("閲覧者は出来事を見られるが、作る・直す・消すはできない", async () => {

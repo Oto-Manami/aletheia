@@ -2,27 +2,18 @@
 //
 // まとまり（ライブ・ミーグリなど）に、運営が書く記事を 1 つ置く。参加者だけが読む解釈の層で、事実とは分けて見せる。
 // - ミーグリ: 日ごと（同じ日の部はまとめる）に、服装（メモと写真）・内容・同じ日の配信
-// - ライブ: セットリスト（まとまりと日程ごと。文字で書いて入れる）
 // - どの種類も: 自由記述
 
 import { Pencil, Plus, X } from "lucide-react";
-import { Fragment, type ReactNode, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 import { useApp } from "../context.tsx";
 import { formatInstant } from "../format.ts";
-import { formatSetlist, parseSetlist, songIndex, unmatchedSongs } from "../source/setlist.ts";
-import type {
-  ArticleDay,
-  ArticleSetlist,
-  EventArticleView,
-  EventDetail,
-  SongSummary,
-} from "../source/types.ts";
+import type { ArticleDay, EventArticleView, EventDetail } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 import { type GalleryImage, MaterialThumbs, PickThumbs } from "./MaterialGallery.tsx";
 
 /** 型の欄を持つ種類 */
 const DAY_KINDS = new Set(["meet_greet"]);
-const SETLIST_KINDS = new Set(["live"]);
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -257,150 +248,15 @@ function DayEditor({
   );
 }
 
-function setlistLabel(s: ArticleSetlist): string {
-  if (!s.isSchedule) return "全公演で共通";
-  return [s.startsOn, s.part].filter(Boolean).join(" ") || (s.title ?? "日程");
-}
-
-function SetlistBlock({
-  setlist,
-  songs,
-  canWork,
-  onSaved,
-}: {
-  setlist: ArticleSetlist;
-  songs: readonly SongSummary[] | null;
-  canWork: boolean;
-  onSaved: () => void;
-}) {
-  const { source } = useApp();
-  const [text, setText] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const index = useMemo(() => songIndex(songs ?? []), [songs]);
-  const parsed = text === null ? null : parseSetlist(text, index, setlist.items);
-  const missing = parsed ? unmatchedSongs(parsed) : [];
-  let n = 0;
-  const save = async () => {
-    if (!parsed || !source.saveEventItems) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await source.saveEventItems(setlist.eventId, parsed);
-      setText(null);
-      onSaved();
-    } catch (e) {
-      setError(message(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-  return (
-    <section className="article-setlist">
-      <h4 className="article-day-date">{setlistLabel(setlist)}</h4>
-      {text === null ? (
-        setlist.items.length === 0 ? (
-          <p className="quiet">セットリストはまだありません。</p>
-        ) : (
-          <ol className="setlist">
-            {setlist.items.map((i) => {
-              const name = i.workName ?? i.title ?? "";
-              if (i.itemType === "section") {
-                return (
-                  <li key={i.id} className="setlist-section">
-                    {name}
-                  </li>
-                );
-              }
-              if (i.itemType !== "song") {
-                return (
-                  <li key={i.id} className="setlist-other quiet">
-                    {name}
-                  </li>
-                );
-              }
-              n++;
-              return (
-                <li key={i.id} className="setlist-song">
-                  <span className="setlist-no">M{n}</span>
-                  <span>{name}</span>
-                  {!i.workId && <span className="tag">楽曲リストに無い曲</span>}
-                  {i.note && <span className="quiet">{i.note}</span>}
-                </li>
-              );
-            })}
-          </ol>
-        )
-      ) : (
-        <div className="setlist-edit">
-          <label className="visually-hidden" htmlFor={`setlist-${setlist.eventId}`}>
-            {setlistLabel(setlist)} のセットリスト
-          </label>
-          <textarea
-            id={`setlist-${setlist.eventId}`}
-            rows={Math.max(8, setlist.items.length + 2)}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            spellCheck={false}
-          />
-          <p className="field-hint">
-            1 行に 1 曲。「アンコール」や【】で囲んだ行は区切り、「MC」で始まる行は
-            MC。行頭の番号（M1. など）は読み飛ばし、行末の（）はメモにします。
-          </p>
-          {songs === null && (
-            <p className="field-hint">楽曲リストを読めないため、曲名だけで入れます。</p>
-          )}
-          {missing.length > 0 && songs !== null && (
-            <p className="notice">
-              楽曲リストに無い曲が {missing.length} 曲あります（曲名だけで入れます）:{" "}
-              {missing.join("、")}
-            </p>
-          )}
-          <div className="actions">
-            <button
-              type="button"
-              className="button primary"
-              disabled={saving}
-              onClick={() => void save()}
-            >
-              {saving ? "保存しています" : "保存"}
-            </button>
-            <button type="button" className="button" onClick={() => setText(null)}>
-              やめる
-            </button>
-            {error && (
-              <p className="error" role="alert">
-                保存できませんでした: {error}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-      {canWork && text === null && source.saveEventItems && (
-        <button
-          type="button"
-          className="link-button"
-          onClick={() => setText(formatSetlist(setlist.items))}
-        >
-          <Pencil size={14} aria-hidden="true" />
-          文字で書く
-        </button>
-      )}
-    </section>
-  );
-}
-
 function Loaded({
   detail,
   view,
-  songs,
   gallery,
   onOpenImage,
   reload,
 }: {
   detail: EventDetail;
   view: EventArticleView;
-  songs: readonly SongSummary[] | null;
   gallery: GalleryImage[];
   onOpenImage: (index: number) => void;
   reload: () => void;
@@ -412,7 +268,6 @@ function Loaded({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const hasDays = DAY_KINDS.has(detail.kind);
-  const hasSetlist = SETLIST_KINDS.has(detail.kind);
   const canEdit = viewer.canWork && !!source.saveEventArticle;
 
   const save = async () => {
@@ -500,7 +355,7 @@ function Loaded({
           ))}
         {article?.body ? (
           <div className="article-body">
-            {(hasDays || hasSetlist) && <h4 className="article-day-date">自由記述</h4>}
+            {hasDays && <h4 className="article-day-date">自由記述</h4>}
             <RichText text={article.body} />
           </div>
         ) : (
@@ -533,20 +388,6 @@ function Loaded({
           {article.authorName && `・最初に書いた人 ${article.authorName}`}
         </p>
       )}
-      {hasSetlist && (
-        <div className="article-setlists">
-          <h4 className="article-group-title">セットリスト</h4>
-          {view.setlists.map((s) => (
-            <SetlistBlock
-              key={s.eventId}
-              setlist={s}
-              songs={songs}
-              canWork={viewer.canWork}
-              onSaved={reload}
-            />
-          ))}
-        </div>
-      )}
       {content}
     </section>
   );
@@ -570,13 +411,6 @@ export function EventArticleSection({
         : Promise.resolve<EventArticleView | null>(null),
     [source, detail.id],
   );
-  const [songs] = useLoad(
-    () =>
-      source.listSongs && SETLIST_KINDS.has(detail.kind)
-        ? source.listSongs().then((l) => l.songs)
-        : Promise.resolve<SongSummary[] | null>(null),
-    [source, detail.kind],
-  );
   if (detail.parentId || !source.getEventArticle) return null;
   if (view.status === "loading") return <p className="quiet">記事を読み込んでいます</p>;
   if (view.status === "error") {
@@ -591,7 +425,6 @@ export function EventArticleSection({
     <Loaded
       detail={detail}
       view={view.data}
-      songs={songs.status === "ready" ? songs.data : null}
       gallery={gallery}
       onOpenImage={onOpenImage}
       reload={reload}

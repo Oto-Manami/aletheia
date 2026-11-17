@@ -18,6 +18,7 @@ import {
   type DiscardedItem,
   type EntityOption,
   type EventArticleView,
+  type EventSetlistsView,
   type EventDetail,
   type EventInput,
   type EventSummary,
@@ -25,6 +26,7 @@ import {
   type SourcePreview,
   type ParticipantStatus,
   type IntakeDetail,
+  type ItemParticipation,
   type IntakeSort,
   type IntakeFile,
   type IntakeIssue,
@@ -424,21 +426,6 @@ export class LiveSource implements ArchiveSource {
         updated_at: string;
         author_name: string | null;
       } | null;
-      setlists: {
-        event_id: string;
-        title: string | null;
-        starts_on: string | null;
-        part: string | null;
-        is_schedule: boolean;
-        items: {
-          id: string;
-          item_type: string;
-          work_id: string | null;
-          work_name: string | null;
-          title: string | null;
-          note: string | null;
-        }[];
-      }[];
     }>("GET", `/events/${encodeURIComponent(eventId)}/article`);
     return {
       article: res.article
@@ -455,12 +442,41 @@ export class LiveSource implements ArchiveSource {
             authorName: res.article.author_name,
           }
         : null,
+    };
+  }
+
+  async getEventSetlists(eventId: string): Promise<EventSetlistsView> {
+    const res = await this.api<{
+      subject: { id: string; name: string } | null;
+      has_schedule: boolean;
+      setlists: {
+        event_id: string;
+        title: string | null;
+        starts_on: string | null;
+        part: string | null;
+        is_schedule: boolean;
+        is_legacy: boolean;
+        items: {
+          id: string;
+          item_type: string;
+          work_id: string | null;
+          work_name: string | null;
+          title: string | null;
+          note: string | null;
+          subject_status: ItemParticipation;
+        }[];
+      }[];
+    }>("GET", `/events/${encodeURIComponent(eventId)}/setlists`);
+    return {
+      subject: res.subject,
+      hasSchedule: res.has_schedule,
       setlists: res.setlists.map((s) => ({
         eventId: s.event_id,
         title: s.title,
         startsOn: s.starts_on,
         part: s.part,
         isSchedule: s.is_schedule,
+        isLegacy: s.is_legacy,
         items: s.items.map((i) => ({
           id: i.id,
           itemType: i.item_type,
@@ -468,9 +484,21 @@ export class LiveSource implements ArchiveSource {
           workName: i.work_name,
           title: i.title,
           note: i.note,
+          subjectStatus: i.subject_status,
         })),
       })),
     };
+  }
+
+  async setItemParticipation(
+    itemId: string,
+    entityId: string,
+    status: ItemParticipation,
+  ): Promise<void> {
+    await this.api("POST", `/event-items/${encodeURIComponent(itemId)}/participants`, {
+      entity_id: entityId,
+      status,
+    });
   }
 
   async saveEventArticle(
@@ -518,9 +546,18 @@ export class LiveSource implements ArchiveSource {
           editions: string[];
         }[];
       }[];
-      songs: { id: string; name: string; performed: number; in_release: boolean }[];
+      songs: {
+        id: string;
+        name: string;
+        performed: number;
+        appeared: number;
+        not_appearing: number;
+        in_release: boolean;
+      }[];
+      subject: { id: string; name: string } | null;
     }>("GET", "/songs");
     return {
+      subject: res.subject,
       releases: res.releases.map((r) => ({
         id: r.id,
         subtype: r.subtype,
@@ -538,6 +575,8 @@ export class LiveSource implements ArchiveSource {
         id: s.id,
         name: s.name,
         performed: s.performed,
+        appeared: s.appeared,
+        notAppearing: s.not_appearing,
         inRelease: s.in_release,
       })),
     };
@@ -555,12 +594,18 @@ export class LiveSource implements ArchiveSource {
         released_on: string | null;
       }[];
       performances: {
+        item_id: string;
         id: string;
         title: string;
+        kind: string;
         starts_on: string | null;
+        part: string | null;
         parent_id: string | null;
         parent_title: string | null;
+        parent_kind: string | null;
+        subject_status: ItemParticipation;
       }[];
+      subject: { id: string; name: string } | null;
     }>("GET", `/songs/${encodeURIComponent(id)}`);
     return {
       ...res.song,
@@ -572,12 +617,18 @@ export class LiveSource implements ArchiveSource {
         isTitle: r.is_title,
         releasedOn: r.released_on,
       })),
+      subject: res.subject,
       performances: res.performances.map((p) => ({
+        itemId: p.item_id,
         eventId: p.id,
         title: p.title,
+        kind: p.kind,
         startsOn: p.starts_on,
+        part: p.part,
         parentId: p.parent_id,
         parentTitle: p.parent_title,
+        parentKind: p.parent_kind,
+        subjectStatus: p.subject_status,
       })),
     };
   }

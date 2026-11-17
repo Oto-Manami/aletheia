@@ -509,21 +509,34 @@ export interface SetlistItem {
   workName: string | null;
   title: string | null;
   note: string | null;
+  /** 蓄積対象の人物の、この曲への参加（null は未確認。決定記録 0060） */
+  subjectStatus?: ItemParticipation;
 }
 
-/** 記事に出すセットリスト（まとまりと、その日程） */
-export interface ArticleSetlist {
+/** 曲ごとの参加。null は未確認 */
+export type ItemParticipation = "appeared" | "not_appearing" | null;
+
+/** 出来事のセットリスト（日程を持たない出来事は自分の、まとまりは日程ごと。決定記録 0060） */
+export interface EventSetlist {
   eventId: string;
   title: string | null;
   startsOn: string | null;
   part: string | null;
   isSchedule: boolean;
+  /** 日程を持つまとまりに残っている、以前の「全公演で共通の曲」（回数に数えない） */
+  isLegacy: boolean;
   items: SetlistItem[];
+}
+
+export interface EventSetlistsView {
+  /** 蓄積対象の人物 */
+  subject: { id: string; name: string } | null;
+  hasSchedule: boolean;
+  setlists: EventSetlist[];
 }
 
 export interface EventArticleView {
   article: EventArticle | null;
-  setlists: ArticleSetlist[];
 }
 
 /** 楽曲リスト（設計書 決定記録 0059） */
@@ -548,13 +561,17 @@ export interface SongRelease {
 export interface SongSummary {
   id: string;
   name: string;
-  /** 披露した公演の数（セットリストから） */
+  /** 披露の回数（セットリストから。決定記録 0060） */
   performed: number;
+  /** そのうち蓄積対象の人物が参加した・参加しなかった回数（残りは未確認） */
+  appeared: number;
+  notAppearing: number;
   /** シングル・アルバムに収録されているか */
   inRelease: boolean;
 }
 
 export interface SongList {
+  subject: { id: string; name: string } | null;
   releases: SongRelease[];
   songs: SongSummary[];
 }
@@ -571,13 +588,19 @@ export interface SongDetail {
     isTitle: boolean;
     releasedOn: string | null;
   }[];
-  /** 披露した公演（新しい順）。日程なら、まとまり（ツアー）も付ける */
+  subject: { id: string; name: string } | null;
+  /** 披露の履歴（新しい順）。日程なら、まとまり（ツアー）も付ける */
   performances: {
+    itemId: string;
     eventId: string;
     title: string;
+    kind: string;
     startsOn: string | null;
+    part: string | null;
     parentId: string | null;
     parentTitle: string | null;
+    parentKind: string | null;
+    subjectStatus: ItemParticipation;
   }[];
 }
 
@@ -601,6 +624,10 @@ export interface ArchiveSource {
   saveEventArticle?(eventId: string, article: { body: string; days: ArticleDay[] }): Promise<void>;
   /** 中身の並び（セットリスト）だけを入れ替える */
   saveEventItems?(eventId: string, items: SetlistItem[]): Promise<void>;
+  /** 出来事のセットリストと、曲ごとの参加（決定記録 0060） */
+  getEventSetlists?(eventId: string): Promise<EventSetlistsView>;
+  /** 曲ごとの参加を付ける・外す（null は未確認に戻す） */
+  setItemParticipation?(itemId: string, entityId: string, status: ItemParticipation): Promise<void>;
   /** 楽曲リスト（設計書 決定記録 0059） */
   listSongs?(): Promise<SongList>;
   getSong?(id: string): Promise<SongDetail>;

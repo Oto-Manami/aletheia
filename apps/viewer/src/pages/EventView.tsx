@@ -1,20 +1,16 @@
 // 出来事の表示の画面。開いたときは中身を見せ、直すときは「編集」から編集の画面（EventEditPage）に移る
 //
-// 並び: 題名と日付 → 記事（まとまりだけ。決定記録 0058） → 紐付いた画像（アセットの画面と同じ形のタイル。押すと原本を開く） → 出典の記事 → 日程
+// 並び: 題名と日付 → 記事（まとまりだけ。決定記録 0058） → 紐付いた画像（アセットの画面と同じ形のタイル。
+// 押すと原本を開く） → 出典の記事 → 日程とセットリスト（日程はこの画面の中で開く。決定記録 0060）
 
 import { ChevronLeft, ExternalLink, Pencil } from "lucide-react";
 import { useState } from "react";
-import { Link, useLocation, useParams, useSearchParams } from "react-router";
+import { Link, Navigate, useLocation, useParams, useSearchParams } from "react-router";
 import { EventArticleSection } from "../components/EventArticle.tsx";
+import { EventSetlistsSection } from "../components/EventSetlists.tsx";
 import { type GalleryImage, GalleryGrid, ImageViewer } from "../components/MaterialGallery.tsx";
 import { useApp } from "../context.tsx";
-import {
-  EVENT_KIND_LABELS,
-  eventDateLabel,
-  formatPublished,
-  jstTime,
-  PARTICIPANT_STATUS_LABELS,
-} from "../format.ts";
+import { EVENT_KIND_LABELS, eventDateLabel, formatPublished, jstTime } from "../format.ts";
 import type { EventDetail } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 import { listSearch } from "./Events.tsx";
@@ -50,6 +46,15 @@ export function EventViewPage() {
       <p className="error" role="alert">
         出来事を読めませんでした: {loaded.error.message}
       </p>
+    );
+  }
+  // 日程は専用の画面を持たず、まとまりの画面で開く（決定記録 0060）
+  if (loaded.data.parentId && loaded.data.parentKind) {
+    return (
+      <Navigate
+        to={`/events/${loaded.data.parentId}?schedule=${encodeURIComponent(loaded.data.id)}`}
+        replace
+      />
     );
   }
   return (
@@ -184,28 +189,7 @@ function EventView({ detail }: { detail: EventDetail }) {
         )}
       </section>
 
-      {detail.children.length > 0 && (
-        <section className="event-view-section" aria-labelledby="event-view-children">
-          <h3 id="event-view-children">日程（{detail.children.length} 件）</h3>
-          <ul className="event-sources">
-            {detail.children.map((c) => (
-              <li key={c.id}>
-                <span className="quiet event-material-date">{whenOf(c)}</span>
-                <Link to={{ pathname: `/events/${c.id}`, search }} className="event-material-title">
-                  {c.title}
-                  {c.part ? `（${c.part}）` : ""}
-                </Link>
-                {c.venueName && <span className="quiet">{c.venueName}</span>}
-                {c.subjectStatus && (
-                  <span className={`event-status status-${c.subjectStatus}`}>
-                    {PARTICIPANT_STATUS_LABELS[c.subjectStatus]}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <EventSetlistsSection detail={detail} focus={params.get("schedule")} search={search} />
 
       {viewing !== null && (
         <ImageViewer

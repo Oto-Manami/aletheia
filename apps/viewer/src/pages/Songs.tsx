@@ -1,13 +1,21 @@
 // 楽曲リスト（設計書 決定記録 0059）
 //
-// 左にシングル・アルバムごとの収録曲、右に選んだ曲（収録されたシングル・アルバムと、披露した公演）。
+// 左にシングル・アルバムごとの収録曲（曲ごとの披露・参加の回数つき）、右に選んだ曲（収録されたシングル・
+// アルバムと、披露の回数を歌った場の種類ごとに・披露の履歴と参加。決定記録 0060）。
 // 運営者は、楽曲リストをまとめて入れられる（何度入れても重ならない）。
 
 import { Music } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, useParams } from "react-router";
 import { useApp } from "../context.tsx";
-import type { SongImportResult, SongList, SongRelease } from "../source/types.ts";
+import { EVENT_KIND_SHORT } from "../format.ts";
+import type {
+  SongDetail,
+  SongImportResult,
+  SongList,
+  SongRelease,
+  SongSummary,
+} from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 
 const RELEASE_LABELS: Record<string, string> = { single: "シングル", album: "アルバム" };
@@ -16,7 +24,27 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-function ReleaseBlock({ release }: { release: SongRelease }) {
+const STATUS_LABELS: Record<string, string> = {
+  appeared: "参加",
+  not_appearing: "不参加",
+  unknown: "未確認",
+};
+
+/** 披露 n 回（参加 m） */
+function countLabel(s: SongSummary | undefined, subject: boolean): string {
+  if (!s || s.performed === 0) return "";
+  return subject ? `披露 ${s.performed}・参加 ${s.appeared}` : `披露 ${s.performed}`;
+}
+
+function ReleaseBlock({
+  release,
+  counts,
+  subject,
+}: {
+  release: SongRelease;
+  counts: Map<string, SongSummary>;
+  subject: boolean;
+}) {
   return (
     <li className="song-release">
       <p className="song-release-head">
@@ -33,7 +61,11 @@ function ReleaseBlock({ release }: { release: SongRelease }) {
               <span className="song-track-no">{t.position ?? "-"}</span>
               <span className="song-track-name">{t.name}</span>
               {t.isTitle && <span className="tag">表題曲</span>}
-              {t.editions.length > 0 && <span className="quiet">{t.editions.join("・")}</span>}
+              {countLabel(counts.get(t.songId), subject) && (
+                <span className="quiet song-count">
+                  {countLabel(counts.get(t.songId), subject)}
+                </span>
+              )}
             </NavLink>
           </li>
         ))}
@@ -112,6 +144,88 @@ function SongImport({ onDone }: { onDone: () => void }) {
   );
 }
 
+/** 歌った場の種類（日程は、まとまりの種類で数える） */
+function placeOf(p: SongDetail["performances"][number]): string {
+  return EVENT_KIND_SHORT[p.parentKind ?? p.kind] ?? p.parentKind ?? p.kind;
+}
+
+/** 披露の回数（歌った場の種類ごと）と履歴。蓄積対象の人物の参加つき（決定記録 0060） */
+function Performances({ song }: { song: SongDetail }) {
+  const rows = song.performances;
+  const groups = new Map<string, { total: number; appeared: number; notAppearing: number }>();
+  for (const p of rows) {
+    const g = groups.get(placeOf(p)) ?? { total: 0, appeared: 0, notAppearing: 0 };
+    g.total++;
+    if (p.subjectStatus === "appeared") g.appeared++;
+    if (p.subjectStatus === "not_appearing") g.notAppearing++;
+    groups.set(placeOf(p), g);
+  }
+  const appeared = rows.filter((p) => p.subjectStatus === "appeared").length;
+  const notAppearing = rows.filter((p) => p.subjectStatus === "not_appearing").length;
+  return (
+    <section className="panel panel-pad song-section" aria-labelledby="song-performances">
+      <h3 id="song-performances" className="column-title">
+        披露 {rows.length} 回
+        {song.subject && rows.length > 0 && (
+          <span className="quiet">
+            {song.subject.name}: 参加 {appeared}・不参加 {notAppearing}・未確認{" "}
+            {rows.length - appeared - notAppearing}
+          </span>
+        )}
+      </h3>
+      {rows.length === 0 ? (
+        <p className="quiet">セットリストに入っている公演・放送はまだありません。</p>
+      ) : (
+        <>
+          <table className="song-stats">
+            <thead>
+              <tr>
+                <th scope="col">歌った場</th>
+                <th scope="col">披露</th>
+                {song.subject && <th scope="col">参加</th>}
+                {song.subject && <th scope="col">不参加</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {[...groups].map(([place, g]) => (
+                <tr key={place}>
+                  <th scope="row">{place}</th>
+                  <td>{g.total}</td>
+                  {song.subject && <td>{g.appeared}</td>}
+                  {song.subject && <td>{g.notAppearing}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <ul className="song-list song-history">
+            {rows.map((p) => (
+              <li key={p.itemId}>
+                <span className="quiet">{p.startsOn ?? "日付不明"}</span>{" "}
+                <Link
+                  to={
+                    p.parentId
+                      ? `/events/${p.parentId}?schedule=${encodeURIComponent(p.eventId)}`
+                      : `/events/${p.eventId}`
+                  }
+                >
+                  {p.parentTitle ?? p.title}
+                </Link>
+                {p.part && <span className="quiet">（{p.part}）</span>}{" "}
+                <span className="tag">{placeOf(p)}</span>
+                {song.subject && (
+                  <span className={`participation is-${p.subjectStatus ?? "unknown"}`}>
+                    {STATUS_LABELS[p.subjectStatus ?? "unknown"]}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
 function SongDetailView({ id }: { id: string }) {
   const { source } = useApp();
   const [song] = useLoad(() => source.getSong!(id), [source, id]);
@@ -149,24 +263,7 @@ function SongDetailView({ id }: { id: string }) {
           </ul>
         )}
       </section>
-      <section className="panel panel-pad song-section" aria-labelledby="song-performances">
-        <h3 id="song-performances" className="column-title">
-          披露した公演 {s.performances.length} 回
-        </h3>
-        {s.performances.length === 0 ? (
-          <p className="quiet">セットリストに入っている公演はまだありません。</p>
-        ) : (
-          <ul className="song-list">
-            {s.performances.map((p) => (
-              <li key={p.eventId}>
-                <span className="quiet">{p.startsOn ?? "日付不明"}</span>{" "}
-                <Link to={`/events/${p.parentId ?? p.eventId}`}>{p.parentTitle ?? p.title}</Link>
-                {p.parentTitle && <span className="quiet">（{p.title}）</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <Performances song={s} />
     </article>
   );
 }
@@ -211,7 +308,12 @@ export function SongsPage() {
         {list.status === "ready" && list.data && list.data.releases.length > 0 && (
           <ol className="panel song-releases">
             {list.data.releases.map((r) => (
-              <ReleaseBlock key={r.id} release={r} />
+              <ReleaseBlock
+                key={r.id}
+                release={r}
+                counts={new Map(list.data!.songs.map((s) => [s.id, s]))}
+                subject={list.data!.subject !== null}
+              />
             ))}
           </ol>
         )}
