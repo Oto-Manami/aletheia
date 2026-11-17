@@ -4584,3 +4584,195 @@ button.participation {
 .setlist-choices .chip:focus-visible {
   border-color: var(--count-ink);
 }
+
+/* ---------------------------------------------------------------- ダッシュボード（決定記録 0063） */
+
+.dashboard-section {
+  margin-bottom: 32px;
+}
+
+.dashboard-section h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 12px;
+}
+
+.dashboard-sub {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 16px 0 6px;
+}
+
+.dashboard-tasks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.dashboard-task {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.dashboard-task.is-done {
+  border-color: var(--border);
+  box-shadow: none;
+  color: var(--muted);
+}
+
+.dashboard-task-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dashboard-task-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dashboard-task-count {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--count-ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dashboard-task.is-done .dashboard-task-count {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+.dashboard-task-note {
+  font-size: 12px;
+  margin: 0;
+}
+
+.dashboard-task-open {
+  justify-self: start;
+  font-size: 13px;
+}
+
+.dashboard-examples {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.dashboard-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 0 0 8px;
+}
+
+.dashboard-stats > div {
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--subtle);
+}
+
+.dashboard-stats dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.dashboard-stats dd {
+  margin: 2px 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-stat-sub {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.dashboard-range {
+  font-size: 12px;
+  margin: 0 0 12px;
+}
+
+.dashboard-breakdowns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.dashboard-breakdown,
+.dashboard-week {
+  margin: 0;
+}
+
+.dashboard-breakdown figcaption,
+.dashboard-week figcaption {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.dashboard-breakdown table,
+.dashboard-week table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.dashboard-breakdown th,
+.dashboard-week th {
+  text-align: left;
+  font-weight: 400;
+  padding: 3px 8px 3px 0;
+  white-space: nowrap;
+}
+
+.dashboard-week thead th {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.dashboard-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  padding: 3px 0 3px 8px;
+  white-space: nowrap;
+}
+
+.dashboard-bar-cell {
+  width: 50%;
+  padding: 3px 0;
+}
+
+.dashboard-bar {
+  display: inline-block;
+  height: 8px;
+  min-width: 2px;
+  border-radius: 2px;
+  background: var(--count-ink);
+  vertical-align: middle;
+}
+
+.dashboard-bar.is-other {
+  background: var(--border-strong);
+}

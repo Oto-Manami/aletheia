@@ -35,6 +35,7 @@ import {
   type ArchiveSource,
   type AssetCard,
   type AssetFilter,
+  type Dashboard,
   type Decision,
   type DiscardedItem,
   type EntityOption,
@@ -237,6 +238,67 @@ export class DemoSource implements ArchiveSource {
     await this.delay();
     if (state === "triage") return this.triage.length;
     return this.intakes.filter((i) => i.state === state).length;
+  }
+
+  /** ダッシュボード（決定記録 0063）。デモ版は、手元の架空のデータから数える */
+  async getDashboard(): Promise<Dashboard> {
+    await this.delay();
+    const counts = await this.menuCounts();
+    const pending = this.intakes.filter((i) => i.state === "pending");
+    const byChannel = new Map<string, number>();
+    const byMedia = new Map<string, number>();
+    for (const p of this.posts) {
+      byChannel.set(p.channelName, (byChannel.get(p.channelName) ?? 0) + 1);
+      for (const a of p.assets) byMedia.set(a.mediaType, (byMedia.get(a.mediaType) ?? 0) + 1);
+    }
+    const dates = this.posts
+      .map((p) => p.publishedAt?.slice(0, 10))
+      .filter((d): d is string => !!d)
+      .sort();
+    const stats = this.events.stats();
+    const today = new Date(Date.now() + 9 * 3600_000);
+    const days = Array.from({ length: 7 }, (_, k) => {
+      const d = new Date(today.getTime() - (6 - k) * 86_400_000).toISOString().slice(0, 10);
+      const on = (state: IntakeState) =>
+        this.intakes.filter((i) => i.state === state && i.reviewedAt?.slice(0, 10) === d).length;
+      return { date: d, approved: on("approved"), rejected: on("rejected"), discarded: 0 };
+    });
+    return {
+      subject: this.events.subjects()[0]
+        ? { id: this.events.subjects()[0]!.id, name: this.events.subjects()[0]!.label }
+        : null,
+      tasks: {
+        pending: counts.pending,
+        pendingOldest: pending.map((i) => i.capturedAt).sort()[0] ?? null,
+        triage: counts.triage,
+        missingFiles: { count: 0, posts: [] },
+        unknownParticipation: { count: 0, events: [] },
+        setlistMissing: { count: 0, events: [] },
+        overdue: { count: 0, events: [] },
+      },
+      data: {
+        posts: [...byChannel].map(([name, count]) => ({ channelId: name, name, kind: "", count })),
+        assets: [...byMedia].map(([mediaType, count]) => ({ mediaType, count })),
+        events: stats.events,
+        schedules: stats.schedules,
+        people: stats.people,
+        songs: stats.songs,
+        postsRange: { oldest: dates[0] ?? null, newest: dates.at(-1) ?? null },
+      },
+      recent: {
+        days,
+        approved: this.intakes
+          .filter((i) => i.state === "approved" && i.reviewedAt)
+          .sort((a, b) => (b.reviewedAt ?? "").localeCompare(a.reviewedAt ?? ""))
+          .slice(0, 5)
+          .map((i) => ({
+            postId: null,
+            title: draftTitle(i.draft),
+            channel: i.channelName,
+            reviewedAt: i.reviewedAt!,
+          })),
+      },
+    };
   }
 
   async menuCounts(): Promise<MenuCounts> {

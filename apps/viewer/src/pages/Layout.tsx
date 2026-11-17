@@ -3,6 +3,7 @@ import {
   Filter,
   Images,
   Inbox,
+  LayoutDashboard,
   LogOut,
   Menu,
   Music,
@@ -99,6 +100,12 @@ export function Layout() {
           </NavLink>
         </div>
         <nav className="sidebar-nav" aria-label="画面">
+          {viewer.isMember && (
+            <NavLink to="/dashboard" className="nav-item" onClick={close}>
+              <LayoutDashboard size={16} aria-hidden="true" />
+              ダッシュボード
+            </NavLink>
+          )}
           {viewer.canWork && (
             <NavLink to="/intake" className="nav-item" onClick={close}>
               <Inbox size={16} aria-hidden="true" />

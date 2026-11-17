@@ -402,6 +402,27 @@ export class DemoEvents {
     };
   }
 
+  /** ダッシュボードの件数（決定記録 0063） */
+  stats(): {
+    events: { kind: string; count: number }[];
+    schedules: number;
+    people: number;
+    songs: number;
+  } {
+    const kinds = new Map<string, number>();
+    let schedules = 0;
+    for (const e of this.events) {
+      if (e.parentId) schedules++;
+      else kinds.set(e.kind, (kinds.get(e.kind) ?? 0) + 1);
+    }
+    return {
+      events: [...kinds].map(([kind, count]) => ({ kind, count })),
+      schedules,
+      people: this.entities.filter((e) => e.type === "person").length,
+      songs: this.entities.filter((e) => e.type === "work" && e.subtype === "song").length,
+    };
+  }
+
   subjects(): RefLabel[] {
     return this.entities
       .filter((e) => e.archiveSubject)

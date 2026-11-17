@@ -535,6 +535,58 @@ export interface EventSetlistsView {
   setlists: EventSetlist[];
 }
 
+/** ダッシュボードの例に出す出来事（設計書 決定記録 0063） */
+export interface DashboardEvent {
+  id: string;
+  title: string | null;
+  /** 日程なら、まとまりの ID と題名 */
+  parentId: string | null;
+  parentTitle: string | null;
+  startsOn: string | null;
+  /** 参加が未確認の曲の数（参加の欄だけ） */
+  songs?: number;
+}
+
+/** ダッシュボード（設計書 決定記録 0063） */
+export interface Dashboard {
+  subject: { id: string; name: string } | null;
+  /** やること（作業者・運営者だけ。閲覧者は null） */
+  tasks: {
+    pending: number;
+    /** 承認待ちのいちばん古い取り込みの日時 */
+    pendingOldest: string | null;
+    triage: { blog: number; news: number };
+    missingFiles: {
+      count: number;
+      posts: { id: string; title: string | null; publishedAt: string | null; files: number }[];
+    };
+    /** 蓄積対象の人物がいなければ null */
+    unknownParticipation: { count: number; events: DashboardEvent[] } | null;
+    setlistMissing: { count: number; events: DashboardEvent[] } | null;
+    overdue: { count: number; events: DashboardEvent[] };
+  } | null;
+  data: {
+    posts: { channelId: string; name: string; kind: string; count: number }[];
+    assets: { mediaType: string; count: number }[];
+    /** まとまり・日程を持たない出来事の種類ごとの数（日程は schedules に分ける） */
+    events: { kind: string; count: number }[];
+    schedules: number;
+    people: number;
+    songs: number;
+    postsRange: { oldest: string | null; newest: string | null };
+  };
+  recent: {
+    /** この 7 日間（JST の暦日、古い順） */
+    days: { date: string; approved: number; rejected: number; discarded: number }[];
+    approved: {
+      postId: string | null;
+      title: string | null;
+      channel: string;
+      reviewedAt: string;
+    }[];
+  };
+}
+
 export interface EventArticleView {
   article: EventArticle | null;
 }
@@ -626,6 +678,8 @@ export interface ArchiveSource {
   saveEventItems?(eventId: string, items: SetlistItem[]): Promise<void>;
   /** 出来事のセットリストと、曲ごとの参加（決定記録 0060） */
   getEventSetlists?(eventId: string): Promise<EventSetlistsView>;
+  /** ダッシュボード（決定記録 0063） */
+  getDashboard?(): Promise<Dashboard>;
   /** 曲ごとの参加を付ける・外す（null は未確認に戻す） */
   setItemParticipation?(itemId: string, entityId: string, status: ItemParticipation): Promise<void>;
   /** 楽曲リスト（設計書 決定記録 0059） */

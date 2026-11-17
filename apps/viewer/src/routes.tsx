@@ -12,6 +12,7 @@ function page<M, K extends keyof M>(load: () => Promise<M>, name: K) {
 
 const pages = {
   assets: () => import("./pages/Assets.tsx"),
+  dashboard: () => import("./pages/Dashboard.tsx"),
   events: () => import("./pages/Events.tsx"),
   eventView: () => import("./pages/EventView.tsx"),
   intake: () => import("./pages/IntakeList.tsx"),
@@ -24,6 +25,7 @@ const pages = {
   triage: () => import("./pages/Triage.tsx"),
 };
 const AssetsPage = page(pages.assets, "AssetsPage");
+const DashboardPage = page(pages.dashboard, "DashboardPage");
 const EventsPage = page(pages.events, "EventsPage");
 const EventsEmpty = page(pages.events, "EventsEmpty");
 const EventEditPage = page(pages.events, "EventEditPage");
@@ -40,8 +42,8 @@ const TriagePage = page(pages.triage, "TriagePage");
 
 function Home() {
   const { viewer } = useApp();
-  // 作業者・運営者は承認から、閲覧者はアセットから、登録の無い人は検索から（決定記録 0032）
-  const home = viewer.canWork ? "/intake" : viewer.isMember ? "/assets" : "/search";
+  // 作業者・運営者はダッシュボードから（決定記録 0063）、閲覧者はアセットから、登録の無い人は検索から（決定記録 0032）
+  const home = viewer.canWork ? "/dashboard" : viewer.isMember ? "/assets" : "/search";
   return <Navigate to={home} replace />;
 }
 
@@ -103,6 +105,7 @@ export const routes: RouteObject[] = [
           { path: ":id/edit", element: <EventEditPage /> },
         ],
       },
+      { path: "dashboard", element: <DashboardPage /> },
       { path: "assets", element: <AssetsPage /> },
       { path: "songs", element: <SongsPage /> },
       { path: "songs/:id", element: <SongsPage /> },
