@@ -36,7 +36,12 @@ export function EventViewPage() {
   const { source } = useApp();
   const layout = useLayout();
   // 編集の画面で直したり素材を紐付けたりしたら、裏で読み直す
-  const [loaded] = useLoad(() => source.getEvent(id), [source, id], [layout.version]);
+  const [loaded] = useLoad(
+    () => source.getEvent(id),
+    [source, id],
+    [layout.version],
+    `event:${id}`,
+  );
   const location = useLocation();
   const notice = (location.state as { notice?: string } | null)?.notice ?? null;
 

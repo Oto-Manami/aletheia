@@ -228,7 +228,7 @@ function Performances({ song }: { song: SongDetail }) {
 
 function SongDetailView({ id }: { id: string }) {
   const { source } = useApp();
-  const [song] = useLoad(() => source.getSong!(id), [source, id]);
+  const [song] = useLoad(() => source.getSong!(id), [source, id], [], `song:${id}`);
   if (song.status === "loading") return <p className="quiet">読み込んでいます</p>;
   if (song.status === "error") {
     return (
@@ -274,6 +274,8 @@ export function SongsPage() {
   const [list, reload] = useLoad<SongList | null>(
     () => (source.listSongs ? source.listSongs() : Promise.resolve(null)),
     [source],
+    [],
+    "songs",
   );
   if (!viewer.isMember) {
     return (

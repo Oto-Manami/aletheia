@@ -464,6 +464,8 @@ export function TriagePage() {
   const [list, reload] = useLoad(
     () => source.listTriage({ mention, sort, source: from, query }),
     [source, mention, sort, from, query],
+    [],
+    `triage:${JSON.stringify([mention, sort, from, query])}`,
   );
   const [appears, setAppears] = useState<Record<string, Record<string, boolean>>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());

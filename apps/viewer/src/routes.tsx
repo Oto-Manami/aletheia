@@ -1,18 +1,42 @@
-import { EventViewPage } from "./pages/EventView.tsx";
+// 画面ごとにプログラムを分け、開いたときに読む（設計書 決定記録 0062）。枠（Layout）だけは最初に読む
+import { type ComponentType, lazy } from "react";
 import { Navigate, type RouteObject, useParams, useSearchParams } from "react-router";
 import { useApp } from "./context.tsx";
-import { AssetsPage } from "./pages/Assets.tsx";
-import { EventEditPage, EventsEmpty, EventsPage } from "./pages/Events.tsx";
-import { IntakeDetailPage } from "./pages/IntakeDetail.tsx";
-import { IntakePage } from "./pages/IntakeList.tsx";
 import { Layout } from "./pages/Layout.tsx";
-import { MembersPage } from "./pages/Members.tsx";
-import { DisplaySettings, SettingsPage } from "./pages/Settings.tsx";
-import { PostPage } from "./pages/Post.tsx";
-import { SearchPage } from "./pages/Search.tsx";
-import { SongsPage } from "./pages/Songs.tsx";
-import { TriagePage } from "./pages/Triage.tsx";
 import { triageRouteOf } from "./triage-routes.ts";
+
+/** 画面のモジュールの名前付きの部品を、開いたときに読む */
+function page<M, K extends keyof M>(load: () => Promise<M>, name: K) {
+  return lazy(() => load().then((m) => ({ default: m[name] as ComponentType })));
+}
+
+const pages = {
+  assets: () => import("./pages/Assets.tsx"),
+  events: () => import("./pages/Events.tsx"),
+  eventView: () => import("./pages/EventView.tsx"),
+  intake: () => import("./pages/IntakeList.tsx"),
+  intakeDetail: () => import("./pages/IntakeDetail.tsx"),
+  members: () => import("./pages/Members.tsx"),
+  settings: () => import("./pages/Settings.tsx"),
+  post: () => import("./pages/Post.tsx"),
+  search: () => import("./pages/Search.tsx"),
+  songs: () => import("./pages/Songs.tsx"),
+  triage: () => import("./pages/Triage.tsx"),
+};
+const AssetsPage = page(pages.assets, "AssetsPage");
+const EventsPage = page(pages.events, "EventsPage");
+const EventsEmpty = page(pages.events, "EventsEmpty");
+const EventEditPage = page(pages.events, "EventEditPage");
+const EventViewPage = page(pages.eventView, "EventViewPage");
+const IntakePage = page(pages.intake, "IntakePage");
+const IntakeDetailPage = page(pages.intakeDetail, "IntakeDetailPage");
+const MembersPage = page(pages.members, "MembersPage");
+const SettingsPage = page(pages.settings, "SettingsPage");
+const DisplaySettings = page(pages.settings, "DisplaySettings");
+const PostPage = page(pages.post, "PostPage");
+const SearchPage = page(pages.search, "SearchPage");
+const SongsPage = page(pages.songs, "SongsPage");
+const TriagePage = page(pages.triage, "TriagePage");
 
 function Home() {
   const { viewer } = useApp();

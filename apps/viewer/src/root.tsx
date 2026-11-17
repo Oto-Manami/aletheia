@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createBrowserRouter, createHashRouter, RouterProvider } from "react-router";
 import { Ctx } from "./context.tsx";
 import { clearInvite, pendingInvite } from "./invite.ts";
+import { clearLoadCache } from "./load-cache.ts";
 import { AcceptingInvite, Login, NotRegistered, Splash } from "./pages/Login.tsx";
 import { routes } from "./routes.tsx";
 import { DemoSource } from "./source/demo.ts";
@@ -50,6 +51,14 @@ export function LiveRoot() {
   }, [supabase]);
 
   const userId = session?.user.id;
+  // 利用者が替わった・ログアウトしたら、覚えた画面のデータと画像を捨てる（決定記録 0062）。画面は
+  // 利用者の確認（viewer）を読み終えてから出すので、その前に捨て終わる
+  useEffect(() => {
+    return () => {
+      clearLoadCache();
+      source.forgetThumbnails();
+    };
+  }, [source, userId]);
   const [viewer, reloadViewer] = useLoad(
     () => (userId ? source.viewer() : Promise.resolve(null)),
     [source, userId],

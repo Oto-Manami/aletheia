@@ -230,7 +230,7 @@ function MissingOriginals({
 export function PostPage() {
   const { id = "" } = useParams();
   const { source, viewer } = useApp();
-  const [post, reload] = useLoad(() => source.getPost(id), [source, id]);
+  const [post, reload] = useLoad(() => source.getPost(id), [source, id], [], `post:${id}`);
   const [notice, setNotice] = useState<string | null>(null);
 
   if (post.status === "loading") return <p className="page quiet">読み込んでいます</p>;

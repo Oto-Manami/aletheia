@@ -52,7 +52,7 @@ describe("承認の画面", () => {
     expect(screen.getByText("上の「確認すること」があと 1 件あります")).toBeTruthy();
 
     // 写真 2 の人物の候補は違う、言明は合っている
-    await user.click(screen.getByRole("button", { name: "仮名 ゆい を写真 2 から外す" }));
+    await user.click(await screen.findByRole("button", { name: "仮名 ゆい を写真 2 から外す" }));
     await user.click(within(checklist).getByRole("button", { name: "合っている" }));
     expect(within(checklist).getByText("すべて確認済み")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "承認する" }));
@@ -349,7 +349,7 @@ describe("探す・投稿", () => {
   it("言葉で探し、投稿を開くと、素材を元の順番で見られる", async () => {
     const user = userEvent.setup();
     open("/search");
-    await user.type(screen.getByRole("searchbox"), "深呼吸");
+    await user.type(await screen.findByRole("searchbox"), "深呼吸");
     await user.click(screen.getByRole("button", { name: "検索" }));
     await user.click(await screen.findByRole("link", { name: "はじめての公演" }));
     expect(await screen.findByRole("heading", { name: "はじめての公演" })).toBeTruthy();

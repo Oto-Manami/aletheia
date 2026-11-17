@@ -11,7 +11,7 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { Suspense, useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { NavLink, Outlet, useOutletContext } from "react-router";
 import { useApp } from "../context.tsx";
 import { DecisionQueue, type QueuedDecision } from "../decision-queue.ts";
@@ -69,6 +69,7 @@ export function Layout() {
     () => (viewer.canWork ? source.menuCounts() : Promise.resolve(null)),
     [source, viewer.canWork],
     [version],
+    `menu-counts:${viewer.canWork}`,
   );
   const pendingCount = counts.status === "ready" && counts.data ? counts.data.pending : null;
   const triageCount = (route: TriageRoute) =>
@@ -169,8 +170,15 @@ export function Layout() {
             デモ版です。人物・情報源はすべて架空で、操作はこの画面の中だけで反映されます。
           </p>
         )}
-        <Outlet context={{ changed, version, decisions } satisfies LayoutOutlet} />
+        <Suspense fallback={<PageLoading />}>
+          <Outlet context={{ changed, version, decisions } satisfies LayoutOutlet} />
+        </Suspense>
       </main>
     </div>
   );
+}
+
+/** 画面のプログラムを読んでいる間（決定記録 0062） */
+export function PageLoading() {
+  return <p className="quiet page-loading">読み込んでいます</p>;
 }

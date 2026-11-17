@@ -14,7 +14,7 @@ export function SearchPage() {
   const [params, setParams] = useSearchParams();
   const query = params.get("q") ?? "";
   const [input, setInput] = useState(query);
-  const [hits] = useLoad(() => source.search(query), [source, query]);
+  const [hits] = useLoad(() => source.search(query), [source, query], [], `search:${query}`);
 
   return (
     <section className="page">
