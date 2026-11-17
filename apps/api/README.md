@@ -42,6 +42,14 @@ curl http://127.0.0.1:8787/health   # {"ok":true}
 curl http://127.0.0.1:8787/ready    # {"ok":true}（データベースまで使える）
 ```
 
+### 読み込みを軽くする仕組み
+
+設計書 決定記録 0062。設定を書かなくても既定で動く。
+
+- 一覧用の縮めた画像を、この機械のディスク（`THUMBNAIL_CACHE_DIR`。既定は `~/.cache/aletheia/thumbnails`）にも置き、2 回目からは Drive とデータベースに行かずに返す。消しても作り直す。大きさは 1 枚あたり数十 KB
+- ログインした人の役割を `ROLE_CACHE_SECONDS`（既定 60 秒）覚える。役割の変更・参加者を外したことが API に効くまで、最大でこの時間だけ遅れる
+- JSON の返事は、ブラウザが求めれば圧縮する
+
 ### 自動で更新する
 
 `main` への取り込みで、GitHub Actions が API を最新にする（設計書 決定記録 0036。設定と、新しいマイグレーションがあるときの手順は [ops/deploy/README.md](../../ops/deploy/README.md)）。

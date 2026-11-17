@@ -23,6 +23,41 @@ export interface AuthOptions {
   serviceToken: string;
   /** ログインのトークンを確かめる公開鍵 */
   getKey: JWTVerifyGetKey;
+  /** ログインした人の役割を覚えておく場所（決定記録 0062）。無ければ毎回データベースに問い合わせる */
+  roleCache?: RoleCache;
+}
+
+/**
+ * ログインした人の役割を、決めた時間だけ覚える（API を呼ぶたびのデータベースへの往復を減らす。決定記録 0062）。
+ * 役割の変更・参加者を外したことが API に効くまで、最大でこの時間だけ遅れる。参加者でないこと（役割が無い）は
+ * 覚えない（登録した直後から使えるように）
+ */
+export class RoleCache {
+  private readonly roles = new Map<string, { role: string; until: number }>();
+
+  constructor(
+    private readonly ttlMs: number,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  get(userId: string): string | undefined {
+    const hit = this.roles.get(userId);
+    if (!hit) return undefined;
+    if (hit.until <= this.now()) {
+      this.roles.delete(userId);
+      return undefined;
+    }
+    return hit.role;
+  }
+
+  set(userId: string, role: string): void {
+    // 覚える人数は参加者の数までだが、期限切れのものはついでに捨てる
+    if (this.roles.size >= 1000) {
+      const now = this.now();
+      for (const [k, v] of this.roles) if (v.until <= now) this.roles.delete(k);
+    }
+    this.roles.set(userId, { role, until: this.now() + this.ttlMs });
+  }
 }
 
 export type AuthEnv = { Variables: { actor: Actor } };
@@ -95,7 +130,11 @@ export function requireMember(db: Database, options: AuthOptions) {
       throw unauthorized();
     }
 
-    const role = await roleOf(db, userId);
+    let role = options.roleCache?.get(userId);
+    if (role === undefined) {
+      role = await roleOf(db, userId);
+      if (role && ROLES.includes(role)) options.roleCache?.set(userId, role);
+    }
     if (!role || !ROLES.includes(role)) throw notMember();
 
     c.set("actor", { kind: "user", userId, role: role as Role });

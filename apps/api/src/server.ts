@@ -3,7 +3,9 @@ import { serve } from "@hono/node-server";
 import { DriveFileStore, type FileStore, LocalFileStore } from "@aletheia/storage";
 import { createRemoteJWKSet } from "jose";
 import { createApp } from "./app.ts";
+import { RoleCache } from "./auth.ts";
 import { loadConfig } from "./config.ts";
+import { ThumbnailCache } from "./thumbnail-cache.ts";
 
 const config = loadConfig();
 const db = createDb(config.DATABASE_URL);
@@ -21,9 +23,17 @@ const app = createApp(
   {
     serviceToken: config.API_SERVICE_TOKEN,
     getKey: createRemoteJWKSet(new URL(config.SUPABASE_JWKS_URL)),
+    ...(config.ROLE_CACHE_SECONDS > 0
+      ? { roleCache: new RoleCache(config.ROLE_CACHE_SECONDS * 1000) }
+      : {}),
   },
   files,
-  { viewerOrigins: config.VIEWER_ORIGINS },
+  {
+    viewerOrigins: config.VIEWER_ORIGINS,
+    ...(config.THUMBNAIL_CACHE_DIR !== "off"
+      ? { thumbnailCache: new ThumbnailCache(config.THUMBNAIL_CACHE_DIR) }
+      : {}),
+  },
 );
 
 serve({ fetch: app.fetch, port: config.PORT, hostname: config.HOST }, (info) => {
