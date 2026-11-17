@@ -1,16 +1,31 @@
-// 出来事のセットリストと曲ごとの参加（設計書 決定記録 0060）。曲・出来事・人物はすべて架空
+// 出来事のセットリストと曲ごとの参加（設計書 決定記録 0060・0061）。曲・出来事・人物はすべて架空
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventSetlistsSection, nextParticipation } from "../src/components/EventSetlists.tsx";
+import { carryItemIds, searchSongs } from "../src/source/setlist.ts";
 import { Ctx } from "../src/context.tsx";
 import { DemoSource } from "../src/source/demo.ts";
-import type { EventDetail, EventSetlistsView } from "../src/source/types.ts";
+import type { EventDetail, EventSetlistsView, SongSummary } from "../src/source/types.ts";
 
 afterEach(cleanup);
 
 const SUBJECT = { id: "m1", name: "試験 花子" };
+
+const catalogSong = (id: string, name: string): SongSummary => ({
+  id,
+  name,
+  performed: 0,
+  appeared: 0,
+  notAppearing: 0,
+  inRelease: true,
+});
+const CATALOG = [
+  catalogSong("s1", "架空の歌"),
+  catalogSong("s2", "ミホン ソング"),
+  catalogSong("s3", "歌の架空"),
+];
 
 function child(id: string, startsOn: string) {
   return {
@@ -81,17 +96,19 @@ function show(d: EventDetail, view: EventSetlistsView, focus: string | null = nu
     listSongs: vi.fn(() =>
       Promise.resolve({
         subject: SUBJECT,
-        releases: [],
-        songs: [
+        releases: [
           {
-            id: "s1",
-            name: "架空の歌",
-            performed: 0,
-            appeared: 0,
-            notAppearing: 0,
-            inRelease: true,
+            id: "r1",
+            subtype: "single",
+            name: "架空のシングル",
+            releasedOn: "2026-01-01",
+            tracks: [
+              { songId: "s1", name: "架空の歌", position: 1, isTitle: true, editions: [] },
+              { songId: "s2", name: "ミホン ソング", position: 2, isTitle: false, editions: [] },
+            ],
           },
         ],
+        songs: CATALOG,
       }),
     ),
   });
@@ -178,10 +195,10 @@ describe("日程はまとまりの画面で開く", () => {
     const source = show(tour, view, "c2");
     const rows = await screen.findAllByRole("button", { expanded: true });
     expect(rows).toHaveLength(1);
-    await userEvent.click(await screen.findByRole("button", { name: /セットリストを書く/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /セットリストを入れる/ }));
     await userEvent.selectOptions(screen.getByLabelText("ほかの日程から写す"), "c1");
-    const box = screen.getByLabelText<HTMLTextAreaElement>(/のセットリスト$/);
-    expect(box.value).toBe("M1. 架空の歌");
+    const list = screen.getByRole("list", { name: /のセットリスト$/ });
+    expect(within(list).getByText("架空の歌")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "保存" }));
     expect(source.saveEventItems).toHaveBeenCalledWith("c2", [
       expect.objectContaining({ id: null, itemType: "song", workId: "s1" }),
@@ -212,5 +229,103 @@ describe("日程はまとまりの画面で開く", () => {
       expect.objectContaining({ id: null, workId: "s1" }),
     ]);
     expect(source.saveEventItems).toHaveBeenNthCalledWith(2, "e1", []);
+  });
+});
+
+describe("セットリストを選んで入れる", () => {
+  const one: EventSetlistsView = {
+    subject: SUBJECT,
+    hasSchedule: false,
+    setlists: [
+      {
+        eventId: "e1",
+        title: "架空の配信",
+        startsOn: "2026-09-10",
+        part: null,
+        isSchedule: false,
+        isLegacy: false,
+        items: [song("i1", "s1", "架空の歌", "appeared")],
+      },
+    ],
+  };
+
+  it("曲名で探して選び、区切り・MC を足し、並べ替えて保存する。残した曲の行は ID を引き継ぐ", async () => {
+    const source = show(detail({ kind: "stream" }), one);
+    await userEvent.click(await screen.findByRole("button", { name: "セットリストを直す" }));
+    const search = screen.getByLabelText("曲を探して足す");
+    // 表記の揺れ（空白・全角半角・ひらがなとカタカナ）は吸収して探す
+    await userEvent.type(search, "みほんそんぐ");
+    await userEvent.click(
+      within(screen.getByRole("list", { name: "見つかった曲" })).getByRole("button", {
+        name: "ミホン ソング",
+      }),
+    );
+    expect((search as HTMLInputElement).value).toBe("");
+    await userEvent.click(screen.getByRole("button", { name: "区切り「アンコール」" }));
+    await userEvent.selectOptions(screen.getByLabelText("シングル・アルバムから選ぶ"), "r1");
+    await userEvent.click(
+      within(screen.getByRole("list", { name: "架空のシングル の収録曲" })).getByRole("button", {
+        name: "ミホン ソング",
+      }),
+    );
+    // 2 曲目の「ミホン ソング」を外し、1 曲目を上へ（架空の歌の前に）
+    await userEvent.click(screen.getAllByRole("button", { name: "ミホン ソング を外す" })[1]!);
+    await userEvent.click(screen.getByRole("button", { name: "ミホン ソング を上へ" }));
+    await userEvent.type(screen.getByLabelText("架空の歌 のメモ"), "センター: 架空");
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(source.saveEventItems).toHaveBeenCalledWith("e1", [
+      expect.objectContaining({ id: null, itemType: "song", workId: "s2" }),
+      expect.objectContaining({ id: "i1", itemType: "song", workId: "s1", note: "センター: 架空" }),
+      expect.objectContaining({ id: null, itemType: "section", title: "アンコール" }),
+    ]);
+  });
+
+  it("楽曲リストに無い曲は、探した曲名のまま入れられる", async () => {
+    const source = show(detail({ kind: "stream" }), {
+      ...one,
+      setlists: [{ ...one.setlists[0]!, items: [] }],
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "セットリストを入れる" }));
+    await userEvent.type(screen.getByLabelText("曲を探して足す"), "知らない曲");
+    expect(screen.getByText("楽曲リストに見つかりません。")).toBeTruthy();
+    await userEvent.click(
+      screen.getByRole("button", { name: "「知らない曲」を楽曲リストに無い曲として入れる" }),
+    );
+    expect(screen.getByText("楽曲リストに無い曲")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(source.saveEventItems).toHaveBeenCalledWith("e1", [
+      expect.objectContaining({ itemType: "song", workId: null, title: "知らない曲" }),
+    ]);
+  });
+
+  it("Enter で、いちばん合う曲を足す", async () => {
+    show(detail({ kind: "stream" }), one);
+    await userEvent.click(await screen.findByRole("button", { name: "セットリストを直す" }));
+    await userEvent.type(screen.getByLabelText("曲を探して足す"), "歌の{Enter}");
+    const list = screen.getByRole("list", { name: /のセットリスト$/ });
+    expect(within(list).getByText("歌の架空")).toBeTruthy();
+  });
+});
+
+describe("曲を探す・行の ID を引き継ぐ", () => {
+  it("名前が一致 → 先頭が一致 → 途中に含む の順に並べる", () => {
+    expect(searchSongs(CATALOG, "架空").map((s) => s.id)).toEqual(["s1", "s3"]);
+    expect(searchSongs(CATALOG, "歌").map((s) => s.id)).toEqual(["s3", "s1"]);
+    expect(searchSongs(CATALOG, "ﾐﾎﾝ ｿﾝｸﾞ").map((s) => s.id)).toEqual(["s2"]);
+    expect(searchSongs(CATALOG, "みほん").map((s) => s.id)).toEqual(["s2"]);
+    expect(searchSongs(CATALOG, "  ")).toEqual([]);
+  });
+
+  it("ID の無い行に、前の並びで使われていない同じ行の ID を引き継ぐ", () => {
+    const prev = [song("a", "s1", "架空の歌"), song("b", "s1", "架空の歌"), song("c", "s2", "x")];
+    const next = carryItemIds(
+      [
+        { ...song("", "s1", "架空の歌"), id: null },
+        { ...song("b", "s1", "架空の歌") },
+        { ...song("", "s3", "y"), id: null },
+      ],
+      prev,
+    );
+    expect(next.map((i) => i.id)).toEqual(["a", "b", null]);
   });
 });
