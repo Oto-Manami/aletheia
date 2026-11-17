@@ -85,6 +85,68 @@ function Thumb({
   );
 }
 
+/**
+ * 選べる縮めた画像の並び（出来事の記事で、服装の写真を選ぶ。決定記録 0058）。押すと選ぶ・外す
+ */
+export function PickThumbs({
+  images,
+  selected,
+  onToggle,
+  label,
+}: {
+  images: GalleryImage[];
+  selected: readonly string[];
+  onToggle: (assetId: string) => void;
+  label: string;
+}) {
+  return (
+    <ul className="material-thumbs pick-thumbs" aria-label={label}>
+      {images.map((image, i) => (
+        <PickThumb
+          key={image.assetId}
+          image={image}
+          index={i}
+          on={selected.includes(image.assetId)}
+          onToggle={onToggle}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function PickThumb({
+  image,
+  index,
+  on,
+  onToggle,
+}: {
+  image: GalleryImage;
+  index: number;
+  on: boolean;
+  onToggle: (assetId: string) => void;
+}) {
+  const url = useImage(image, "thumbnail");
+  return (
+    <li>
+      <button
+        type="button"
+        className={`material-thumb ${on ? "is-on" : ""}`}
+        aria-pressed={on}
+        aria-label={`「${image.postTitle}」の画像 ${index + 1}`}
+        onClick={() => onToggle(image.assetId)}
+      >
+        {url ? (
+          <img src={url} alt="" loading="lazy" />
+        ) : (
+          <span className="material-thumb-empty">
+            {url === undefined ? "読み込み中" : <ImageOff size={16} aria-label="表示できません" />}
+          </span>
+        )}
+      </button>
+    </li>
+  );
+}
+
 /** 投稿 1 つ分の画像の並び。index は、出来事の画像全体の中での番号（開いた画面で前後に移るため） */
 export function MaterialThumbs({
   images,
