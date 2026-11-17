@@ -345,6 +345,23 @@ export interface EntityRelations {
   valid_to_precision: DatePrecision | null;
 }
 
+export interface EventItemParticipants {
+  classification: Generated<Classification>;
+  confidence: Generated<Numeric>;
+  created_at: Generated<Timestamp>;
+  created_by: string | null;
+  entity_id: string;
+  event_item_id: string;
+  evidence: Json | null;
+  id: Generated<string>;
+  origin: Generated<Origin>;
+  review_state: Generated<ReviewState>;
+  reviewed_at: Timestamp | null;
+  reviewed_by: string | null;
+  status: string;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface EventItems {
   attributes: Generated<Json>;
   classification: Generated<Classification>;
@@ -577,6 +594,13 @@ export interface PublicExportEntityRelations {
   valid_to_precision: DatePrecision | null;
 }
 
+export interface PublicExportEventItemParticipants {
+  entity_id: string | null;
+  event_item_id: string | null;
+  id: string | null;
+  status: string | null;
+}
+
 export interface PublicExportEventItems {
   attributes: Json | null;
   event_id: string | null;
@@ -758,6 +782,7 @@ export interface DB {
   entities: Entities;
   entity_identifiers: EntityIdentifiers;
   entity_relations: EntityRelations;
+  event_item_participants: EventItemParticipants;
   event_items: EventItems;
   event_participants: EventParticipants;
   events: Events;
@@ -773,6 +798,7 @@ export interface DB {
   "public_export.channels": PublicExportChannels;
   "public_export.entities": PublicExportEntities;
   "public_export.entity_relations": PublicExportEntityRelations;
+  "public_export.event_item_participants": PublicExportEventItemParticipants;
   "public_export.event_items": PublicExportEventItems;
   "public_export.event_participants": PublicExportEventParticipants;
   "public_export.events": PublicExportEvents;

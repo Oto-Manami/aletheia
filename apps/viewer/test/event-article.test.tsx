@@ -1,5 +1,5 @@
 // 出来事の記事とセットリストの書き方（設計書 決定記録 0058）。曲名・出来事はすべて架空
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,8 +12,8 @@ import type { EventArticleView, EventDetail, SetlistItem } from "../src/source/t
 afterEach(cleanup);
 
 const SONGS = songIndex([
-  { id: "s1", name: "架空の歌", performed: 0, inRelease: true },
-  { id: "s2", name: "ミホン ソング", performed: 0, inRelease: true },
+  { id: "s1", name: "架空の歌", performed: 0, appeared: 0, notAppearing: 0, inRelease: true },
+  { id: "s2", name: "ミホン ソング", performed: 0, appeared: 0, notAppearing: 0, inRelease: true },
 ]);
 
 describe("セットリストを文字で書く", () => {
@@ -137,13 +137,6 @@ function show(d: EventDetail, view: EventArticleView, canWork = true) {
   const source = Object.assign(new DemoSource(0), {
     getEventArticle: vi.fn(() => Promise.resolve(view)),
     saveEventArticle: vi.fn(() => Promise.resolve()),
-    saveEventItems: vi.fn(() => Promise.resolve()),
-    listSongs: vi.fn(() =>
-      Promise.resolve({
-        releases: [],
-        songs: [{ id: "s1", name: "架空の歌", performed: 0, inRelease: true }],
-      }),
-    ),
   });
   render(
     <Ctx.Provider
@@ -166,7 +159,7 @@ describe("ミーグリの記事", () => {
   });
 
   it("日ごとに服装・内容・同じ日の配信を書いて保存する。何も書いていない日は送らない", async () => {
-    const source = show(detail({}), { article: null, setlists: [] });
+    const source = show(detail({}), { article: null });
     await userEvent.click(await screen.findByRole("button", { name: "記事を書く" }));
     await userEvent.type(screen.getAllByLabelText("服装")[0]!, "架空の服装");
     await userEvent.type(screen.getAllByLabelText("内容")[0]!, "架空の話題");
@@ -206,7 +199,6 @@ describe("ミーグリの記事", () => {
           updatedAt: "2026-08-16T00:00:00+09:00",
           authorName: "試験の参加者",
         },
-        setlists: [],
       },
       false,
     );
@@ -216,61 +208,5 @@ describe("ミーグリの記事", () => {
     );
     expect(screen.getByRole("link", { name: "https://example.com/a" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "記事を直す" })).toBeNull();
-  });
-});
-
-describe("ライブの記事", () => {
-  it("全公演で共通の曲と日程ごとのセットリストを並べ、文字で書いて入れる", async () => {
-    const source = show(detail({ kind: "live", children: [] }), {
-      article: null,
-      setlists: [
-        {
-          eventId: "e1",
-          title: "架空のツアー",
-          startsOn: null,
-          part: null,
-          isSchedule: false,
-          items: [],
-        },
-        {
-          eventId: "p1",
-          title: "1 日目",
-          startsOn: "2026-09-01",
-          part: null,
-          isSchedule: true,
-          items: [
-            {
-              id: "i1",
-              itemType: "song",
-              workId: "s1",
-              workName: "架空の歌",
-              title: null,
-              note: null,
-            },
-          ],
-        },
-      ],
-    });
-    expect(await screen.findByText("全公演で共通")).toBeTruthy();
-    const day = screen.getByText("2026-09-01").closest("section")!;
-    expect(within(day).getByText("架空の歌")).toBeTruthy();
-    await userEvent.click(within(day).getByRole("button", { name: "文字で書く" }));
-    const box = within(day).getByLabelText("2026-09-01 のセットリスト");
-    expect((box as HTMLTextAreaElement).value).toBe("M1. 架空の歌");
-    await userEvent.type(box, "\n【アンコール】\n知らない曲");
-    expect(await within(day).findByText(/楽曲リストに無い曲が 1 曲あります/)).toBeTruthy();
-    await userEvent.click(within(day).getByRole("button", { name: "保存" }));
-    expect(source.saveEventItems).toHaveBeenCalledWith("p1", [
-      { id: "i1", itemType: "song", workId: "s1", workName: "架空の歌", title: null, note: null },
-      {
-        id: null,
-        itemType: "section",
-        workId: null,
-        workName: null,
-        title: "アンコール",
-        note: null,
-      },
-      { id: null, itemType: "song", workId: null, workName: null, title: "知らない曲", note: null },
-    ]);
   });
 });

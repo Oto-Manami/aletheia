@@ -196,6 +196,37 @@ describe("公開用ロール", () => {
       ]);
     }));
 
+  it("曲ごとの参加は、公開で承認済みのものを、公開の曲の行と人物にだけ出す（決定記録 0060）", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      const shown = await insert(c, "public.event_item_participants", {
+        event_item_id: d.songItem,
+        entity_id: d.person,
+        status: "appeared",
+        classification: "public",
+      });
+      await insert(c, "public.event_item_participants", {
+        event_item_id: d.songItem,
+        entity_id: d.otherMember,
+        status: "appeared",
+        classification: "private",
+      });
+      await insert(c, "public.event_item_participants", {
+        event_item_id: d.untitledPrivateSongItem,
+        entity_id: d.person,
+        status: "appeared",
+        classification: "public",
+      });
+      await insert(c, "public.event_item_participants", {
+        event_item_id: d.titledPrivateSongItem,
+        entity_id: d.privatePerson,
+        status: "not_appearing",
+        classification: "public",
+      });
+      await actAs(c, "aletheia_public_export");
+      expect(await ids(c, "select id from public_export.event_item_participants")).toEqual([shown]);
+    }));
+
   it("語彙は public のものだけ出る", () =>
     withRollback(async (c) => {
       const d = await seed(c);

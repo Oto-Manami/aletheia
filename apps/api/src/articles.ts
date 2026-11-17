@@ -2,14 +2,13 @@
 //
 // | メソッド | パス                | 内容                                                             |
 // |----------|---------------------|------------------------------------------------------------------|
-// | GET      | /events/:id/article | 出来事の記事と、記事に出すセットリスト（出来事と日程の中身の並び） |
+// | GET      | /events/:id/article | 出来事の記事                                                     |
 // | POST     | /events/:id/article | 記事を書く・直す（自由記述と、型の欄の値）                         |
-// | POST     | /events/:id/items   | 中身の並び（セットリスト）だけを入れ替える                         |
 //
 // 記事は解釈の層で、閲覧サイトの参加者だけが読む（公開区分は常に private。公開用の書き出しは作らない）。
 // 型の欄の値は sections に持つ。ミーグリは日ごと（同じ日の部はまとめる）に、服装（メモと写真）・内容・
 // 同じ日の配信を持つ。記事から使った素材は article_refs に記録する（素材の側から逆引きでき、先に消せない）。
-// セットリストは事実の層（event_items）のまま。記事の画面から、まとまりと日程の並びを入れ替えられる。
+// セットリストは記事の外の、出来事の欄（setlists.ts。決定記録 0060）。
 
 import type { Database } from "@aletheia/db/client";
 import type { Hono } from "hono";
@@ -17,14 +16,7 @@ import { HTTPException } from "hono/http-exception";
 import { sql } from "kysely";
 import { z } from "zod";
 import type { AuthEnv } from "./auth.ts";
-import {
-  assertEntityTypes,
-  inTransaction,
-  itemInput,
-  parse,
-  syncItems,
-  userIdOf,
-} from "./events.ts";
+import { inTransaction, parse, userIdOf } from "./events.ts";
 
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日付は YYYY-MM-DD で書きます");
 const text = (max: number) => z.string().trim().max(max).default("");
@@ -61,8 +53,6 @@ export const articleInput = z.object({
   sections: articleSections.default({ days: [] }),
 });
 
-const itemsInput = z.object({ items: z.array(itemInput).max(300) });
-
 function idOf(raw: string): string {
   const id = z.uuid().safeParse(raw);
   if (!id.success) throw new HTTPException(404, { message: "見つかりません" });
@@ -93,61 +83,8 @@ export function registerArticleRoutes(app: Hono<AuthEnv>, db: Database): void {
       ])
       .where("a.event_id", "=", id)
       .executeTakeFirst();
-    // 記事に出すセットリスト: 出来事（まとまり）と、その日程の中身の並び
-    const targets = await db
-      .selectFrom("events")
-      .select([
-        "id",
-        "title",
-        "starts_on",
-        "parent_id",
-        sql<string | null>`attributes ->> 'part'`.as("part"),
-      ])
-      .where((eb) => eb.or([eb("id", "=", id), eb("parent_id", "=", id)]))
-      .orderBy(sql`parent_id is not null`)
-      .orderBy("starts_on")
-      .orderBy(sql`attributes ->> 'part'`)
-      .execute();
-    const items = await db
-      .selectFrom("event_items as i")
-      .leftJoin("entities as w", "w.id", "i.work_id")
-      .select([
-        "i.id",
-        "i.event_id",
-        "i.position",
-        "i.item_type",
-        "i.work_id",
-        "w.canonical_name as work_name",
-        "i.title",
-        sql<string | null>`i.attributes ->> 'note'`.as("note"),
-      ])
-      .where(
-        "i.event_id",
-        "in",
-        targets.map((t) => t.id),
-      )
-      .orderBy("i.position")
-      .execute();
     return c.json({
       article: article ?? null,
-      setlists: targets.map((t) => ({
-        event_id: t.id,
-        title: t.title,
-        starts_on: t.starts_on,
-        part: t.part,
-        is_schedule: t.parent_id !== null,
-        items: items
-          .filter((i) => i.event_id === t.id)
-          .map((i) => ({
-            id: i.id,
-            position: i.position,
-            item_type: i.item_type,
-            work_id: i.work_id,
-            work_name: i.work_name,
-            title: i.title,
-            note: i.note,
-          })),
-      })),
     });
   });
 
@@ -235,29 +172,5 @@ export function registerArticleRoutes(app: Hono<AuthEnv>, db: Database): void {
       return { id: articleId, created: !current };
     });
     return c.json(result, result.created ? 201 : 200);
-  });
-
-  app.post("/events/:id/items", async (c) => {
-    const id = idOf(c.req.param("id"));
-    const input = await parse(c.req.raw, itemsInput);
-    const userId = userIdOf(c.get("actor"));
-    await inTransaction(db, userId, async (trx) => {
-      const event = await trx
-        .selectFrom("events")
-        .select(["id", "classification"])
-        .where("id", "=", id)
-        .forUpdate()
-        .executeTakeFirst();
-      if (!event) throw new HTTPException(404, { message: "見つかりません" });
-      await assertEntityTypes(
-        trx,
-        input.items.flatMap((i) => (i.work_id ? [i.work_id] : [])),
-        ["work"],
-        "曲・項目",
-      );
-      await syncItems(trx, id, { items: input.items, classification: event.classification });
-      await trx.updateTable("events").set({ updated_by: userId }).where("id", "=", id).execute();
-    });
-    return c.json({ id });
   });
 }
