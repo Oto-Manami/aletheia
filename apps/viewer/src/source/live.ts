@@ -9,6 +9,8 @@ import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import { triageItemOf } from "./triage.ts";
 import {
   type Dashboard,
+  type WorkSummary,
+  type WorkView,
   type DashboardEvent,
   type ApproveOutcome,
   type ArticleDay,
@@ -705,6 +707,78 @@ export class LiveSource implements ArchiveSource {
         notAppearing: s.not_appearing,
         inRelease: s.in_release,
       })),
+    };
+  }
+
+  async listWorks(filter: { subtype?: string; query?: string }): Promise<WorkSummary[]> {
+    const params = new URLSearchParams();
+    if (filter.subtype) params.set("subtype", filter.subtype);
+    if (filter.query?.trim()) params.set("q", filter.query.trim());
+    const { items } = await this.api<{ items: WorkSummary[] }>(
+      "GET",
+      `/works${params.size > 0 ? `?${params.toString()}` : ""}`,
+    );
+    return items;
+  }
+
+  async getWork(id: string): Promise<WorkView> {
+    const r = await this.api<{
+      work: { id: string; name: string; subtype: string | null; reading: string | null };
+      subject: { id: string; name: string } | null;
+      events: {
+        id: string;
+        title: string | null;
+        kind: string;
+        starts_on: string | null;
+        date_precision: string | null;
+        episode_number: number | null;
+        parent_id: string | null;
+        subject_status: string | null;
+        materials: number;
+      }[];
+      images: {
+        asset_id: string;
+        file_asset_id: string | null;
+        post_id: string;
+        post_title: string | null;
+        published_at: string | null;
+        published_date: string | null;
+        channel_name: string;
+        event_id: string | null;
+        event_title: string | null;
+        event_starts_on: string | null;
+        subject_appears: boolean;
+      }[];
+      more_images: boolean;
+    }>("GET", `/works/${encodeURIComponent(id)}`);
+    return {
+      work: r.work,
+      subject: r.subject,
+      events: r.events.map((e) => ({
+        id: e.id,
+        title: e.title,
+        kind: e.kind,
+        startsOn: e.starts_on,
+        datePrecision: e.date_precision,
+        episodeNumber: e.episode_number,
+        parentId: e.parent_id,
+        subjectStatus: e.subject_status,
+        materials: e.materials,
+      })),
+      images: r.images.map((i) => ({
+        assetId: i.asset_id,
+        fileAssetId: i.file_asset_id,
+        postId: i.post_id,
+        postTitle: i.post_title,
+        publishedAt: i.published_at,
+        publishedDate: i.published_date,
+        channelName: i.channel_name,
+        eventId: i.event_id,
+        eventTitle: i.event_title,
+        eventStartsOn: i.event_starts_on,
+        subjectAppears: i.subject_appears,
+      })),
+      moreImages: r.more_images,
     };
   }
 

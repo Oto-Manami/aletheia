@@ -215,7 +215,7 @@ function AssetInfo({ asset }: { asset: AssetCard }) {
           <Names
             title="シリーズ"
             refs={of((l) => l.role === "series" && l.target.type === "entity")}
-            linkOf={(r) => `/assets?series=${encodeURIComponent(r.id)}`}
+            linkOf={(r) => `/works/${encodeURIComponent(r.id)}`}
           />
           <Names
             title="出来事"

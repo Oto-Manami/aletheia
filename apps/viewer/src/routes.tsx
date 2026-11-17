@@ -23,6 +23,7 @@ const pages = {
   search: () => import("./pages/Search.tsx"),
   songs: () => import("./pages/Songs.tsx"),
   triage: () => import("./pages/Triage.tsx"),
+  works: () => import("./pages/Works.tsx"),
 };
 const AssetsPage = page(pages.assets, "AssetsPage");
 const DashboardPage = page(pages.dashboard, "DashboardPage");
@@ -39,6 +40,7 @@ const PostPage = page(pages.post, "PostPage");
 const SearchPage = page(pages.search, "SearchPage");
 const SongsPage = page(pages.songs, "SongsPage");
 const TriagePage = page(pages.triage, "TriagePage");
+const WorksPage = page(pages.works, "WorksPage");
 
 function Home() {
   const { viewer } = useApp();
@@ -109,6 +111,8 @@ export const routes: RouteObject[] = [
       { path: "assets", element: <AssetsPage /> },
       { path: "songs", element: <SongsPage /> },
       { path: "songs/:id", element: <SongsPage /> },
+      { path: "works", element: <WorksPage /> },
+      { path: "works/:id", element: <WorksPage /> },
       { path: "search", element: <SearchPage /> },
       { path: "posts/:id", element: <PostPage /> },
       {

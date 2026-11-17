@@ -4812,3 +4812,60 @@ button.participation {
 .photo-tag-series .person-chip {
   font-size: 12px;
 }
+
+/* ---------------------------------------------------------------- 作品の一覧と作品の画面（決定記録 0065） */
+
+.works-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.works-table th,
+.works-table td {
+  text-align: left;
+  padding: 8px 8px 8px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.works-table tbody th {
+  font-weight: 500;
+  white-space: normal;
+}
+
+.works-table thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.work-create {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.work-events {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.work-events li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.work-only-subject {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
