@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod";
 
 // 設定は環境変数で渡す（手元の PC でも Cloud Run でも同じコードで動かす。決定記録 0002）
@@ -21,6 +23,12 @@ const schema = z.object({
         .filter(Boolean),
     )
     .pipe(z.array(z.url())),
+  /**
+   * 一覧用の縮めた画像を、この機械のディスクにも置く場所（使い捨て。決定記録 0062）。off で使わない
+   */
+  THUMBNAIL_CACHE_DIR: z.string().default(join(homedir(), ".cache", "aletheia", "thumbnails")),
+  /** ログインした人の役割を覚えておく秒数（0 で覚えない。決定記録 0062） */
+  ROLE_CACHE_SECONDS: z.coerce.number().int().min(0).max(600).default(60),
   /** ファイルの保存先。drive（本番）か local（開発用。手元のフォルダ） */
   FILE_STORE: z.enum(["drive", "local"]).default("local"),
   LOCAL_STORE_DIR: z.string().default(".files"),

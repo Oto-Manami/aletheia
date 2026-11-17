@@ -17,7 +17,8 @@ import { sql } from "kysely";
 import { z } from "zod";
 import type { AuthEnv } from "./auth.ts";
 import { inTransaction } from "./events.ts";
-import { originalOf, thumbnailOf } from "./thumbnails.ts";
+import type { ThumbnailCache } from "./thumbnail-cache.ts";
+import { originalOf, THUMBNAIL_CONTENT_TYPE, thumbnailOf } from "./thumbnails.ts";
 
 /** 外せない素材の種類（投稿の中身そのもの） */
 const KEPT_MEDIA = new Set(["text", "webpage"]);
@@ -30,6 +31,8 @@ export function registerAssetRoutes(
   files?: FileStore,
   /** 縮めた画像の保存先。無ければ原本と同じ保存先 */
   thumbnailFiles: FileStore | undefined = files,
+  /** 縮めた画像の、サーバーのディスクの置き場（決定記録 0062）。無ければ毎回保存先から読む */
+  cache?: ThumbnailCache,
 ): void {
   /**
    * 素材の縮めた画像（一覧用）。保存した原本から作る。素材の記録はログインした利用者の全員が読めるので、
@@ -41,8 +44,12 @@ export function registerAssetRoutes(
     }
     const id = z.uuid().safeParse(c.req.param("id"));
     if (!id.success) throw new HTTPException(404, { message: "見つかりません" });
-    const thumbnail = await thumbnailOf(db, files, thumbnailFiles, id.data);
+    const cached = await cache?.get(id.data);
+    const thumbnail = cached
+      ? { bytes: cached, contentType: THUMBNAIL_CONTENT_TYPE }
+      : await thumbnailOf(db, files, thumbnailFiles, id.data);
     if (!thumbnail) throw new HTTPException(404, { message: "見つかりません" });
+    if (!cached && cache) await cache.put(id.data, thumbnail.bytes);
     return new Response(thumbnail.bytes, {
       headers: {
         "content-type": thumbnail.contentType,
@@ -179,6 +186,8 @@ export function registerAssetRoutes(
         stored,
       };
     });
+
+    await cache?.remove(id.data);
 
     // 記録を消した後に、原本を却下の場所へ移す（消さない）。失敗しても外したことは取り消さない
     const report = { moved: 0, failed: [] as { storage_key: string; error: string }[] };

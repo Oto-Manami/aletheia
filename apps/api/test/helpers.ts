@@ -3,7 +3,8 @@ import { asQueryable, type Queryable } from "@aletheia/db/testing/sql";
 import { MemoryFileStore } from "@aletheia/storage";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterAll } from "vitest";
-import { createApp } from "../src/app.ts";
+import { type AppOptions, createApp } from "../src/app.ts";
+import type { RoleCache } from "../src/auth.ts";
 
 const root = createDb(
   process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
@@ -38,14 +39,28 @@ export interface Ctx {
   call: (method: string, path: string, body?: unknown, token?: string | null) => Promise<Response>;
   /** ファイルを送る（Bot の鍵で） */
   upload: (path: string, bytes: Uint8Array, contentType: string) => Promise<Response>;
+  /** API そのもの（ヘッダーを細かく決めて呼ぶとき） */
+  app: ReturnType<typeof createApp>;
 }
 
 /** テストごとにトランザクションを張り、API もその中で動かし、最後に取り消す */
-export async function withApi(fn: (ctx: Ctx) => Promise<void>): Promise<void> {
+export async function withApi(
+  fn: (ctx: Ctx) => Promise<void>,
+  options: Pick<AppOptions, "thumbnailCache"> & { roleCache?: RoleCache } = {},
+): Promise<void> {
   const trx = await root.startTransaction().execute();
   try {
     const files = new MemoryFileStore();
-    const app = createApp(trx, { serviceToken: SERVICE_TOKEN, getKey: jwks }, files);
+    const app = createApp(
+      trx,
+      {
+        serviceToken: SERVICE_TOKEN,
+        getKey: jwks,
+        ...(options.roleCache ? { roleCache: options.roleCache } : {}),
+      },
+      files,
+      options.thumbnailCache ? { thumbnailCache: options.thumbnailCache } : {},
+    );
     const call: Ctx["call"] = (method, path, body, token = SERVICE_TOKEN) =>
       Promise.resolve(
         app.request(path, {
@@ -65,7 +80,7 @@ export async function withApi(fn: (ctx: Ctx) => Promise<void>): Promise<void> {
           body: bytes,
         }),
       );
-    await fn({ db: trx, files, c: asQueryable(trx), call, upload });
+    await fn({ db: trx, files, c: asQueryable(trx), call, upload, app });
   } finally {
     await trx.rollback().execute();
   }

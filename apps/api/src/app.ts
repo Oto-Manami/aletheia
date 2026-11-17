@@ -49,11 +49,13 @@ import {
   withoutAliasMatches,
 } from "@aletheia/intake";
 import { Hono } from "hono";
+import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import { sql } from "kysely";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { FileStore } from "@aletheia/storage";
+import type { ThumbnailCache } from "./thumbnail-cache.ts";
 import {
   type Actor,
   assertAdmin,
@@ -212,6 +214,8 @@ export interface AppOptions {
   viewerOrigins?: string[];
   /** 一覧用の縮めた画像の保存先。無ければ、原本と同じ保存先に置く */
   thumbnailFiles?: FileStore;
+  /** 縮めた画像の、サーバーのディスクの置き場（決定記録 0062） */
+  thumbnailCache?: ThumbnailCache;
 }
 
 export { matchUrl } from "./urls.ts";
@@ -226,6 +230,9 @@ export function createApp(
   // 承認は 1 件ずつ、データベースへの反映とファイルの移動を終えてから次へ進む（同時に押されても順に通す）
   const inOrder = serial();
 
+  // JSON の返事を圧縮する（画像はもう縮めてあるので対象にしない。決定記録 0062）
+  app.use("*", compress({ contentTypeFilter: /^application\/json/ }));
+
   const origins = options.viewerOrigins ?? [];
   if (origins.length > 0) {
     app.use(
@@ -234,7 +241,8 @@ export function createApp(
         origin: (origin) => (origins.includes(origin) ? origin : null),
         allowMethods: ["GET", "POST"],
         allowHeaders: ["authorization", "content-type"],
-        maxAge: 600,
+        // 事前の確認（preflight）の結果を、ブラウザが覚えられる上限（Chrome は 2 時間）まで覚えさせる
+        maxAge: 7200,
       }),
     );
   }
@@ -272,7 +280,7 @@ export function createApp(
   registerArticleRoutes(app, db);
   registerSetlistRoutes(app, db);
   registerSongRoutes(app, db);
-  registerAssetRoutes(app, db, files, options.thumbnailFiles);
+  registerAssetRoutes(app, db, files, options.thumbnailFiles, options.thumbnailCache);
 
   /** 承認済みの投稿のファイルの保存をやり直す（承認の後に保存できなかったもの。仮置きの場所に残っていれば移す） */
   app.post("/posts/:id/files/retry", async (c) => {

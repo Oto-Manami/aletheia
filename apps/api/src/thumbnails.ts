@@ -15,7 +15,8 @@ import sharp from "sharp";
 
 /** 縮めた画像の長い辺（ピクセル）。一覧のタイルを 2 倍の画素密度で出しても足りる大きさ */
 export const THUMBNAIL_EDGE = 480;
-const CONTENT_TYPE = "image/webp";
+export const THUMBNAIL_CONTENT_TYPE = "image/webp";
+const CONTENT_TYPE = THUMBNAIL_CONTENT_TYPE;
 
 export interface Thumbnail {
   bytes: Uint8Array;
