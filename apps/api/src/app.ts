@@ -274,8 +274,8 @@ export function createApp(
   registerEventRoutes(app, db);
   registerArticleRoutes(app, db);
   registerSetlistRoutes(app, db);
-  registerSongRoutes(app, db);
   registerDashboardRoutes(app, db);
+  registerSongRoutes(app, db);
   registerAssetRoutes(app, db, files, options.thumbnailFiles);
 
   /** 承認済みの投稿のファイルの保存をやり直す（承認の後に保存できなかったもの。仮置きの場所に残っていれば移す） */
