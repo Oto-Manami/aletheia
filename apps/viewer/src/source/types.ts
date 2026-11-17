@@ -481,6 +481,67 @@ export interface NewEntity {
   classification: Classification;
 }
 
+/** 楽曲リスト（設計書 決定記録 0059） */
+export interface SongTrack {
+  songId: string;
+  name: string;
+  position: number | null;
+  isTitle: boolean;
+  /** 収録された盤（空なら全部の盤） */
+  editions: string[];
+}
+
+export interface SongRelease {
+  id: string;
+  subtype: string;
+  name: string;
+  /** 発売日（JST の暦日） */
+  releasedOn: string | null;
+  tracks: SongTrack[];
+}
+
+export interface SongSummary {
+  id: string;
+  name: string;
+  /** 披露した公演の数（セットリストから） */
+  performed: number;
+  /** シングル・アルバムに収録されているか */
+  inRelease: boolean;
+}
+
+export interface SongList {
+  releases: SongRelease[];
+  songs: SongSummary[];
+}
+
+export interface SongDetail {
+  id: string;
+  name: string;
+  reading: string | null;
+  releases: {
+    id: string;
+    subtype: string;
+    name: string;
+    position: number | null;
+    isTitle: boolean;
+    releasedOn: string | null;
+  }[];
+  /** 披露した公演（新しい順）。日程なら、まとまり（ツアー）も付ける */
+  performances: {
+    eventId: string;
+    title: string;
+    startsOn: string | null;
+    parentId: string | null;
+    parentTitle: string | null;
+  }[];
+}
+
+export interface SongImportResult {
+  releases: { created: number; updated: number };
+  songs: { created: number };
+  tracks: { created: number; updated: number };
+}
+
 export interface ArchiveSource {
   /** デモ版かどうか（画面に表示する） */
   readonly demo: boolean;
@@ -490,6 +551,11 @@ export interface ArchiveSource {
   /** その状態の本当の件数（一覧の上限に関わらない） */
   countIntake(state: IntakeState): Promise<number>;
   getIntake(id: string): Promise<IntakeDetail>;
+  /** 楽曲リスト（設計書 決定記録 0059） */
+  listSongs?(): Promise<SongList>;
+  getSong?(id: string): Promise<SongDetail>;
+  /** 楽曲リストをまとめて入れる（運営者だけ。何度入れても重ならない） */
+  importSongs?(data: unknown): Promise<SongImportResult>;
   /**
    * 下書きに付いた動画・音声（仮置きのファイル）を読み、再生用の URL を返す。大きいので、承認の画面で
    * 「読み込んで再生」を押したときだけ読む。使い終わった URL は呼ぶ側が片付ける

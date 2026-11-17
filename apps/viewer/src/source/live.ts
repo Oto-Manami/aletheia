@@ -35,6 +35,9 @@ import {
   type RefLabel,
   type Role,
   type SearchHit,
+  type SongDetail,
+  type SongImportResult,
+  type SongList,
   SourceError,
   type MenuCounts,
   type TriageCounts,
@@ -400,6 +403,89 @@ export class LiveSource implements ArchiveSource {
       stopped = true;
       for (const url of urls) URL.revokeObjectURL(url);
     };
+  }
+
+  async listSongs(): Promise<SongList> {
+    const res = await this.api<{
+      releases: {
+        id: string;
+        subtype: string;
+        name: string;
+        released_on: string | null;
+        tracks: {
+          song_id: string;
+          name: string;
+          position: number | null;
+          is_title: boolean;
+          editions: string[];
+        }[];
+      }[];
+      songs: { id: string; name: string; performed: number; in_release: boolean }[];
+    }>("GET", "/songs");
+    return {
+      releases: res.releases.map((r) => ({
+        id: r.id,
+        subtype: r.subtype,
+        name: r.name,
+        releasedOn: r.released_on,
+        tracks: r.tracks.map((t) => ({
+          songId: t.song_id,
+          name: t.name,
+          position: t.position,
+          isTitle: t.is_title,
+          editions: t.editions,
+        })),
+      })),
+      songs: res.songs.map((s) => ({
+        id: s.id,
+        name: s.name,
+        performed: s.performed,
+        inRelease: s.in_release,
+      })),
+    };
+  }
+
+  async getSong(id: string): Promise<SongDetail> {
+    const res = await this.api<{
+      song: { id: string; name: string; reading: string | null };
+      releases: {
+        id: string;
+        subtype: string;
+        name: string;
+        position: number | null;
+        is_title: boolean;
+        released_on: string | null;
+      }[];
+      performances: {
+        id: string;
+        title: string;
+        starts_on: string | null;
+        parent_id: string | null;
+        parent_title: string | null;
+      }[];
+    }>("GET", `/songs/${encodeURIComponent(id)}`);
+    return {
+      ...res.song,
+      releases: res.releases.map((r) => ({
+        id: r.id,
+        subtype: r.subtype,
+        name: r.name,
+        position: r.position,
+        isTitle: r.is_title,
+        releasedOn: r.released_on,
+      })),
+      performances: res.performances.map((p) => ({
+        eventId: p.id,
+        title: p.title,
+        startsOn: p.starts_on,
+        parentId: p.parent_id,
+        parentTitle: p.parent_title,
+      })),
+    };
+  }
+
+  importSongs(data: unknown): Promise<SongImportResult> {
+    return this.api<SongImportResult>("POST", "/songs/import", data);
   }
 
   async loadIntakeMedia(intakeId: string, sha256: string): Promise<string> {

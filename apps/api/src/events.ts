@@ -9,7 +9,7 @@
 // | POST     | /events/:id/delete | 出来事を消す（運営者と作った本人。素材が紐付いていないときだけ） |
 // | POST     | /events/:id/materials | 保存済みの投稿を、後から素材として紐付ける（決定記録 0044） |
 // | POST     | /events/:id/materials/remove | 投稿を素材から外す（投稿・素材そのものは消さない） |
-// | POST     | /entities     | 作品・相手を作る（同じ種類・同じ名前があればそれを返す）   |
+// | POST     | /entities     | 作品・相手を作る（同じ種類・細かい種類・同じ名前があればそれを返す） |
 //
 // 作業者・運営者が作り・直せる（閲覧者は見るだけ。決定記録 0032）。消せるのは運営者と作った本人で、
 // 素材が紐付いていない出来事だけ
@@ -174,7 +174,7 @@ function badRequest(message: string): never {
   throw new HTTPException(400, { message });
 }
 
-async function parse<T extends z.ZodType>(req: Request, schema: T): Promise<z.output<T>> {
+export async function parse<T extends z.ZodType>(req: Request, schema: T): Promise<z.output<T>> {
   let json: unknown;
   try {
     json = await req.json();
@@ -192,7 +192,7 @@ async function parse<T extends z.ZodType>(req: Request, schema: T): Promise<z.ou
   return result.data;
 }
 
-function userIdOf(actor: Actor): string | null {
+export function userIdOf(actor: Actor): string | null {
   return actor.kind === "user" ? actor.userId : null;
 }
 
@@ -897,13 +897,15 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
     const input = await parse(c.req.raw, entityInput);
     const userId = userIdOf(c.get("actor"));
     const result = await inTransaction(db, userId, async (trx) => {
-      // 同じ種類・同じ名前（正規化して比べる）があれば、新しく作らずにそれを返す
-      const existing = await trx
+      // 同じ種類・同じ名前（正規化して比べる）があれば、新しく作らずにそれを返す。細かい種類を指定したときは、
+      // 細かい種類も同じものだけ（同じ名前の楽曲とシングルを別に持てるように。決定記録 0059）
+      let same = trx
         .selectFrom("entities")
         .select(["id", "merged_into", "canonical_name"])
         .where("type", "=", input.type)
-        .where(sql<boolean>`normalized_name = app.normalize_name(${input.canonical_name})`)
-        .executeTakeFirst();
+        .where(sql<boolean>`normalized_name = app.normalize_name(${input.canonical_name})`);
+      if (input.subtype) same = same.where("subtype", "=", input.subtype);
+      const existing = await same.orderBy("created_at").executeTakeFirst();
       if (existing) {
         return {
           id: existing.merged_into ?? existing.id,

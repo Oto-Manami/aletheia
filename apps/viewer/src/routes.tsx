@@ -10,6 +10,7 @@ import { MembersPage } from "./pages/Members.tsx";
 import { DisplaySettings, SettingsPage } from "./pages/Settings.tsx";
 import { PostPage } from "./pages/Post.tsx";
 import { SearchPage } from "./pages/Search.tsx";
+import { SongsPage } from "./pages/Songs.tsx";
 import { TriagePage } from "./pages/Triage.tsx";
 import { triageRouteOf } from "./triage-routes.ts";
 
@@ -79,6 +80,8 @@ export const routes: RouteObject[] = [
         ],
       },
       { path: "assets", element: <AssetsPage /> },
+      { path: "songs", element: <SongsPage /> },
+      { path: "songs/:id", element: <SongsPage /> },
       { path: "search", element: <SearchPage /> },
       { path: "posts/:id", element: <PostPage /> },
       {

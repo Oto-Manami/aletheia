@@ -64,6 +64,7 @@ export function EntityPicker({
   exclude = [],
   placeholder,
   addMode = false,
+  onlySubtypes,
 }: {
   label: string;
   /** 探す種類 */
@@ -77,6 +78,8 @@ export function EntityPicker({
   placeholder?: string;
   /** 選んだら入力を空に戻す（出演者を足していくとき） */
   addMode?: boolean;
+  /** 候補を細かい種類で絞る（セットリストの曲は楽曲だけ。同じ名前のシングルを出さない） */
+  onlySubtypes?: readonly string[];
 }) {
   const { source } = useApp();
   const id = useId();
@@ -87,7 +90,9 @@ export function EntityPicker({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const found = useSearch<EntityOption>(query, (q) => source.findEntities(q, types));
-  const options = (found ?? []).filter((o) => !exclude.includes(o.id));
+  const options = (found ?? []).filter(
+    (o) => !exclude.includes(o.id) && (!onlySubtypes || onlySubtypes.includes(o.subtype ?? "")),
+  );
   const subtypes = ENTITY_SUBTYPE_LABELS[createType] ?? {};
 
   const pick = (picked: Picked) => {

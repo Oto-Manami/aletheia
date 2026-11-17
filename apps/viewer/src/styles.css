@@ -4112,3 +4112,100 @@ a.asset-tile-title:hover {
 .post-missing p {
   margin: 0;
 }
+
+/* ---------------------------------------------------------------- 楽曲（決定記録 0059） */
+
+.song-releases {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.song-release {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.song-release:last-child {
+  border-bottom: 0;
+}
+
+.song-release-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.song-release-kind {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.song-release-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.song-tracks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.song-track {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.song-track:hover,
+.song-track.active {
+  background: var(--hover);
+}
+
+.song-track-no {
+  min-width: 1.5em;
+  text-align: right;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.song-track-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.song-import textarea {
+  width: 100%;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.song-import summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.song-section {
+  margin-bottom: 16px;
+}
+
+.song-list {
+  margin: 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
