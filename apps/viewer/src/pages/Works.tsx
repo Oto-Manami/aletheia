@@ -3,10 +3,11 @@
 // 番組・雑誌・連載・企画（シリーズ）など、作品にまとめて繰り返す仕事を見渡す。
 // - 一覧（/works）: 種類と名前で絞る。作業者・運営者は作品を作れる
 // - 作品の画面（/works/:id）: その作品の回・号の一覧と、回・号や作品に紐付いた素材の画像
+// - 楽曲・シングル・アルバム・MV は楽曲の画面で扱う（決定記録 0066）
 
 import { ChevronLeft, Plus } from "lucide-react";
 import { useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { ClassificationChoice } from "../components/EntityPicker.tsx";
 import { type GalleryImage, GalleryGrid, ImageViewer } from "../components/MaterialGallery.tsx";
 import { useApp } from "../context.tsx";
@@ -20,7 +21,11 @@ import {
 import type { Classification, WorkView } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 
-const WORK_LABELS = ENTITY_SUBTYPE_LABELS["work"] ?? {};
+/** 楽曲の画面で扱う種類（作品の一覧には出さず、作らない。決定記録 0066） */
+const MUSIC_SUBTYPES = new Set(["song", "single", "album", "music_video"]);
+const WORK_LABELS = Object.fromEntries(
+  Object.entries(ENTITY_SUBTYPE_LABELS["work"] ?? {}).filter(([k]) => !MUSIC_SUBTYPES.has(k)),
+);
 const nf = new Intl.NumberFormat("ja-JP");
 
 /** 一覧の種類の絞り込み（よく使うものを先に） */
@@ -39,7 +44,7 @@ const SUBTYPE_ORDER = [
 ];
 
 function subtypeLabel(subtype: string | null): string {
-  return (subtype && WORK_LABELS[subtype]) || "作品";
+  return (subtype && (ENTITY_SUBTYPE_LABELS["work"] ?? {})[subtype]) || "作品";
 }
 
 /** 出来事の表示の画面（日程は、まとまりの画面で開く。決定記録 0060） */
@@ -394,16 +399,27 @@ function WorkPage({ id }: { id: string }) {
       {loaded.status === "ready" && loaded.data === null && (
         <p className="quiet">この環境では作品の画面を使えません。</p>
       )}
-      {loaded.status === "ready" && loaded.data && (
-        <>
-          <div className="page-head">
-            <h1 className="page-title">{loaded.data.work.name}</h1>
-            <p className="page-sub">{subtypeLabel(loaded.data.work.subtype)}</p>
-          </div>
-          <WorkEvents view={loaded.data} />
-          <WorkImages view={loaded.data} />
-        </>
-      )}
+      {loaded.status === "ready" &&
+        loaded.data &&
+        MUSIC_SUBTYPES.has(loaded.data.work.subtype ?? "") && (
+          // 楽曲は楽曲の画面で見る（決定記録 0066）
+          <Navigate
+            to={loaded.data.work.subtype === "song" ? `/songs/${loaded.data.work.id}` : "/songs"}
+            replace
+          />
+        )}
+      {loaded.status === "ready" &&
+        loaded.data &&
+        !MUSIC_SUBTYPES.has(loaded.data.work.subtype ?? "") && (
+          <>
+            <div className="page-head">
+              <h1 className="page-title">{loaded.data.work.name}</h1>
+              <p className="page-sub">{subtypeLabel(loaded.data.work.subtype)}</p>
+            </div>
+            <WorkEvents view={loaded.data} />
+            <WorkImages view={loaded.data} />
+          </>
+        )}
     </section>
   );
 }
