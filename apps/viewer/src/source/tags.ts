@@ -17,6 +17,39 @@ export function authorsOf(draft: DraftInput): string[] {
     .map((l) => l.to_id);
 }
 
+/**
+ * 書いた人が、情報源の持ち主 1 人だけになっているか（トーク。決定記録 0068）。採用しないことにした
+ * 紐付けは数えない（API の承認の確かめと同じ）
+ */
+export function hasOnlyAuthor(draft: DraftInput, ownerId: string): boolean {
+  const authors = new Set(
+    (draft.links ?? [])
+      .filter((l) => isPostLink(l) && l.role === "author" && l.accepted !== false)
+      .map((l) => `${l.to_type}:${l.to_id}`),
+  );
+  return authors.size === 1 && authors.has(`entity:${ownerId}`);
+}
+
+/** 書いた人を、情報源の持ち主 1 人にする（取り込みの規則が付けるものと同じ形で付け直す） */
+export function setOnlyAuthor(draft: DraftInput, ownerId: string): DraftInput {
+  return {
+    ...draft,
+    links: [
+      ...(draft.links ?? []).filter((l) => !(isPostLink(l) && l.role === "author")),
+      {
+        from: "post",
+        to_type: "entity",
+        to_id: ownerId,
+        role: "author",
+        origin: "rule",
+        confidence: 1,
+        accepted: true,
+        evidence: { rule: "channel_owner" },
+      },
+    ],
+  };
+}
+
 /** 投稿に登場する人（mentioned）。採用しないことにしたものも含む */
 export function mentionsOf(draft: DraftInput): { id: string; on: boolean; rule: boolean }[] {
   return (draft.links ?? [])

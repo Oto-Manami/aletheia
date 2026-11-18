@@ -2,7 +2,13 @@ import { Suspense } from "react";
 import { Link, NavLink, Outlet, useMatch, useOutletContext, useSearchParams } from "react-router";
 import { Tags } from "../components/Tags.tsx";
 import { useApp } from "../context.tsx";
-import { formatInstant, formatPublished, routeLabel } from "../format.ts";
+import {
+  CHANNEL_KIND_LABELS,
+  channelKindLabel,
+  formatInstant,
+  formatPublished,
+  routeLabel,
+} from "../format.ts";
 import type { QueuedDecision } from "../decision-queue.ts";
 import type { Decision, IntakeSort, IntakeState } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
@@ -71,27 +77,44 @@ export function IntakePage() {
   const state = STATES.find((s) => s.state === params.get("state"))?.state ?? "pending";
   const sorts = sortsOf(state);
   const sort = sorts.options.find((s) => s.sort === params.get("sort"))?.sort ?? sorts.initial;
+  // 情報源の種類（ブログ・トークなど）での絞り込み。空ならすべて（決定記録 0068）
+  const kind = params.get("kind") ?? "";
   const detail = useMatch("/intake/:id");
   // 判断が終わるたびに、今の一覧を見せたまま裏で読み直す（画面は読み直さない）
   const [list] = useLoad(
-    () => source.listIntake(state, sort),
-    [source, state, sort],
+    () => source.listIntake(state, sort, kind || undefined),
+    [source, state, sort, kind],
     [layout.version],
-    `intake-list:${state}:${sort}`,
+    `intake-list:${state}:${sort}:${kind}`,
   );
-  /** URL の条件を変える（タブ・並べ方。既定のものは URL に書かない） */
-  const choose = (next: { state?: IntakeState; sort?: IntakeSort }) => {
+  const [kinds] = useLoad(
+    () => source.intakeKinds(state),
+    [source, state],
+    [layout.version],
+    `intake-kinds:${state}`,
+  );
+  /** URL の条件を変える（タブ・並べ方・種類。既定のものは URL に書かない） */
+  const choose = (next: { state?: IntakeState; sort?: IntakeSort; kind?: string }) => {
     const s = next.state ?? state;
     const target = sortsOf(s);
     // 選んだ並べ方は、移った先のタブにもあれば続ける
     const o = target.options.some((x) => x.sort === (next.sort ?? sort))
       ? (next.sort ?? sort)
       : target.initial;
+    const k = next.kind ?? kind;
     setParams({
       ...(s !== "pending" ? { state: s } : {}),
       ...(o !== target.initial ? { sort: o } : {}),
+      ...(k ? { kind: k } : {}),
     });
   };
+  const kindCounts = kinds.status === "ready" ? kinds.data : [];
+  const kindTotal = kindCounts.reduce((sum, k) => sum + k.count, 0);
+  // 選択肢は、件数のある種類（決まった順）と、今選んでいる種類
+  const kindOptions = [
+    ...Object.keys(CHANNEL_KIND_LABELS),
+    ...kindCounts.map((k) => k.kind).filter((k) => !(k in CHANNEL_KIND_LABELS)),
+  ].filter((k) => k === kind || kindCounts.some((c) => c.kind === k));
   const queued = useQueued(layout.decisions);
   const entryOf = (id: string) => queued.findLast((e) => e.id === id);
 
@@ -132,6 +155,17 @@ export function IntakePage() {
           ))}
         </div>
         <label className="intake-sort">
+          情報源の種類
+          <select value={kind} onChange={(e) => choose({ kind: e.target.value })}>
+            <option value="">すべて{kinds.status === "ready" && `（${kindTotal}）`}</option>
+            {kindOptions.map((k) => (
+              <option key={k} value={k}>
+                {channelKindLabel(k)}（{kindCounts.find((c) => c.kind === k)?.count ?? 0}）
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="intake-sort">
           並べ方
           <select value={sort} onChange={(e) => choose({ sort: e.target.value as IntakeSort })}>
             {sorts.options.map((s) => (
@@ -154,11 +188,13 @@ export function IntakePage() {
         )}
         {list.status === "ready" && list.data.length === 0 && (
           <p className="empty">
-            {state === "pending"
-              ? "承認待ちの下書きはありません。Discord の入口に投稿すると、ここに並びます。"
-              : state === "rejected"
-                ? "却下した下書きはありません。却下したものは直近 10 件まで置いておき、承認待ちに戻せます。"
-                : "該当する下書きはありません。"}
+            {kind
+              ? `${channelKindLabel(kind)}の下書きはありません。`
+              : state === "pending"
+                ? "承認待ちの下書きはありません。Discord の入口に投稿すると、ここに並びます。"
+                : state === "rejected"
+                  ? "却下した下書きはありません。却下したものは直近 10 件まで置いておき、承認待ちに戻せます。"
+                  : "該当する下書きはありません。"}
           </p>
         )}
         {list.status === "ready" && list.data.length > 0 && (
@@ -173,6 +209,9 @@ export function IntakePage() {
                   >
                     <span className="intake-title">{item.title ?? "（題名なし）"}</span>
                     <span className="intake-meta">
+                      <span className={`kind-badge kind-${item.channelKind ?? "unknown"}`}>
+                        {channelKindLabel(item.channelKind)}
+                      </span>
                       {item.channelName}
                       <span className="sep" aria-hidden="true" />
                       {/* 投稿の日時で並べているときは、並びの元の投稿の日時を出す（取り込んだ日時と分ける） */}

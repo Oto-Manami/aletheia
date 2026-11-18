@@ -9,6 +9,9 @@ import { routes } from "../src/routes.tsx";
 import { DemoSource } from "../src/source/demo.ts";
 import { mentionParagraphs } from "../src/source/mention-view.ts";
 import type { Viewer } from "../src/source/types.ts";
+import type { DraftInput } from "@aletheia/intake/draft";
+import { RecordPanel } from "../src/components/RecordPanel.tsx";
+import { authorsOf } from "../src/source/tags.ts";
 
 afterEach(cleanup);
 
@@ -481,5 +484,85 @@ describe("承認の画面のタグ付け", () => {
     const approved = await source.getIntake("d2000000-0000-4000-8000-000000000001");
     const about = (approved.draft.links ?? []).filter((l) => l.role === "about");
     expect(about).toHaveLength(3);
+  });
+});
+
+describe("情報源の種類（決定記録 0068）", () => {
+  it("一覧と下書きの画面に出典の種類を出し、種類で絞り込める", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/intake");
+    const talk = (await source.listIntake("pending", "default", "message"))[0]!;
+    expect(talk.channelKind).toBe("message");
+    const all = await source.listIntake("pending");
+    expect(all.length).toBeGreaterThan(1);
+
+    const select = await screen.findByRole("combobox", { name: "情報源の種類" });
+    await within(select).findByRole("option", { name: "トーク（1）" });
+    await user.selectOptions(select, "message");
+    const list = await screen.findByRole("list");
+    await waitFor(() => expect(within(list).getAllByRole("link")).toHaveLength(1));
+
+    await user.click(within(list).getByRole("link"));
+    const source_ = await screen.findByText("出典の種類");
+    expect(within(source_).getByText("トーク")).toBeTruthy();
+    // 書いた人は持ち主なので、警告は出ない
+    expect(screen.queryByText(/トークの書いた人は/)).toBeNull();
+  });
+
+  it("トークの書いた人が持ち主と違えば警告し、持ち主に直せる。違うままは承認できない", async () => {
+    const user = userEvent.setup();
+    const source = new DemoSource(0);
+    const talk = (await source.listIntake("pending", "default", "message"))[0]!;
+    const detail = await source.getIntake(talk.id);
+    const owner = detail.channelOwnerId!;
+    const other = "00000000-0000-4000-8000-0000000000aa";
+    // 書いた人を別の人にした下書き（人の手の誤り）
+    const wrong = {
+      ...detail.draft,
+      links: [
+        ...(detail.draft.links ?? []).filter((l) => l.role !== "author"),
+        {
+          from: "post" as const,
+          to_type: "entity" as const,
+          to_id: other,
+          role: "author",
+          origin: "human" as const,
+          confidence: 1,
+        },
+      ],
+    };
+    await expect(source.decide(talk.id, "approve", { draft: wrong })).rejects.toThrow(/持ち主/);
+
+    let changed: DraftInput | null = null;
+    render(
+      <RecordPanel
+        draft={wrong}
+        onChange={(d) => (changed = d)}
+        candidates={[]}
+        name={(id) => (id === owner ? "架空 花子" : "別の人")}
+        channelAvailability="paid"
+        fixedAuthor={owner}
+        readOnly={false}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain("架空 花子");
+    await user.click(screen.getByRole("button", { name: "持ち主を書いた人にする" }));
+    expect(authorsOf(changed!)).toEqual([owner]);
+    expect((await source.decide(talk.id, "approve", { draft: changed! })).postId).toBeTruthy();
+  });
+
+  it("持ち主の無いトークの情報源は、承認できないことを知らせる", () => {
+    render(
+      <RecordPanel
+        draft={{ version: 1, post: { classification: "public" }, assets: [], links: [] }}
+        onChange={() => {}}
+        candidates={[]}
+        name={() => ""}
+        channelAvailability="paid"
+        fixedAuthor={null}
+        readOnly={false}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain("持ち主");
   });
 });

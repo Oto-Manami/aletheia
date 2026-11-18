@@ -108,6 +108,29 @@ export function routeLabel(route: string): string {
   return ROUTE_LABELS[route] ?? route;
 }
 
+/**
+ * 情報源の種類（channels.kind。設計書 語彙 10 章）の呼び方。メッセージアプリは「トーク」と呼ぶ
+ * （決定記録 0068）。並びは絞り込みの選択肢の順
+ */
+export const CHANNEL_KIND_LABELS: Record<string, string> = {
+  blog: "ブログ",
+  message: "トーク",
+  sns: "SNS",
+  video: "動画",
+  broadcast: "テレビ・配信",
+  radio: "ラジオ",
+  print: "雑誌・書籍",
+  web: "Web 記事",
+  game: "ゲーム",
+  fanclub: "ファンクラブ",
+  other: "その他",
+};
+
+export function channelKindLabel(kind: string | null): string {
+  if (!kind) return "種類不明";
+  return CHANNEL_KIND_LABELS[kind] ?? kind;
+}
+
 /** 出来事の種類（設計書 語彙 4 章）。並びは作る画面の選択肢の順 */
 export const EVENT_KIND_LABELS: Record<string, string> = {
   episode: "番組の回（テレビ・ラジオ・配信）",

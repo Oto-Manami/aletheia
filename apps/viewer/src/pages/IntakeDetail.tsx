@@ -10,7 +10,7 @@ import { RecordPanel } from "../components/RecordPanel.tsx";
 import { ReviewChecklist } from "../components/ReviewChecklist.tsx";
 import { SourcePreview } from "../components/SourcePreview.tsx";
 import { useApp } from "../context.tsx";
-import { formatInstant } from "../format.ts";
+import { channelKindLabel, formatInstant } from "../format.ts";
 import { newsDates } from "../source/news-dates.ts";
 import { draftWarnings, reviewItems } from "../source/summarize.ts";
 import { appearsOf, authorsOf, confirmPeopleTags } from "../source/tags.ts";
@@ -186,7 +186,11 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
   const name = (id: string) =>
     labels.get(id) ?? candidateList.find((c) => c.id === id)?.label ?? "（読み込み中）";
 
-  const refs = refsOf(draft);
+  // トークの持ち主（書いた人に固定する人物）の名前も読む（決定記録 0068）
+  const refs = [
+    ...refsOf(draft),
+    ...(detail.channelOwnerId ? [{ id: detail.channelOwnerId, type: "entity" as const }] : []),
+  ];
   const refsKey = refs.map((r) => r.id).join(",");
   useEffect(() => {
     const missing = refs.filter((r) => !labels.has(r.id));
@@ -296,6 +300,12 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
             <span className={`badge state-${detail.state}`}>{STATE_LABELS[detail.state]}</span>
           </p>
         )}
+        <p className="intake-source">
+          出典の種類
+          <span className={`kind-badge kind-${detail.channelKind ?? "unknown"}`}>
+            {channelKindLabel(detail.channelKind)}
+          </span>
+        </p>
         <h2 className="intake-heading">{draft.post.title ?? detail.title ?? "（題名なし）"}</h2>
         <p className="intake-meta">
           {detail.channelName}
@@ -421,6 +431,7 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
             candidates={candidateList}
             name={name}
             channelAvailability={detail.channelAvailability}
+            {...(detail.channelKind === "message" ? { fixedAuthor: detail.channelOwnerId } : {})}
             readOnly={readOnly}
           />
           <EventLinks

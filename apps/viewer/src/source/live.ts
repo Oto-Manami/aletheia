@@ -35,6 +35,7 @@ import {
   type IntakeSort,
   type IntakeFile,
   type IntakeIssue,
+  type IntakeKindCount,
   type IntakeState,
   type IntakeSummary,
   type InviteState,
@@ -79,7 +80,7 @@ function rowsOf<T>(res: Result): T[] {
 }
 
 interface IntakeRow {
-  /** 振り分け待ちの一覧だけが返す */
+  /** 情報源の種類（決定記録 0068） */
   channel_kind?: string;
   id: string;
   channel_key: string;
@@ -111,7 +112,9 @@ interface ChannelRow {
   id: string;
   key: string;
   name: string;
+  kind?: string;
   availability?: string;
+  owner_entity_id?: string | null;
 }
 
 interface AssetRow {
@@ -206,6 +209,7 @@ function summarize(row: IntakeRow): IntakeSummary {
     id: row.id,
     channelKey: row.channel_key,
     channelName: row.channel_name,
+    channelKind: row.channel_kind ?? null,
     externalId: row.external_id,
     route: row.route,
     capturedAt: row.captured_at,
@@ -344,12 +348,24 @@ export class LiveSource implements ArchiveSource {
     };
   }
 
-  async listIntake(state: IntakeState, sort: IntakeSort = "default"): Promise<IntakeSummary[]> {
+  async listIntake(
+    state: IntakeState,
+    sort: IntakeSort = "default",
+    kind?: string,
+  ): Promise<IntakeSummary[]> {
     const { items } = await this.api<{ items: IntakeRow[] }>(
       "GET",
-      `/intake?${new URLSearchParams({ state, limit: "200", sort }).toString()}`,
+      `/intake?${new URLSearchParams({ state, limit: "200", sort, ...(kind ? { kind } : {}) }).toString()}`,
     );
     return items.map(summarize);
+  }
+
+  async intakeKinds(state: IntakeState): Promise<IntakeKindCount[]> {
+    const { kinds } = await this.api<{ kinds?: IntakeKindCount[] }>(
+      "GET",
+      `/intake?${new URLSearchParams({ state, limit: "1" }).toString()}`,
+    );
+    return kinds ?? [];
   }
 
   async countIntake(state: IntakeState): Promise<number> {
@@ -374,7 +390,7 @@ export class LiveSource implements ArchiveSource {
     const [channel] = rowsOf<ChannelRow>(
       await this.supabase
         .from("channels")
-        .select("id, key, name, availability")
+        .select("id, key, name, kind, availability, owner_entity_id")
         .eq("id", item.channel_id),
     );
     return {
@@ -382,6 +398,7 @@ export class LiveSource implements ArchiveSource {
         ...item,
         channel_key: channel?.key ?? "",
         channel_name: channel?.name ?? "（不明な情報源）",
+        ...(channel?.kind ? { channel_kind: channel.kind } : {}),
       }),
       draft: item.draft,
       draftValid: draft_valid,
@@ -392,6 +409,7 @@ export class LiveSource implements ArchiveSource {
       pageHtml: {},
       playUrls: stagedPlayUrls(item.draft, item.staged_files),
       channelAvailability: channel?.availability ?? null,
+      channelOwnerId: channel?.owner_entity_id ?? null,
       chosenImagesOnly: chosen_images_only === true,
     };
   }
