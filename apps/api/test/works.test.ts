@@ -145,6 +145,20 @@ describe("作品の画面", () => {
       };
       expect(none.items).toEqual([]);
       expect((await ctx.call("GET", "/works?subtype=Bad Key")).status).toBe(400);
+      // 楽曲の画面で扱う種類は出さない（決定記録 0066）
+      await ctx.c.query(
+        `insert into public.entities (type, subtype, canonical_name, classification)
+         values ('work', 'song', '架空の冠番組のテーマ曲', 'public'),
+                ('work', 'single', '架空の冠番組のシングル', 'public')`,
+      );
+      const all = (await (await ctx.call("GET", "/works?q=冠番組")).json()) as {
+        items: { id: string }[];
+      };
+      expect(all.items.map((i) => i.id)).toEqual([s.program]);
+      const songs = (await (await ctx.call("GET", "/works?subtype=song")).json()) as {
+        items: unknown[];
+      };
+      expect(songs.items).toEqual([]);
     }));
 
   it("作品でないもの・無いものは 404。ログインなしには返さない", () =>

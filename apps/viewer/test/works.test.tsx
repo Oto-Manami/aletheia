@@ -81,10 +81,10 @@ const VIEW: WorkView = {
   moreImages: false,
 };
 
-function open(path: string, canWork = true) {
+function open(path: string, canWork = true, view: WorkView = VIEW) {
   const source = Object.assign(new DemoSource(0), {
     listWorks: vi.fn(() => Promise.resolve(LIST)),
-    getWork: vi.fn(() => Promise.resolve(VIEW)),
+    getWork: vi.fn(() => Promise.resolve(view)),
     assetThumbnail: vi.fn(() => Promise.resolve(null)),
   });
   const createEntity = vi.spyOn(source, "createEntity").mockResolvedValue({
@@ -160,5 +160,27 @@ describe("作品の画面", () => {
     await userEvent.click(screen.getByLabelText("試験 花子 が写っているものだけ"));
     expect(screen.getByRole("heading", { name: "素材（2 枚）" })).toBeTruthy();
     expect(screen.getByText(/作品に直接/)).toBeTruthy();
+  });
+});
+
+describe("楽曲の画面で扱う作品（決定記録 0066）", () => {
+  it("種類の絞り込みと作る欄に楽曲・シングル・アルバム・MV を出さない", async () => {
+    open("/works");
+    await screen.findByRole("link", { name: "架空の冠番組" });
+    const kinds = within(screen.getByLabelText("種類")).getAllByRole("option");
+    expect(kinds.map((o) => o.textContent)).not.toContain("楽曲");
+    expect(kinds.map((o) => o.textContent)).not.toContain("シングル");
+    await userEvent.click(screen.getByRole("button", { name: "作品を作る" }));
+    const form = screen.getByRole("group", { name: "作品を作る" });
+    const made = within(within(form).getByLabelText("種類")).getAllByRole("option");
+    expect(made.map((o) => o.textContent)).not.toContain("楽曲");
+  });
+
+  it("楽曲の作品の画面は、その曲の画面へ移す", async () => {
+    const { router } = open(`/works/s1`, true, {
+      ...VIEW,
+      work: { id: "s1", name: "架空の曲", subtype: "song", reading: null },
+    });
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/songs/s1"));
   });
 });

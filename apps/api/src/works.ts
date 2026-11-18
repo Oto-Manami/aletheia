@@ -9,6 +9,7 @@
 // - 作品の回・号（events.work_id）と、その中身（event_items）に紐付いた投稿の画像
 // - 作品に直接、役割 series で紐付けた素材（回・号の分からない素材。決定記録 0064）
 // 作品を作るのは、これまでどおり POST /entities（events.ts）。
+// 楽曲・シングル・アルバム・MV は楽曲の画面で扱い、一覧に出さない（決定記録 0066）。
 
 import type { Database } from "@aletheia/db/client";
 import type { Hono } from "hono";
@@ -17,6 +18,11 @@ import { sql } from "kysely";
 import { z } from "zod";
 import type { AuthEnv } from "./auth.ts";
 import { archiveSubject } from "./songs.ts";
+
+/**
+ * 作品の一覧に出さない種類（楽曲の画面で扱う。決定記録 0066）
+ */
+export const MUSIC_SUBTYPES = ["song", "single", "album", "music_video"] as const;
 
 /** 作品の画面に一度に出す画像の上限 */
 const IMAGE_LIMIT = 400;
@@ -131,6 +137,7 @@ export function registerWorkRoutes(app: Hono<AuthEnv>, db: Database): void {
           where l.to_type = 'event' and l.review_state = 'accepted') as assets
       from public.entities w
       where w.type = 'work' and w.merged_into is null
+        and coalesce(w.subtype, '') <> all(${[...MUSIC_SUBTYPES]}::text[])
         and (${subtype ?? null}::text is null or w.subtype = ${subtype ?? null})
         and (${pattern}::text is null or w.canonical_name ilike ${pattern}
              or w.reading ilike ${pattern})
