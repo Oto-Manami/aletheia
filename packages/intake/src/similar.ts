@@ -18,6 +18,7 @@ type Db = Kysely<DB> | Transaction<DB>;
 
 export interface SimilarImage {
   asset_id: string;
+  sha256: string | null;
   /** 違うビットの数（0 が同じ見た目） */
   distance: number;
   width: number | null;
@@ -42,7 +43,14 @@ export async function similarStoredImages(
   const distance = distanceSql("a.phash", phash);
   const rows = await db
     .selectFrom("assets as a")
-    .select(["a.id as asset_id", "a.width", "a.height", "a.post_id", distance.as("distance")])
+    .select([
+      "a.id as asset_id",
+      "a.sha256",
+      "a.width",
+      "a.height",
+      "a.post_id",
+      distance.as("distance"),
+    ])
     .where("a.media_type", "=", "image")
     .where("a.file_policy", "=", "stored")
     .where("a.phash", "is not", null)

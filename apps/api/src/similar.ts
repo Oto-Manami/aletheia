@@ -69,7 +69,10 @@ export function registerSimilarRoutes(app: Hono<AuthEnv>, db: Database) {
     const found: { ref: string; matches: { asset_id: string; distance: number }[] }[] = [];
     for (const a of parsed.data.assets) {
       if (a.media_type !== "image" || !a.phash || !PHASH_PATTERN.test(a.phash)) continue;
-      const matches = await similarStoredImages(db, a.phash, { limit: 6 });
+      // 中身が同じファイル（SHA-256 が一致）は、承認のときにそのまま記録だけになるので聞かない
+      const matches = (await similarStoredImages(db, a.phash, { limit: 7 }))
+        .filter((m) => !a.sha256 || m.sha256 !== a.sha256)
+        .slice(0, 6);
       if (matches.length > 0) {
         found.push({
           ref: a.ref,

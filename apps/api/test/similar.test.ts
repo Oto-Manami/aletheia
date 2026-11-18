@@ -213,3 +213,18 @@ describe("似た画像の確かめ", () => {
       });
     }));
 });
+
+describe("中身が同じファイル", () => {
+  it("SHA-256 が一致する保存済みの画像は、似た画像として聞かない（承認でそのまま記録だけになる）", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const bytes = await picture(800, "png");
+      const first = await intakeWith(ctx, d, await stage(ctx, bytes, "1"), "s-1");
+      await ctx.call("POST", `/intake/${first}/approve`, {});
+      const again = await intakeWith(ctx, d, await stage(ctx, bytes, "2"), "s-2");
+      const similar = (await (await ctx.call("GET", `/intake/${again}/similar`)).json()) as {
+        items: unknown[];
+      };
+      expect(similar.items).toEqual([]);
+    }));
+});
