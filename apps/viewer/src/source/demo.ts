@@ -47,6 +47,8 @@ import {
   type IntakeSort,
   type IntakeIssue,
   type IntakeKindCount,
+  type ImageSimilarity,
+  type DuplicatePair,
   type IntakeState,
   type IntakeSummary,
   type InviteView,
@@ -228,6 +230,29 @@ export class DemoSource implements ArchiveSource {
     });
   }
 
+  /** 見本では、似た画像の組を外から入れられる（テスト・画面の見本用） */
+  duplicates: DuplicatePair[] = [];
+  similar = new Map<string, ImageSimilarity[]>();
+
+  async similarImages(intakeId: string): Promise<ImageSimilarity[]> {
+    await this.delay();
+    return structuredClone(this.similar.get(intakeId) ?? []);
+  }
+
+  async listDuplicates(): Promise<{ total: number; items: DuplicatePair[] }> {
+    await this.delay();
+    return { total: this.duplicates.length, items: structuredClone(this.duplicates) };
+  }
+
+  async decideDuplicate(id: string): Promise<void> {
+    await this.delay();
+    const before = this.duplicates.length;
+    this.duplicates = this.duplicates.filter((p) => p.id !== id);
+    if (this.duplicates.length === before) {
+      throw new SourceError("この組は見つからないか、既に決まっています", 409);
+    }
+  }
+
   async intakeKinds(state: IntakeState): Promise<IntakeKindCount[]> {
     await this.delay();
     const counts = new Map<string, number>();
@@ -315,6 +340,7 @@ export class DemoSource implements ArchiveSource {
         unknownParticipation: { count: 0, events: [] },
         setlistMissing: { count: 0, events: [] },
         overdue: { count: 0, events: [] },
+        similarImages: { count: this.duplicates.length, unhashed: 0 },
       },
       data: {
         posts: [...byChannel].map(([name, count]) => ({ channelId: name, name, kind: "", count })),

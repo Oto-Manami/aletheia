@@ -7,6 +7,7 @@ import type { DB } from "@aletheia/db/database";
 import { sql, type Transaction } from "kysely";
 import { type Draft, draftSchema } from "./draft.ts";
 import { onlyChosenImages, usesChosenImagesOnly } from "./images.ts";
+import { recordImagePair, registerSimilarPairs } from "./similar.ts";
 
 export type IntakeErrorCode =
   "not_found" | "already_decided" | "invalid_draft" | "draft_replaced" | "author_mismatch";
@@ -111,6 +112,60 @@ function isSameAsset(known: KnownAsset, a: Draft["assets"][number]): boolean {
   return false;
 }
 
+/** 承認の画面で「同じ画像」と確かめた素材。原本を保存している画像に限る（決定記録 0069） */
+async function sameImage(trx: Trx, assetId: string) {
+  const asset = await trx
+    .selectFrom("assets")
+    .select(["id", "content_group_id", "classification", "width", "height"])
+    .where("id", "=", assetId)
+    .where("media_type", "=", "image")
+    .where("file_policy", "=", "stored")
+    .executeTakeFirst();
+  if (!asset) {
+    throw new IntakeError(
+      "invalid_draft",
+      `「同じ画像」に選んだ素材が、保存済みの画像として見つかりません: ${assetId}`,
+    );
+  }
+  return asset;
+}
+
+/** 取り込む画像の方が大きい（画素の数が多い）か。大きさの分からないものは大きくないとする */
+function isLarger(
+  a: { width?: number | undefined; height?: number | undefined },
+  known: { width: number | null; height: number | null },
+): boolean {
+  if (!a.width || !a.height) return false;
+  if (!known.width || !known.height) return false;
+  return a.width * a.height > known.width * known.height;
+}
+
+/**
+ * 画像の組を残す（決定記録 0069）。承認の画面で「同じ」「別」を選んだ組はその判断で、原本を保存する画像は、
+ * ほかに似た保存済みの画像があれば「重複の疑い」として残す（選ばずに承認したもの）
+ */
+async function recordSimilarity(
+  trx: Trx,
+  assetId: string,
+  a: Draft["assets"][number],
+  context: { same: { id: string } | undefined; stored: boolean; reviewedBy: string | undefined },
+): Promise<void> {
+  if (a.media_type !== "image") return;
+  const decidedBy = context.reviewedBy ?? null;
+  if (context.same) {
+    await recordImagePair(trx, { a: assetId, b: context.same.id, state: "merged", decidedBy });
+  }
+  for (const other of a.distinct_from ?? []) {
+    await recordImagePair(trx, { a: assetId, b: other, state: "distinct", decidedBy });
+  }
+  if (context.stored && a.phash) {
+    await registerSimilarPairs(trx, assetId, a.phash, [
+      ...(context.same ? [context.same.id] : []),
+      ...(a.distinct_from ?? []),
+    ]);
+  }
+}
+
 /** 同じファイル（SHA-256 が一致）を既に保存しているアセット（別の投稿、または同じ下書きの前の素材） */
 async function storedTwin(trx: Trx, sha256: string) {
   return trx
@@ -128,6 +183,7 @@ async function storedTwin(trx: Trx, sha256: string) {
 async function repostGroupOf(
   trx: Trx,
   twin: { id: string; content_group_id: string | null; classification: "public" | "private" },
+  note = "同じファイル（SHA-256 が一致）",
 ): Promise<string> {
   if (twin.content_group_id) return twin.content_group_id;
   const group = await trx
@@ -135,7 +191,7 @@ async function repostGroupOf(
     .values({
       kind: "repost",
       representative_asset_id: twin.id,
-      note: "同じファイル（SHA-256 が一致）",
+      note,
       classification: twin.classification,
     })
     .returning("id")
@@ -318,10 +374,14 @@ export async function approveIntakeIn(
     const classification = a.classification ?? inherit;
     // 同じファイルを別の素材が既に保存していれば、ファイルはそちらに任せ、この素材は記録だけにする
     // （同じ画像が別のニュース・ブログにも載っていた場合など。二重に保存しない）
-    const twin =
+    const sameFile =
       a.sha256 && (a.file_policy ?? "stored") === "stored"
         ? await storedTwin(trx, a.sha256)
         : undefined;
+    // 承認の画面で「同じ画像」と確かめた保存済みの画像（見た目のハッシュ。決定記録 0069）。取り込む方が
+    // 大きくなければ、同じファイルと同じく記録だけにする。大きければ、画質の良い原本として保存する
+    const same = !sameFile && a.same_as ? await sameImage(trx, a.same_as) : undefined;
+    const twin = sameFile ?? (same && !isLarger(a, same) ? same : undefined);
     const { id } = await trx
       .insertInto("assets")
       .values({
@@ -334,7 +394,14 @@ export async function approveIntakeIn(
         content_date_precision: a.content_date_precision ?? null,
         content_at: a.content_at ?? null,
         ...(twin
-          ? { file_policy: "reference_only", content_group_id: await repostGroupOf(trx, twin) }
+          ? {
+              file_policy: "reference_only",
+              content_group_id: await repostGroupOf(
+                trx,
+                twin,
+                twin === same ? "見た目が同じ画像（承認の画面で確かめた）" : undefined,
+              ),
+            }
           : a.file_policy
             ? { file_policy: a.file_policy }
             : {}),
@@ -353,6 +420,7 @@ export async function approveIntakeIn(
       .executeTakeFirstOrThrow();
     assetIds[a.ref] = id;
     counts.assets++;
+    await recordSimilarity(trx, id, a, { same, stored: !twin, reviewedBy: options.reviewerId });
 
     for (const t of a.texts) {
       await trx

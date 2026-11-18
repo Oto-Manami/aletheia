@@ -697,3 +697,137 @@ describe("複数ページのコンテンツ", () => {
       expect((err as IntakeError).code).toBe("invalid_draft");
     }));
 });
+
+describe("見た目が同じ画像（設計書 決定記録 0069）", () => {
+  // 見た目のハッシュ。NEAR は BASE と 2 ビット違い、FAR は大きく違う
+  const BASE = "0f0f0f0f0f0f0f0f";
+  const NEAR = "0f0f0f0f0f0f0f0c";
+  const FAR = "f0f0f0f0f0f0f0f0";
+
+  function imageDraft(
+    sha: string,
+    phash: string,
+    extra: Partial<NonNullable<DraftInput["assets"]>[number]> = {},
+  ): DraftInput {
+    return {
+      version: 1,
+      post: { title: "試験の画像", classification: "public" },
+      assets: [
+        {
+          ref: "image-1",
+          media_type: "image",
+          sha256: sha,
+          phash,
+          width: 800,
+          height: 600,
+          ...extra,
+        },
+      ],
+    };
+  }
+
+  async function stored(trx: Parameters<typeof approveIntakeIn>[0], c: Queryable, d: Seed) {
+    const first = await approveIntakeIn(
+      trx,
+      await intake(c, d, imageDraft("1".repeat(64), BASE), { externalId: "s-1" }),
+    );
+    return first.assetIds["image-1"]!;
+  }
+
+  async function pairs(c: Queryable) {
+    const { rows } = await c.query<{ state: string; left_id: string; right_id: string }>(
+      "select state, left_id, right_id from public.merge_candidates where kind = 'asset' order by created_at",
+    );
+    return rows;
+  }
+
+  it("似た画像を選ばずに承認すると、原本を保存し、組を重複の疑いに入れる。似ていない画像は入れない", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const base = await stored(trx, c, d);
+      const near = await approveIntakeIn(
+        trx,
+        await intake(c, d, imageDraft("2".repeat(64), NEAR), { externalId: "s-2" }),
+      );
+      await approveIntakeIn(
+        trx,
+        await intake(c, d, imageDraft("3".repeat(64), FAR), { externalId: "s-3" }),
+      );
+      const found = await pairs(c);
+      expect(found).toHaveLength(1);
+      expect(found[0]!.state).toBe("pending");
+      expect([found[0]!.left_id, found[0]!.right_id].sort()).toEqual(
+        [base, near.assetIds["image-1"]!].sort(),
+      );
+    }));
+
+  it("「同じ画像」で、取り込む方が大きくなければ記録だけにして、既にある画像のまとまりに入れる", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const base = await stored(trx, c, d);
+      const result = await approveIntakeIn(
+        trx,
+        await intake(
+          c,
+          d,
+          imageDraft("4".repeat(64), NEAR, { same_as: base, width: 400, height: 300 }),
+          {
+            externalId: "s-4",
+          },
+        ),
+      );
+      const id = result.assetIds["image-1"]!;
+      const { rows } = await c.query<{ id: string; file_policy: string; content_group_id: string }>(
+        "select id, file_policy, content_group_id from public.assets where id = any($1)",
+        [[base, id]],
+      );
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      expect(byId.get(id)!.file_policy).toBe("reference_only");
+      expect(byId.get(id)!.content_group_id).toBe(byId.get(base)!.content_group_id);
+      expect((await pairs(c)).map((p) => p.state)).toEqual(["merged"]);
+    }));
+
+  it("「同じ画像」で、取り込む方が大きければ原本を保存し、組を「同じ」で残す", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const base = await stored(trx, c, d);
+      const result = await approveIntakeIn(
+        trx,
+        await intake(
+          c,
+          d,
+          imageDraft("5".repeat(64), NEAR, { same_as: base, width: 1600, height: 1200 }),
+          { externalId: "s-5" },
+        ),
+      );
+      const { rows } = await c.query<{ file_policy: string }>(
+        "select file_policy from public.assets where id = $1",
+        [result.assetIds["image-1"]],
+      );
+      expect(rows[0]!.file_policy).toBe("stored");
+      expect((await pairs(c)).map((p) => p.state)).toEqual(["merged"]);
+    }));
+
+  it("「別の画像」は組を「別物」で残し、重複の疑いに入れない", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const base = await stored(trx, c, d);
+      await approveIntakeIn(
+        trx,
+        await intake(c, d, imageDraft("6".repeat(64), NEAR, { distinct_from: [base] }), {
+          externalId: "s-6",
+        }),
+      );
+      expect((await pairs(c)).map((p) => p.state)).toEqual(["distinct"]);
+    }));
+
+  it("「同じ画像」に選んだ素材が保存済みの画像でなければ断る", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const id = await intake(c, d, imageDraft("7".repeat(64), NEAR, { same_as: randomUUID() }), {
+        externalId: "s-7",
+      });
+      const e = await expectFailure(c, () => approveIntakeIn(trx, id));
+      expect(e instanceof IntakeError && e.code).toBe("invalid_draft");
+    }));
+});

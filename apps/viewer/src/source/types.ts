@@ -53,6 +53,32 @@ export interface IntakeSummary {
   reviewedByName: string | null;
 }
 
+/** 似た画像として見せる、保存済みの画像の素材と、それが載っている投稿（決定記録 0069） */
+export interface SimilarAsset {
+  assetId: string;
+  width: number | null;
+  height: number | null;
+  postId: string | null;
+  postTitle: string | null;
+  publishedAt: string | null;
+  channelName: string | null;
+  channelKind: string | null;
+}
+
+/** 下書きの画像 1 枚と、見た目が似た保存済みの画像（近い順。distance は違うビットの数） */
+export interface ImageSimilarity {
+  ref: string;
+  matches: (SimilarAsset & { distance: number })[];
+}
+
+/** 似た画像の「重複の疑い」の組 */
+export interface DuplicatePair {
+  id: string;
+  distance: number | null;
+  left: SimilarAsset;
+  right: SimilarAsset;
+}
+
 /** 情報源の種類ごとの下書きの件数 */
 export interface IntakeKindCount {
   kind: string;
@@ -623,6 +649,8 @@ export interface Dashboard {
     unknownParticipation: { count: number; events: DashboardEvent[] } | null;
     setlistMissing: { count: number; events: DashboardEvent[] } | null;
     overdue: { count: number; events: DashboardEvent[] };
+    /** 似た画像の「重複の疑い」の組の数と、見た目のハッシュをまだ計算していない保存済みの画像の数（決定記録 0069） */
+    similarImages: { count: number; unhashed: number };
   } | null;
   data: {
     posts: { channelId: string; name: string; kind: string; count: number }[];
@@ -729,6 +757,12 @@ export interface ArchiveSource {
   listIntake(state: IntakeState, sort?: IntakeSort, kind?: string): Promise<IntakeSummary[]>;
   /** その状態の、情報源の種類ごとの件数（種類で絞り込む選択肢に出す） */
   intakeKinds(state: IntakeState): Promise<IntakeKindCount[]>;
+  /** 下書きの画像ごとの、見た目が似た保存済みの画像（決定記録 0069） */
+  similarImages(intakeId: string): Promise<ImageSimilarity[]>;
+  /** 似た画像の「重複の疑い」の組（古い順に最大 100 組）と、全部の組の数 */
+  listDuplicates(): Promise<{ total: number; items: DuplicatePair[] }>;
+  /** 組を「同じ画像」か「別の画像」に決める。ファイルは動かさない */
+  decideDuplicate(id: string, decision: "same" | "distinct"): Promise<void>;
   /** その状態の本当の件数（一覧の上限に関わらない） */
   countIntake(state: IntakeState): Promise<number>;
   getIntake(id: string): Promise<IntakeDetail>;

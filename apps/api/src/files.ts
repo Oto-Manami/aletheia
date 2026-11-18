@@ -142,7 +142,7 @@ export async function readStagedFile(
   }
 }
 
-function stagedFilesOf(value: unknown, provider: string): StagedFile[] {
+export function stagedFilesOf(value: unknown, provider: string): StagedFile[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((v) => {
     const parsed = stagedFileSchema.safeParse(v);

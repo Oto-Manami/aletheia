@@ -4916,3 +4916,65 @@ button.participation {
   margin-bottom: 10px;
   font-size: 13px;
 }
+
+/* 似た画像（決定記録 0069） */
+.similar {
+  margin-bottom: 16px;
+  border-color: var(--warn-border);
+}
+.similar .column-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.similar-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.similar-matches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+.similar-card {
+  margin: 0;
+  width: 180px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.similar-card.is-incoming {
+  padding-right: 12px;
+  border-right: 1px dashed var(--border-strong);
+}
+.similar-img {
+  display: block;
+  width: 180px;
+  height: 135px;
+  object-fit: contain;
+  background: var(--subtle);
+  border-radius: var(--radius);
+  margin-bottom: 4px;
+}
+.similar-img-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.similar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.duplicate-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}

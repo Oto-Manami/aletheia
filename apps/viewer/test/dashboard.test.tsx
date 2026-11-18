@@ -45,6 +45,7 @@ const DASHBOARD: Dashboard = {
       ],
     },
     overdue: { count: 0, events: [] },
+    similarImages: { count: 3, unhashed: 12 },
   },
   data: {
     posts: [
@@ -108,6 +109,9 @@ describe("ダッシュボード", () => {
     ).toBe("/events/t1?schedule=c1");
     expect(within(tasks).getByText("ほか 6 件")).toBeTruthy();
     expect(within(tasks).getByLabelText("曲ごとの参加が未確認 4 曲")).toBeTruthy();
+    // 似た画像の確認（決定記録 0069）
+    expect(within(tasks).getByLabelText("似た画像の確認 3 組")).toBeTruthy();
+    expect(within(tasks).getByText(/計算中の画像があと 12 枚/)).toBeTruthy();
     expect(within(tasks).getByRole("link", { name: "架空の投稿" }).getAttribute("href")).toBe(
       "/posts/p1",
     );
