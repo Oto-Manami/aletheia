@@ -20,6 +20,7 @@
 // | GET      | /intake/counts            | 承認待ち・振り分け待ちの件数（メニュー） |
 // | POST     | /intake/:id/restore       | 言及なしを取り消して振り分け待ちへ |
 // | POST     | /resolve                  | URL から情報源と外部 ID を判定する |
+// | POST     | /resolve/sender           | 発信者の表記から情報源を探す（メッセージアプリの言及の通知。決定記録 0067） |
 // | POST     | /assets/:id/remove        | 要らない素材を外す（assets.ts）     |
 // | GET      | /assets/:id/thumbnail     | 素材の縮めた画像（一覧用。保存した原本から作る） |
 // | POST     | /files/staging            | ファイルを承認待ちの場所に保存する |
@@ -70,7 +71,7 @@ import {
 import { registerArticleRoutes } from "./articles.ts";
 import { registerAssetRoutes } from "./assets.ts";
 import { serial } from "./serial.ts";
-import { matchUrl } from "./urls.ts";
+import { matchSender, matchUrl } from "./urls.ts";
 import { registerEventRoutes } from "./events.ts";
 import { registerSetlistRoutes } from "./setlists.ts";
 import { registerSongRoutes } from "./songs.ts";
@@ -112,6 +113,11 @@ const createIntakeBody = z.object({
    * その記録を消す（設計書 決定記録 0055）。自動の取得は付けない
    */
   override_no_mention: z.boolean().optional(),
+  /**
+   * 承認待ちから始める下書きにも、取り込みの規則（発信者・言及の候補）を足す（決定記録 0067）。
+   * 振り分け（triage）で送った下書きには、これにかかわらず足す
+   */
+  apply_rules: z.boolean().optional(),
 });
 
 const knownBody = z.object({
@@ -140,6 +146,13 @@ const keepBody = approveBody.extend({ approve: z.boolean().optional() });
 const bulkNoMentionBody = decisionBody.extend({ ids: z.array(uuid).min(1).max(200) });
 
 const resolveBody = z.object({ url: z.url() });
+
+/** 発信者の表記から情報源を探す（決定記録 0067） */
+const resolveSenderBody = z.object({
+  /** 情報源の種類（channels.kind。メッセージアプリなら message） */
+  kind: z.string().regex(/^[a-z][a-z0-9_]*$/),
+  name: z.string().trim().min(1).max(100),
+});
 
 const stagingQuery = z.object({
   route: z.string().regex(/^(fetch|discord|migration|archive:[a-z0-9_-]+)$/),
@@ -222,7 +235,7 @@ export interface AppOptions {
   thumbnailCache?: ThumbnailCache;
 }
 
-export { matchUrl } from "./urls.ts";
+export { matchSender, matchUrl } from "./urls.ts";
 
 export function createApp(
   db: Database,
@@ -271,6 +284,7 @@ export function createApp(
   app.use("/intake/*", requireMember(db, auth), writesNeedWorker);
   app.use("/intake", requireMember(db, auth), writesNeedWorker);
   app.use("/resolve", requireMember(db, auth), writesNeedWorker);
+  app.use("/resolve/*", requireMember(db, auth), writesNeedWorker);
   app.use("/files/*", requireMember(db, auth), writesNeedWorker);
   app.use("/events", requireMember(db, auth), writesNeedWorker);
   app.use("/events/*", requireMember(db, auth), writesNeedWorker);
@@ -333,6 +347,28 @@ export function createApp(
       return c.json({ error: "複数の情報源に当てはまります", candidates: matches }, 409);
     }
     return c.json(matches[0]);
+  });
+
+  // 発信者の表記から情報源を探す（メッセージアプリの言及の通知など。決定記録 0067）
+  app.post("/resolve/sender", async (c) => {
+    const body = await parseBody(c.req.raw, resolveSenderBody);
+    const channels = await db
+      .selectFrom("channels")
+      .select(["key", "config"])
+      .where("kind", "=", body.kind)
+      .where(sql<boolean>`config ? 'sender_names'`)
+      .orderBy("key")
+      .execute();
+    const keys = matchSender(body.name, channels);
+    if (keys.length === 0) {
+      throw new HTTPException(404, {
+        message: `発信者「${body.name}」の情報源が登録されていません`,
+      });
+    }
+    if (keys.length > 1) {
+      return c.json({ error: "複数の情報源に当てはまります", candidates: keys }, 409);
+    }
+    return c.json({ channel_key: keys[0] });
   });
 
   app.get("/intake", async (c) => {
@@ -653,7 +689,7 @@ export function createApp(
     }
     let draft: unknown = body.draft;
     let state = body.state;
-    if (body.state === "triage") {
+    if (body.state === "triage" || body.apply_rules) {
       const ruled = applyCollectionRules(body.draft as DraftInput, {
         ownerId: channel.owner_entity_id,
         subjects: await archiveSubjects(),
@@ -661,7 +697,8 @@ export function createApp(
         tagCandidates: await tagCandidates(),
       });
       draft = ruled.draft;
-      state = ruled.triage ? "triage" : "pending";
+      // 承認待ちで送られた下書きは、承認待ちのまま（規則で振り分けに回さない）
+      if (body.state === "triage") state = ruled.triage ? "triage" : "pending";
     }
     const created = await db
       .insertInto("intake_items")

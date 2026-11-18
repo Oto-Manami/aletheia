@@ -78,3 +78,26 @@ export function urlVariants(url: string): string[] {
   }
   return [...out];
 }
+
+/** 発信者の表記を比べるための正規化（全角・半角、空白、大文字・小文字の違いを吸収する） */
+export function normalizeSenderName(name: string): string {
+  return name.normalize("NFKC").replace(/\s/g, "").toLowerCase();
+}
+
+/**
+ * 発信者の表記から情報源を探す（設計書 決定記録 0067）。情報源の設定（channels.config.sender_names）に
+ * 表記を持つ。例: { "sender_names": ["SampleTaro", "見本 太郎"] }
+ */
+export function matchSender(name: string, channels: { key: string; config: unknown }[]): string[] {
+  const want = normalizeSenderName(name);
+  if (!want) return [];
+  return channels
+    .filter((ch) => {
+      const names = (ch.config as { sender_names?: unknown } | null)?.sender_names;
+      return (
+        Array.isArray(names) &&
+        names.some((n) => typeof n === "string" && normalizeSenderName(n) === want)
+      );
+    })
+    .map((ch) => ch.key);
+}
