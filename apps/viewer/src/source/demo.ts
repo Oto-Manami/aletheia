@@ -18,6 +18,7 @@ import {
 } from "./demo-data.ts";
 import { onlyChosenImages } from "@aletheia/intake/images";
 import { proposeSubjectLinks } from "@aletheia/intake/mentions";
+import { hasOnlyAuthor } from "./tags.ts";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import { DemoEvents } from "./demo-events.ts";
 import {
@@ -45,6 +46,7 @@ import {
   type IntakeDetail,
   type IntakeSort,
   type IntakeIssue,
+  type IntakeKindCount,
   type IntakeState,
   type IntakeSummary,
   type InviteView,
@@ -93,6 +95,26 @@ function issuesOf(draft: unknown): IntakeIssue[] {
 }
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 見本の情報源のキーの頭から、情報源の種類（channels.kind）を決める */
+const DEMO_KINDS: Record<string, string> = {
+  blog: "blog",
+  message: "message",
+  magazine: "print",
+  print: "print",
+  fanclub: "fanclub",
+  web: "web",
+  official: "web",
+  radio: "radio",
+  tv: "broadcast",
+  x: "sns",
+  game: "game",
+  other: "other",
+};
+
+function demoChannelKind(key: string): string | null {
+  return DEMO_KINDS[key.split(":")[0] ?? ""] ?? null;
+}
 
 export class DemoSource implements ArchiveSource {
   readonly demo = true;
@@ -178,6 +200,7 @@ export class DemoSource implements ArchiveSource {
       id: item.id,
       channelKey: item.channelKey,
       channelName: item.channelName,
+      channelKind: demoChannelKind(item.channelKey),
       externalId: item.externalId,
       route: item.route,
       capturedAt: item.capturedAt,
@@ -205,7 +228,23 @@ export class DemoSource implements ArchiveSource {
     });
   }
 
-  async listIntake(state: IntakeState, sort: IntakeSort = "default"): Promise<IntakeSummary[]> {
+  async intakeKinds(state: IntakeState): Promise<IntakeKindCount[]> {
+    await this.delay();
+    const counts = new Map<string, number>();
+    for (const i of this.intakes.filter((x) => x.state === state)) {
+      const kind = demoChannelKind(i.channelKey) ?? "other";
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    }
+    return [...counts]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([kind, count]) => ({ kind, count }));
+  }
+
+  async listIntake(
+    state: IntakeState,
+    sort: IntakeSort = "default",
+    kind?: string,
+  ): Promise<IntakeSummary[]> {
     await this.delay();
     // API と同じ並べ方（投稿の日時が分からないものは最後）
     const published = (i: DemoIntake) =>
@@ -230,6 +269,7 @@ export class DemoSource implements ArchiveSource {
     };
     return this.intakes
       .filter((i) => i.state === state)
+      .filter((i) => kind === undefined || demoChannelKind(i.channelKey) === kind)
       .sort(compare[sort])
       .map((i) => this.summary(i));
   }
@@ -329,6 +369,7 @@ export class DemoSource implements ArchiveSource {
       previews: this.previews.get(id) ?? {},
       pageHtml: this.pageHtml.get(id) ?? {},
       channelAvailability: item.channelKey.startsWith("blog:") ? "free" : null,
+      channelOwnerId: item.channelOwnerId ?? null,
       chosenImagesOnly: item.triaged === true,
     };
   }
@@ -355,6 +396,13 @@ export class DemoSource implements ArchiveSource {
       const issues = issuesOf(draft);
       if (issues.length > 0) {
         throw new SourceError("下書きに直すところがあります", 422, issues);
+      }
+      // トークは、書いた人が情報源の持ち主 1 人だけのときに限る（API と同じ規則。決定記録 0068）
+      if (
+        demoChannelKind(item.channelKey) === "message" &&
+        (!item.channelOwnerId || !hasOnlyAuthor(draft, item.channelOwnerId))
+      ) {
+        throw new SourceError("トークの書いた人は、情報源の持ち主 1 人だけにしてください", 422);
       }
       // 振り分けで残したものは、写っている人を付けた画像だけを素材にする（API と同じ規則）
       item.draft = item.triaged

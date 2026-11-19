@@ -31,6 +31,8 @@ export interface IntakeSummary {
   id: string;
   channelKey: string;
   channelName: string;
+  /** 情報源の種類（channels.kind。ブログ・トークなど。決定記録 0068）。分からなければ null */
+  channelKind: string | null;
   externalId: string;
   route: string;
   capturedAt: string;
@@ -49,6 +51,12 @@ export interface IntakeSummary {
   /** 承認・却下・保留した日時と人（履歴） */
   reviewedAt: string | null;
   reviewedByName: string | null;
+}
+
+/** 情報源の種類ごとの下書きの件数 */
+export interface IntakeKindCount {
+  kind: string;
+  count: number;
 }
 
 export interface IntakeIssue {
@@ -82,6 +90,8 @@ export interface IntakeDetail extends IntakeSummary {
   playUrls?: Record<string, string>;
   /** 情報源の有料・無料の既定（無料の情報源なら、承認の画面で公開区分を選ばせない） */
   channelAvailability: string | null;
+  /** 情報源の持ち主（発信者）の人物。トークは、書いた人をこの人に固定する（決定記録 0068） */
+  channelOwnerId: string | null;
   /**
    * 写っている人を付けた画像・動画だけを素材にするか（振り分けで残したもの・情報源の設定があるもの。設計書 決定記録 0037・0040・0057）。
    * 付けていない画像・動画は、承認しても保存しない
@@ -715,8 +725,10 @@ export interface ArchiveSource {
   /** デモ版かどうか（画面に表示する） */
   readonly demo: boolean;
   viewer(): Promise<Viewer>;
-  /** 一覧（古い順。上限 200 件。承認済み・却下は判断の新しい順） */
-  listIntake(state: IntakeState, sort?: IntakeSort): Promise<IntakeSummary[]>;
+  /** 一覧（古い順。上限 200 件。承認済み・却下は判断の新しい順）。kind で情報源の種類に絞る（決定記録 0068） */
+  listIntake(state: IntakeState, sort?: IntakeSort, kind?: string): Promise<IntakeSummary[]>;
+  /** その状態の、情報源の種類ごとの件数（種類で絞り込む選択肢に出す） */
+  intakeKinds(state: IntakeState): Promise<IntakeKindCount[]>;
   /** その状態の本当の件数（一覧の上限に関わらない） */
   countIntake(state: IntakeState): Promise<number>;
   getIntake(id: string): Promise<IntakeDetail>;

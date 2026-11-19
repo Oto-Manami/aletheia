@@ -161,9 +161,26 @@ const stagingQuery = z.object({
   name: z.string().min(1),
 });
 
+/** 情報源の種類（channels.kind。設計書 語彙 10 章） */
+const CHANNEL_KINDS = [
+  "blog",
+  "message",
+  "sns",
+  "video",
+  "broadcast",
+  "radio",
+  "print",
+  "web",
+  "game",
+  "fanclub",
+  "other",
+] as const;
+
 const listQuery = z.object({
   state: z.enum(["triage", "pending", "approved", "rejected", "on_hold"]).default("pending"),
   limit: z.coerce.number().int().min(1).max(200).default(50),
+  /** 情報源の種類で絞り込む（承認の画面。決定記録 0068） */
+  kind: z.enum(CHANNEL_KINDS).optional(),
 });
 
 /**
@@ -392,6 +409,7 @@ export function createApp(
         "i.id",
         "ch.key as channel_key",
         "ch.name as channel_name",
+        "ch.kind as channel_kind",
         "i.external_id",
         "i.route",
         "i.route_ref",
@@ -403,6 +421,7 @@ export function createApp(
         reviewerName,
       ])
       .where("i.state", "=", q.data.state)
+      .$if(q.data.kind !== undefined, (query) => query.where("ch.kind", "=", q.data.kind!))
       .$call((query) => {
         switch (order.data.sort) {
           case "captured_desc":
@@ -424,13 +443,21 @@ export function createApp(
       })
       .limit(q.data.limit)
       .execute();
-    // 一覧は上限までしか返さないので、その状態の本当の件数も返す（画面の件数の表示）
-    const { total } = await db
-      .selectFrom("intake_items")
-      .select((eb) => eb.fn.countAll<string>().as("total"))
-      .where("state", "=", q.data.state)
-      .executeTakeFirstOrThrow();
-    return c.json({ items, total: Number(total) });
+    // 一覧は上限までしか返さないので、その状態の本当の件数も返す（画面の件数の表示）。種類ごとの件数は、
+    // 種類で絞り込む選択肢に出す（決定記録 0068）
+    const byKind = await db
+      .selectFrom("intake_items as i")
+      .innerJoin("channels as ch", "ch.id", "i.channel_id")
+      .select(["ch.kind", (eb) => eb.fn.countAll<string>().as("n")])
+      .where("i.state", "=", q.data.state)
+      .groupBy("ch.kind")
+      .orderBy("ch.kind")
+      .execute();
+    const kinds = byKind.map((r) => ({ kind: r.kind, count: Number(r.n) }));
+    const total = kinds
+      .filter((k) => q.data.kind === undefined || k.kind === q.data.kind)
+      .reduce((sum, k) => sum + k.count, 0);
+    return c.json({ items, total, kinds });
   });
 
   /** 言及なしの置き場（直近 10 件。決定記録 0031）。本文は返さず、題名・URL・判断した人だけ。作業者・運営者 */
@@ -665,11 +692,17 @@ export function createApp(
     await assertStagedFiles(files, body.route, body.staged_files);
     const channel = await db
       .selectFrom("channels")
-      .select(["id", "owner_entity_id"])
+      .select(["id", "kind", "name", "owner_entity_id"])
       .where("key", "=", body.channel_key)
       .executeTakeFirst();
     if (!channel) {
       throw new HTTPException(422, { message: `情報源が登録されていません: ${body.channel_key}` });
+    }
+    // トークは持ち主がそのまま書いた人になるので、持ち主の無い情報源には取り込ませない（決定記録 0068）
+    if (channel.kind === "message" && !channel.owner_entity_id) {
+      throw new HTTPException(422, {
+        message: `トークの情報源「${channel.name}」に持ち主（発信者の人物）が設定されていません。持ち主を設定してから取り込み直してください`,
+      });
     }
     // 振り分けで「言及なし」と確認済みの記事は、取り込み直さない。人が入れたいと判断して送ったとき
     // （Discord の入口）は取り込み、「言及なし」の記録を消す（変更履歴に残る。決定記録 0055）
@@ -955,6 +988,7 @@ export function createApp(
         already_decided: 409,
         invalid_draft: 422,
         draft_replaced: 409,
+        author_mismatch: 422,
       } as const;
       return c.json(
         { error: err.message, code: err.code, issues: err.issues ?? [] },

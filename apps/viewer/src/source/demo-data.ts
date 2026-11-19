@@ -83,6 +83,8 @@ export interface DemoIntake {
   id: string;
   channelKey: string;
   channelName: string;
+  /** 情報源の持ち主（トークの書いた人。決定記録 0068） */
+  channelOwnerId?: string;
   externalId: string;
   route: string;
   capturedAt: string;
@@ -356,8 +358,9 @@ export function demoIntakes(): DemoIntake[] {
     },
     {
       id: "d1000000-0000-4000-8000-000000000003",
-      channelKey: "fanclub:talk",
-      channelName: "メッセージ（架空・有料）",
+      channelKey: "message:kari-hanako",
+      channelName: "架空 花子のメッセージ（有料）",
+      channelOwnerId: PEOPLE.hanako,
       externalId: "talk-20261013-2210",
       route: "archive:sample",
       capturedAt: "2026-10-13T22:10:00+09:00",

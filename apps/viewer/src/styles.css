@@ -2770,6 +2770,53 @@ details.more[open] > summary {
   width: auto;
 }
 
+/* 情報源の種類（ブログ・トークなど。決定記録 0068）。トークは目立たせる */
+.kind-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  margin-right: 6px;
+  border-radius: 4px;
+  background: var(--subtle);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.kind-badge.kind-message {
+  background: var(--count-bg);
+  color: var(--count-ink);
+}
+.intake-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.intake-source .kind-badge {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 13px;
+  margin-right: 0;
+}
+
+/* トークの書いた人が情報源の持ち主と違う（決定記録 0068） */
+.author-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 13px;
+}
+
 /* 判断の順番待ちの列（押したらすぐ列に入れ、1 件ずつ送る） */
 .queue-state {
   font-size: 12px;

@@ -122,3 +122,130 @@ describe("承認待ちの下書きに規則を当てる", () => {
       expect(rows[0]!.draft.links ?? []).toEqual([]);
     }));
 });
+
+describe("トークの書いた人と、承認の一覧の情報源の種類（設計書 決定記録 0068）", () => {
+  const draft = (links: unknown[] = []) => ({
+    version: 1,
+    post: {
+      published_at: "2026-10-12T21:30:00+09:00",
+      published_date_precision: "minute",
+      availability: "paid",
+      classification: "public",
+    },
+    assets: [
+      {
+        ref: "body",
+        media_type: "text",
+        texts: [{ text_type: "body", content: "みほんちゃんと練習した" }],
+      },
+    ],
+    links,
+  });
+  const create = (ctx: Ctx, channelKey: string, externalId: string, links?: unknown[]) =>
+    ctx.call("POST", "/intake", {
+      channel_key: channelKey,
+      external_id: externalId,
+      route: "discord",
+      route_ref: "1",
+      captured_at: "2026-10-12T21:35:00+09:00",
+      draft: draft(links),
+      apply_rules: true,
+    });
+
+  it("持ち主の無いトークの情報源には取り込ませない", () =>
+    withApi(async (ctx) => {
+      await setup(ctx);
+      const res = await create(ctx, "message:other", "202610122130-cccccccccccc");
+      expect(res.status).toBe(422);
+      expect(((await res.json()) as { error: string }).error).toContain("持ち主");
+    }));
+
+  it("書いた人が持ち主 1 人なら承認でき、ほかの人に変えたり足したりすると承認できない", () =>
+    withApi(async (ctx) => {
+      const s = await setup(ctx);
+      const ok = (await (
+        await create(ctx, "message:mihon-taro", "202610122130-dddddddddddd")
+      ).json()) as {
+        id: string;
+      };
+      const wrong = (await (
+        await create(ctx, "message:mihon-taro", "202610122131-eeeeeeeeeeee")
+      ).json()) as { id: string };
+      // 承認の画面で書いた人を蓄積対象に変えた（人の手の誤り）
+      const changed = draft([
+        {
+          from: "post",
+          to_type: "entity",
+          to_id: s.subject,
+          role: "author",
+          origin: "human",
+          confidence: 1,
+        },
+      ]);
+      const refused = await ctx.call("POST", `/intake/${wrong.id}/approve`, { draft: changed });
+      expect(refused.status).toBe(422);
+      expect(((await refused.json()) as { code: string }).code).toBe("author_mismatch");
+      // 持ち主に加えて別の人を足しても断る
+      const added = draft([
+        {
+          from: "post",
+          to_type: "entity",
+          to_id: s.sender,
+          role: "author",
+          origin: "rule",
+          confidence: 1,
+        },
+        {
+          from: "post",
+          to_type: "entity",
+          to_id: s.subject,
+          role: "author",
+          origin: "human",
+          confidence: 1,
+        },
+      ]);
+      expect((await ctx.call("POST", `/intake/${wrong.id}/approve`, { draft: added })).status).toBe(
+        422,
+      );
+      expect((await ctx.call("POST", `/intake/${ok.id}/approve`, {})).status).toBe(200);
+    }));
+
+  it("一覧に情報源の種類を返し、種類で絞り込める。種類ごとの件数も返す", () =>
+    withApi(async (ctx) => {
+      const s = await setup(ctx);
+      await create(ctx, "message:mihon-taro", "202610122130-ffffffffffff");
+      await ctx.call("POST", "/intake", {
+        channel_key: "blog:mihon-taro",
+        external_id: "blog-1",
+        route: "discord",
+        captured_at: "2026-10-12T21:35:00+09:00",
+        draft: draft([
+          {
+            from: "post",
+            to_type: "entity",
+            to_id: s.sender,
+            role: "author",
+            origin: "rule",
+            confidence: 1,
+          },
+        ]),
+      });
+      const all = (await (await ctx.call("GET", "/intake?state=pending")).json()) as {
+        items: { channel_kind: string }[];
+        total: number;
+        kinds: { kind: string; count: number }[];
+      };
+      expect(all.total).toBe(2);
+      expect(all.kinds).toEqual([
+        { kind: "blog", count: 1 },
+        { kind: "message", count: 1 },
+      ]);
+      const talk = (await (await ctx.call("GET", "/intake?state=pending&kind=message")).json()) as {
+        items: { channel_kind: string }[];
+        total: number;
+      };
+      expect(talk.items.map((i) => i.channel_kind)).toEqual(["message"]);
+      expect(talk.total).toBe(1);
+      expect((await ctx.call("GET", "/intake?state=pending&kind=nope")).status).toBe(400);
+    }));
+});

@@ -5,7 +5,15 @@
 
 import type { DraftInput } from "@aletheia/intake/draft";
 import { Check, X } from "lucide-react";
-import { appearsOf, authorsOf, imageRefsOf, mentionsOf, setMention } from "../source/tags.ts";
+import {
+  appearsOf,
+  authorsOf,
+  hasOnlyAuthor,
+  imageRefsOf,
+  mentionsOf,
+  setMention,
+  setOnlyAuthor,
+} from "../source/tags.ts";
 import type { RefLabel } from "../source/types.ts";
 import { PersonSelect } from "./PersonSelect.tsx";
 
@@ -15,6 +23,7 @@ export function RecordPanel({
   candidates,
   name,
   channelAvailability,
+  fixedAuthor,
   readOnly,
 }: {
   draft: DraftInput;
@@ -22,6 +31,11 @@ export function RecordPanel({
   candidates: RefLabel[];
   name: (id: string) => string;
   channelAvailability: string | null;
+  /**
+   * 書いた人を固定する人物（トークの情報源の持ち主。決定記録 0068）。null は、固定すべき情報源なのに
+   * 持ち主が無い。undefined は固定しない情報源
+   */
+  fixedAuthor?: string | null;
   readOnly: boolean;
 }) {
   const authors = authorsOf(draft);
@@ -45,7 +59,29 @@ export function RecordPanel({
 
       <dl className="record-list">
         <dt>書いた人</dt>
-        <dd>{authors.length > 0 ? authors.map(name).join("・") : "（なし）"}</dd>
+        <dd>
+          {authors.length > 0 ? authors.map(name).join("・") : "（なし）"}
+          {fixedAuthor === null && (
+            <p className="author-warning" role="alert">
+              この情報源に持ち主（発信者の人物）が設定されていないため、承認できません。情報源の持ち主を設定してください。
+            </p>
+          )}
+          {fixedAuthor && !hasOnlyAuthor(draft, fixedAuthor) && (
+            <p className="author-warning" role="alert">
+              トークの書いた人は、情報源の持ち主（{name(fixedAuthor)}）1
+              人だけにしてください。このままでは承認できません。
+              {!readOnly && (
+                <button
+                  type="button"
+                  className="button small"
+                  onClick={() => onChange(setOnlyAuthor(draft, fixedAuthor))}
+                >
+                  持ち主を書いた人にする
+                </button>
+              )}
+            </p>
+          )}
+        </dd>
 
         {photos.length > 0 && (
           <>

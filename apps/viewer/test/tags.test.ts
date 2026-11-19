@@ -4,10 +4,12 @@ import { describe, expect, it } from "vitest";
 import {
   appearsOf,
   authorsOf,
+  hasOnlyAuthor,
   mentionsOf,
   setAppears,
   setAppearsAll,
   setMention,
+  setOnlyAuthor,
 } from "../src/source/tags.ts";
 
 const AUTHOR = "00000000-0000-4000-8000-000000000001";
@@ -73,5 +75,32 @@ describe("写っている人", () => {
     expect(appearsOf(all, "image-1")).toEqual([AUTHOR]);
     expect(appearsOf(all, "image-2")).toEqual([OTHER, AUTHOR]);
     expect(appearsOf(setAppearsAll(all, AUTHOR, false), "image-2")).toEqual([OTHER]);
+  });
+});
+
+describe("トークの書いた人（決定記録 0068）", () => {
+  it("書いた人が持ち主 1 人だけかを確かめ、持ち主 1 人に付け直せる", () => {
+    expect(hasOnlyAuthor(draft, AUTHOR)).toBe(true);
+    expect(hasOnlyAuthor(draft, OTHER)).toBe(false);
+    const both: DraftInput = {
+      ...draft,
+      links: [
+        ...(draft.links ?? []),
+        {
+          from: "post",
+          to_type: "entity",
+          to_id: OTHER,
+          role: "author",
+          origin: "human",
+          confidence: 1,
+        },
+      ],
+    };
+    expect(hasOnlyAuthor(both, AUTHOR)).toBe(false);
+    const fixed = setOnlyAuthor(both, OTHER);
+    expect(authorsOf(fixed)).toEqual([OTHER]);
+    expect(hasOnlyAuthor(fixed, OTHER)).toBe(true);
+    // 書いた人以外の紐付けは残す
+    expect(mentionsOf(fixed)).toEqual(mentionsOf(both));
   });
 });

@@ -8,7 +8,8 @@ import { sql, type Transaction } from "kysely";
 import { type Draft, draftSchema } from "./draft.ts";
 import { onlyChosenImages, usesChosenImagesOnly } from "./images.ts";
 
-export type IntakeErrorCode = "not_found" | "already_decided" | "invalid_draft" | "draft_replaced";
+export type IntakeErrorCode =
+  "not_found" | "already_decided" | "invalid_draft" | "draft_replaced" | "author_mismatch";
 
 export class IntakeError extends Error {
   constructor(
@@ -169,6 +170,36 @@ async function hasSameStatement(
   return same !== undefined;
 }
 
+/**
+ * トーク（メッセージアプリ。channels.kind = message）の下書きは、書いた人が情報源の持ち主 1 人だけのときに
+ * 限って承認する（設計書 決定記録 0068）。情報源は発信者ごとに分けてあり、持ち主がそのまま書いた人になる
+ */
+async function assertMessageAuthor(trx: Trx, channelId: string, draft: Draft): Promise<void> {
+  const channel = await trx
+    .selectFrom("channels")
+    .select(["kind", "name", "owner_entity_id"])
+    .where("id", "=", channelId)
+    .executeTakeFirstOrThrow();
+  if (channel.kind !== "message") return;
+  if (!channel.owner_entity_id) {
+    throw new IntakeError(
+      "author_mismatch",
+      `トークの情報源「${channel.name}」に持ち主（発信者の人物）が設定されていないため、承認できません。情報源の持ち主を設定してから承認してください`,
+    );
+  }
+  const authors = new Set(
+    draft.links
+      .filter((l) => l.from === "post" && l.role === "author" && l.accepted)
+      .map((l) => `${l.to_type}:${l.to_id}`),
+  );
+  if (authors.size !== 1 || !authors.has(`entity:${channel.owner_entity_id}`)) {
+    throw new IntakeError(
+      "author_mismatch",
+      `トークの書いた人は、情報源「${channel.name}」の持ち主 1 人だけにしてください。「持ち主を書いた人にする」で直せます`,
+    );
+  }
+}
+
 export function parseDraft(value: unknown): Draft {
   const result = draftSchema.safeParse(value);
   if (!result.success) {
@@ -211,6 +242,7 @@ export async function approveIntakeIn(
   const chosenOnly = await usesChosenImagesOnly(trx, intake);
   const parsed = parseDraft(options.draft ?? intake.draft);
   const draft = chosenOnly ? onlyChosenImages(parsed) : parsed;
+  await assertMessageAuthor(trx, intake.channel_id, draft);
   const reviewedBy = options.reviewerId ?? null;
   const inherit = draft.post.classification;
 
