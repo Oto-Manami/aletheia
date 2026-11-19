@@ -50,6 +50,15 @@ curl http://127.0.0.1:8787/ready    # {"ok":true}（データベースまで使�
 - ログインした人の役割を `ROLE_CACHE_SECONDS`（既定 60 秒）覚える。役割の変更・参加者を外したことが API に効くまで、最大でこの時間だけ遅れる
 - JSON の返事は、ブラウザが求めれば圧縮する
 
+### 似た画像を見つける仕組み
+
+設計書 決定記録 0069。設定を書かなくても既定で動く。
+
+- 取り込みのとき（`POST /intake`）に、下書きの画像の見た目のハッシュ（`phash`）を仮置きのファイルから計算して付ける（振り分け待ちを除く）
+- API は起動の 1 分後と、その後 6 時間ごとに、計算していない承認待ち・保留の下書きの画像と、原本を保存している画像を 1 件ずつ計算する。保存済みの画像は、計算したら似た画像を「重複の疑い」（`merge_candidates`）に入れる。止めるときは `IMAGE_HASH_JOB=off`
+- 承認の画面で「同じ画像」（`same_as`）・「別の画像」（`distinct_from`）を選んだ組は、その判断で残す。選ばずに承認した画像は、似た保存済みの画像があれば「重複の疑い」に入れる
+- 既にある画像どうしは `POST /duplicates/:id` で決める。どちらのファイルも消さない
+
 ### 自動で更新する
 
 `main` への取り込みで、GitHub Actions が API を最新にする（設計書 決定記録 0036。設定と、新しいマイグレーションがあるときの手順は [ops/deploy/README.md](../../ops/deploy/README.md)）。
@@ -96,6 +105,9 @@ curl http://127.0.0.1:8787/ready    # {"ok":true}（データベースまで使�
 | GET      | `/intake?state=pending&limit=50`                 | 下書きの一覧（取得日時の古い順。上限 200 件）と、その状態の本当の件数（`total`）・情報源の種類ごとの件数（`kinds`）。`kind=message` などで情報源の種類に絞り込む（設計書 決定記録 0068）                                                                                                                                                                         |
 | GET      | `/intake/:id`                                    | 下書き 1 件。下書きの形が正しいか（`draft_valid`）と問題点も返す                                                                                                                                                                                                                                                                                                 |
 | POST     | `/intake`                                        | 下書きを作る。`channel_key` / `external_id` / `route` / `route_ref` / `captured_at` / `draft` / `staged_files` / `state`。トーク（`message`）の情報源に持ち主が無ければ 422（決定記録 0068）                                                                                                                                                                     |
+| GET      | `/intake/:id/similar`                            | 下書きの画像ごとの、見た目が似た保存済みの画像（作業者・運営者。設計書 決定記録 0069）                                                                                                                                                                                                                                                                           |
+| GET      | `/duplicates`                                    | 似た画像の「重複の疑い」の組（古い順に 100 組）と、全部の組の数（作業者・運営者）                                                                                                                                                                                                                                                                                |
+| POST     | `/duplicates/:id`                                | 組を `{"decision": "same"}`（同じ）か `"distinct"`（別物）に決める。ファイルは動かさない（作業者・運営者）                                                                                                                                                                                                                                                       |
 | POST     | `/intake/known`                                  | `channel_key` と `external_ids`（500 件まで）のうち、取り込み済み・振り分けで確認済みのものを返す                                                                                                                                                                                                                                                                |
 | POST     | `/resolve/sender`                                | 発信者の表記（`kind`・`name`）から情報源を探す（メッセージアプリの言及の通知。決定記録 0067）。情報源の設定 `sender_names` の表記と、空白・全角半角・大文字小文字の違いを吸収して比べる。無ければ 404                                                                                                                                                            |
 | POST     | `/intake/redetect`                               | 全件を取り込む経路の、振り分け待ち・承認待ちの下書きの言及の印を、今の別名で付け直す（別名やタグ付けの候補を足したとき）。`checked`・`updated` を返す                                                                                                                                                                                                            |

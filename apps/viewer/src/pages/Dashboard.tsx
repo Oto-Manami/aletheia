@@ -110,6 +110,17 @@ function Tasks({ tasks }: { tasks: NonNullable<Dashboard["tasks"]> }) {
           />
         </Task>
         <Task
+          title="似た画像の確認"
+          count={tasks.similarImages.count}
+          unit="組"
+          to="/duplicates"
+          note={
+            tasks.similarImages.unhashed > 0
+              ? `見た目のハッシュを計算中の画像があと ${nf.format(tasks.similarImages.unhashed)} 枚あります`
+              : null
+          }
+        />
+        <Task
           title="原本の保存が漏れている素材"
           count={tasks.missingFiles.count}
           note="投稿の画面の「保存をやり直す」で直せます"

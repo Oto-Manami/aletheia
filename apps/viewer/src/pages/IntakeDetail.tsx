@@ -6,6 +6,7 @@ import { DraftEditor } from "../components/DraftEditor.tsx";
 import { EventLinks } from "../components/EventLinks.tsx";
 import { MentionView } from "../components/MentionView.tsx";
 import { PhotoTags } from "../components/PhotoTags.tsx";
+import { SimilarImages } from "../components/SimilarImages.tsx";
 import { RecordPanel } from "../components/RecordPanel.tsx";
 import { ReviewChecklist } from "../components/ReviewChecklist.tsx";
 import { SourcePreview } from "../components/SourcePreview.tsx";
@@ -383,6 +384,13 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
 
       <div className="approval-layout">
         <div className="approval-main">
+          <SimilarImages
+            intakeId={detail.id}
+            draft={draft}
+            onChange={setDraft}
+            previews={previews}
+            readOnly={readOnly}
+          />
           <PhotoTags
             draft={draft}
             onChange={setDraft}

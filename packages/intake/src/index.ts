@@ -45,3 +45,12 @@ export {
   restoreDiscarded,
   type TriageOptions,
 } from "./triage.ts";
+export {
+  PHASH_PATTERN,
+  type PairState,
+  recordImagePair,
+  registerSimilarPairs,
+  SIMILAR_IMAGE_DISTANCE,
+  type SimilarImage,
+  similarStoredImages,
+} from "./similar.ts";

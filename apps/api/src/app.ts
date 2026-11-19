@@ -84,8 +84,11 @@ import {
   removeStagedFiles,
   readStagedFile,
   retryPostFiles,
+  stagedFilesOf,
   stageFile,
 } from "./files.ts";
+import { addImageHashes } from "./image-hash.ts";
+import { registerSimilarRoutes } from "./similar.ts";
 
 const uuid = z.uuid();
 
@@ -314,6 +317,9 @@ export function createApp(
   app.use("/songs", requireMember(db, auth), writesNeedWorker);
   app.use("/event-items/*", requireMember(db, auth), writesNeedWorker);
   app.use("/songs/*", requireMember(db, auth), writesNeedWorker);
+  app.use("/duplicates", requireMember(db, auth), writesNeedWorker);
+  app.use("/duplicates/*", requireMember(db, auth), writesNeedWorker);
+  registerSimilarRoutes(app, db);
   registerEventRoutes(app, db);
   registerArticleRoutes(app, db);
   registerSetlistRoutes(app, db);
@@ -732,6 +738,15 @@ export function createApp(
       draft = ruled.draft;
       // 承認待ちで送られた下書きは、承認待ちのまま（規則で振り分けに回さない）
       if (body.state === "triage") state = ruled.triage ? "triage" : "pending";
+    }
+    // 画像の見た目のハッシュを付ける（同じ画像を見つけるため。決定記録 0069）。振り分け待ちは、残すと
+    // 決まったものだけが素材になるので、ここでは計算しない（裏の計算に任せる）
+    if (files && state !== "triage") {
+      const staged = stagedFilesOf(body.staged_files, files.provider);
+      if (staged.length > 0) {
+        const hashed = structuredClone(draft) as DraftInput;
+        if ((await addImageHashes(hashed, staged, files)) > 0) draft = hashed;
+      }
     }
     const created = await db
       .insertInto("intake_items")

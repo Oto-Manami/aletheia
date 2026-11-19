@@ -5,6 +5,7 @@ import { createRemoteJWKSet } from "jose";
 import { createApp } from "./app.ts";
 import { RoleCache } from "./auth.ts";
 import { loadConfig } from "./config.ts";
+import { startImageHashJob } from "./image-hash-job.ts";
 import { ThumbnailCache } from "./thumbnail-cache.ts";
 
 const config = loadConfig();
@@ -35,6 +36,9 @@ const app = createApp(
       : {}),
   },
 );
+
+// 画像の見た目のハッシュを裏で計算する（設計書 決定記録 0069）
+if (config.IMAGE_HASH_JOB === "on") startImageHashJob(db, files);
 
 serve({ fetch: app.fetch, port: config.PORT, hostname: config.HOST }, (info) => {
   console.log(`API を起動しました: http://${config.HOST}:${info.port}`);

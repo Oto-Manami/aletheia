@@ -36,6 +36,9 @@ import {
   type IntakeFile,
   type IntakeIssue,
   type IntakeKindCount,
+  type ImageSimilarity,
+  type DuplicatePair,
+  type SimilarAsset,
   type IntakeState,
   type IntakeSummary,
   type InviteState,
@@ -204,6 +207,30 @@ export function openUrlOf(
   return null;
 }
 
+interface SimilarAssetRow {
+  asset_id: string;
+  width: number | null;
+  height: number | null;
+  post_id: string | null;
+  post_title: string | null;
+  published_at: string | null;
+  channel_name: string | null;
+  channel_kind: string | null;
+}
+
+function similarAssetOf(r: SimilarAssetRow): SimilarAsset {
+  return {
+    assetId: r.asset_id,
+    width: r.width,
+    height: r.height,
+    postId: r.post_id,
+    postTitle: r.post_title,
+    publishedAt: r.published_at,
+    channelName: r.channel_name,
+    channelKind: r.channel_kind,
+  };
+}
+
 function summarize(row: IntakeRow): IntakeSummary {
   return {
     id: row.id,
@@ -358,6 +385,41 @@ export class LiveSource implements ArchiveSource {
       `/intake?${new URLSearchParams({ state, limit: "200", sort, ...(kind ? { kind } : {}) }).toString()}`,
     );
     return items.map(summarize);
+  }
+
+  async similarImages(intakeId: string): Promise<ImageSimilarity[]> {
+    const { items } = await this.api<{
+      items: { ref: string; matches: (SimilarAssetRow & { distance: number })[] }[];
+    }>("GET", `/intake/${encodeURIComponent(intakeId)}/similar`);
+    return items.map((i) => ({
+      ref: i.ref,
+      matches: i.matches.map((m) => ({ ...similarAssetOf(m), distance: m.distance })),
+    }));
+  }
+
+  async listDuplicates(): Promise<{ total: number; items: DuplicatePair[] }> {
+    const r = await this.api<{
+      total: number;
+      items: {
+        id: string;
+        distance: number | null;
+        left: SimilarAssetRow;
+        right: SimilarAssetRow;
+      }[];
+    }>("GET", "/duplicates");
+    return {
+      total: r.total,
+      items: r.items.map((p) => ({
+        id: p.id,
+        distance: p.distance,
+        left: similarAssetOf(p.left),
+        right: similarAssetOf(p.right),
+      })),
+    };
+  }
+
+  async decideDuplicate(id: string, decision: "same" | "distinct"): Promise<void> {
+    await this.api("POST", `/duplicates/${encodeURIComponent(id)}`, { decision });
   }
 
   async intakeKinds(state: IntakeState): Promise<IntakeKindCount[]> {
@@ -605,6 +667,7 @@ export class LiveSource implements ArchiveSource {
         unknown_participation: { count: number; events: Ev[] } | null;
         setlist_missing: { count: number; events: Ev[] } | null;
         overdue: { count: number; events: Ev[] };
+        similar_images?: { count: number; unhashed: number };
       };
       data: {
         posts: { channel_id: string; name: string; kind: string; count: number }[];
@@ -650,6 +713,7 @@ export class LiveSource implements ArchiveSource {
           events: t.setlist_missing.events.map(ev),
         },
         overdue: { count: t.overdue.count, events: t.overdue.events.map(ev) },
+        similarImages: t.similar_images ?? { count: 0, unhashed: 0 },
       },
       data: {
         posts: r.data.posts.map((p) => ({

@@ -88,7 +88,18 @@ const asset = z
     content_at: instant.optional(),
     file_policy: z.enum(["stored", "reference_only"]).optional(),
     sha256: sha256.optional(),
-    phash: z.string().optional(),
+    /** 見た目のハッシュ（64 ビットの 16 進。設計書 決定記録 0069） */
+    phash: z
+      .string()
+      .regex(/^[0-9a-f]{16}$/)
+      .optional(),
+    /**
+     * 承認の画面で「同じ画像」と確かめた、保存済みの画像の素材（決定記録 0069）。取り込む方が大きければ
+     * 原本を保存し、そうでなければ記録だけの素材にする
+     */
+    same_as: uuid.optional(),
+    /** 承認の画面で「別の画像」と確かめた、保存済みの画像の素材 */
+    distinct_from: z.array(uuid).optional(),
     mime_type: z.string().optional(),
     byte_size: nonNegativeInt.optional(),
     duration_ms: nonNegativeInt.optional(),

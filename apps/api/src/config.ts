@@ -29,6 +29,8 @@ const schema = z.object({
   THUMBNAIL_CACHE_DIR: z.string().default(join(homedir(), ".cache", "aletheia", "thumbnails")),
   /** ログインした人の役割を覚えておく秒数（0 で覚えない。決定記録 0062） */
   ROLE_CACHE_SECONDS: z.coerce.number().int().min(0).max(600).default(60),
+  /** 画像の見た目のハッシュを裏で計算するか（on / off。決定記録 0069） */
+  IMAGE_HASH_JOB: z.enum(["on", "off"]).default("on"),
   /** ファイルの保存先。drive（本番）か local（開発用。手元のフォルダ） */
   FILE_STORE: z.enum(["drive", "local"]).default("local"),
   LOCAL_STORE_DIR: z.string().default(".files"),

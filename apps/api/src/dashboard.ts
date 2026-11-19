@@ -38,44 +38,52 @@ const num = (v: unknown) => Number(v ?? 0);
 
 async function tasksOf(db: Database, subjectId: string | null) {
   const subject = subjectId ?? "00000000-0000-0000-0000-000000000000";
-  const [intake, missingFiles, missingExamples, unknown, unknownExamples, setlists, overdue] =
-    await Promise.all([
-      rows<{ state: string; kind: string; n: string; oldest: string | null }>(
-        db,
-        sql`select i.state, ch.kind, count(*) as n, min(i.captured_at)::text as oldest
+  const [
+    intake,
+    missingFiles,
+    missingExamples,
+    unknown,
+    unknownExamples,
+    setlists,
+    overdue,
+    similar,
+  ] = await Promise.all([
+    rows<{ state: string; kind: string; n: string; oldest: string | null }>(
+      db,
+      sql`select i.state, ch.kind, count(*) as n, min(i.captured_at)::text as oldest
           from public.intake_items i join public.channels ch on ch.id = i.channel_id
           where i.state in ('pending', 'triage')
           group by i.state, ch.kind`,
-      ),
-      // データ品質の検査 stored_without_file と同じ条件
-      rows<{ n: string }>(
-        db,
-        sql`select count(*) as n from public.assets a
+    ),
+    // データ品質の検査 stored_without_file と同じ条件
+    rows<{ n: string }>(
+      db,
+      sql`select count(*) as n from public.assets a
           where a.file_policy = 'stored' and a.media_type <> 'text'
             and not exists (select 1 from public.asset_files f
                             where f.asset_id = a.id and f.variant = 'original')`,
-      ),
-      rows<{ id: string; title: string | null; published_at: string | null; files: string }>(
-        db,
-        sql`select p.id, p.title, coalesce(p.published_at::text, p.published_date::text) as published_at,
+    ),
+    rows<{ id: string; title: string | null; published_at: string | null; files: string }>(
+      db,
+      sql`select p.id, p.title, coalesce(p.published_at::text, p.published_date::text) as published_at,
             count(*) as files
           from public.assets a join public.posts p on p.id = a.post_id
           where a.file_policy = 'stored' and a.media_type <> 'text'
             and not exists (select 1 from public.asset_files f
                             where f.asset_id = a.id and f.variant = 'original')
           group by p.id order by max(a.created_at) desc limit ${EXAMPLES}`,
-      ),
-      // 曲ごとの参加が未確認の披露（決定記録 0060。数えるのは、日程を持たない出来事と各日程の曲）
-      rows<{ n: string }>(
-        db,
-        sql`select count(*) as n from public.event_items i
+    ),
+    // 曲ごとの参加が未確認の披露（決定記録 0060。数えるのは、日程を持たない出来事と各日程の曲）
+    rows<{ n: string }>(
+      db,
+      sql`select count(*) as n from public.event_items i
           where i.item_type = 'song' and ${countedPerformance}
             and not exists (select 1 from public.event_item_participants p
                             where p.event_item_id = i.id and p.entity_id = ${subject})`,
-      ),
-      rows<EventExample & { songs: string }>(
-        db,
-        sql`select e.id, e.title, e.parent_id, pe.title as parent_title, e.starts_on::text as starts_on,
+    ),
+    rows<EventExample & { songs: string }>(
+      db,
+      sql`select e.id, e.title, e.parent_id, pe.title as parent_title, e.starts_on::text as starts_on,
             count(*) as songs
           from public.event_items i
           join public.events e on e.id = i.event_id
@@ -85,12 +93,12 @@ async function tasksOf(db: Database, subjectId: string | null) {
                             where p.event_item_id = i.id and p.entity_id = ${subject})
           group by e.id, pe.title
           order by e.starts_on desc nulls last limit ${EXAMPLES}`,
-      ),
-      // セットリストの無い公演: 日付を過ぎ、蓄積対象の人物が出演した（本人か、まとまりに出演の記録がある）、
-      // 日程を持たない公演で、曲が 1 つも無いもの
-      rows<EventExample & { total: string }>(
-        db,
-        sql`select e.id, e.title, e.parent_id, pe.title as parent_title, e.starts_on::text as starts_on,
+    ),
+    // セットリストの無い公演: 日付を過ぎ、蓄積対象の人物が出演した（本人か、まとまりに出演の記録がある）、
+    // 日程を持たない公演で、曲が 1 つも無いもの
+    rows<EventExample & { total: string }>(
+      db,
+      sql`select e.id, e.title, e.parent_id, pe.title as parent_title, e.starts_on::text as starts_on,
             count(*) over () as total
           from public.events e
           left join public.events pe on pe.id = e.parent_id
@@ -103,11 +111,11 @@ async function tasksOf(db: Database, subjectId: string | null) {
             and not exists (select 1 from public.event_items i
                             where i.event_id = e.id and i.item_type = 'song')
           order by e.starts_on desc nulls last limit ${EXAMPLES}`,
-      ),
-      // データ品質の検査 overdue_announcement と同じ条件
-      rows<EventExample & { total: string }>(
-        db,
-        sql`select e.id, e.title, e.parent_id, pe.title as parent_title, e.starts_on::text as starts_on,
+    ),
+    // データ品質の検査 overdue_announcement と同じ条件
+    rows<EventExample & { total: string }>(
+      db,
+      sql`select e.id, e.title, e.parent_id, pe.title as parent_title, e.starts_on::text as starts_on,
             count(*) over () as total
           from public.events e
           left join public.events pe on pe.id = e.parent_id
@@ -115,8 +123,17 @@ async function tasksOf(db: Database, subjectId: string | null) {
             and exists (select 1 from public.event_participants p
                         where p.event_id = e.id and p.status = 'scheduled')
           order by e.starts_on desc nulls last limit ${EXAMPLES}`,
-      ),
-    ]);
+    ),
+    // 似た画像の「重複の疑い」（決定記録 0069）と、見た目のハッシュをまだ計算していない保存済みの画像
+    rows<{ pending: string; unhashed: string }>(
+      db,
+      sql`select
+            (select count(*) from public.merge_candidates
+              where kind = 'asset' and state = 'pending') as pending,
+            (select count(*) from public.assets
+              where media_type = 'image' and file_policy = 'stored' and phash is null) as unhashed`,
+    ),
+  ]);
 
   const sum = (state: string, kind?: string) =>
     intake
@@ -156,6 +173,7 @@ async function tasksOf(db: Database, subjectId: string | null) {
       ? { count: num(setlists[0]?.total), events: setlists.map(event) }
       : null,
     overdue: { count: num(overdue[0]?.total), events: overdue.map(event) },
+    similar_images: { count: num(similar[0]?.pending), unhashed: num(similar[0]?.unhashed) },
   };
 }
 

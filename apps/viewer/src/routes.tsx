@@ -13,6 +13,7 @@ function page<M, K extends keyof M>(load: () => Promise<M>, name: K) {
 const pages = {
   assets: () => import("./pages/Assets.tsx"),
   dashboard: () => import("./pages/Dashboard.tsx"),
+  duplicates: () => import("./pages/Duplicates.tsx"),
   events: () => import("./pages/Events.tsx"),
   eventView: () => import("./pages/EventView.tsx"),
   intake: () => import("./pages/IntakeList.tsx"),
@@ -27,6 +28,7 @@ const pages = {
 };
 const AssetsPage = page(pages.assets, "AssetsPage");
 const DashboardPage = page(pages.dashboard, "DashboardPage");
+const DuplicatesPage = page(pages.duplicates, "DuplicatesPage");
 const EventsPage = page(pages.events, "EventsPage");
 const EventsEmpty = page(pages.events, "EventsEmpty");
 const EventEditPage = page(pages.events, "EventEditPage");
@@ -108,6 +110,7 @@ export const routes: RouteObject[] = [
         ],
       },
       { path: "dashboard", element: <DashboardPage /> },
+      { path: "duplicates", element: <DuplicatesPage /> },
       { path: "assets", element: <AssetsPage /> },
       { path: "songs", element: <SongsPage /> },
       { path: "songs/:id", element: <SongsPage /> },
