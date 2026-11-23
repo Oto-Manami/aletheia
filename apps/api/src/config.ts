@@ -2,10 +2,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 
-// 設定は環境変数で渡す（手元の PC でも Cloud Run でも同じコードで動かす。決定記録 0002）
+// 設定は環境変数で渡す（手元の PC でもサーバー用の機械でも同じコードで動かす。決定記録 0002・0022）
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
-  /** Bot など、運営者の代わりに API を呼ぶ仕組みが使う鍵 */
+  /** Discord の Bot・自動の収集の処理など、運営者の代わりに API を呼ぶ仕組みが使う鍵 */
   API_SERVICE_TOKEN: z.string().min(32, "API_SERVICE_TOKEN は 32 文字以上にしてください"),
   /** 閲覧サイトのログインを確かめる公開鍵の場所（Supabase の JWKS） */
   SUPABASE_JWKS_URL: z.url(),

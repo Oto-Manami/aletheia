@@ -80,7 +80,6 @@ function NotFound() {
   );
 }
 
-// Discord の承認カードの「編集」は /intake/:id を開く
 export const routes: RouteObject[] = [
   {
     element: <Layout />,
