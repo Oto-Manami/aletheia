@@ -1,0 +1,29 @@
+# 依存の更新を知らせる（週に 1 回、種類ごとに 1 つのプルリクエストにまとめる）
+# 取り込む前に CI が通ることを確かめる。サーバーへの反映は main への取り込みで自動で行われる
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    groups:
+      npm:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Tokyo
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore"
