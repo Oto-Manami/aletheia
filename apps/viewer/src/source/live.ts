@@ -2,6 +2,7 @@
 //
 // データベースの行レベルセキュリティが見える範囲を決める。承認の画面は管理者だけが使える（API が確かめる）。
 
+import { versionWatcher } from "../version.ts";
 import { clearLoadCache } from "../load-cache.ts";
 import type { DraftInput } from "@aletheia/intake/draft";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -266,6 +267,8 @@ export class LiveSource implements ArchiveSource {
   ) {}
 
   private async api<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+    // 古い版の画面のまま書き込まない（新しい API と食い違うおそれがある。Issue #73）
+    if (method === "POST") await versionWatcher.assertCurrent();
     const { data } = await this.supabase.auth.getSession();
     const token = data.session?.access_token;
     if (!token) throw new SourceError("ログインが必要です", 401);
