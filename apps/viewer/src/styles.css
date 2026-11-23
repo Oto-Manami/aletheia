@@ -4673,9 +4673,33 @@ button.participation {
 }
 
 .dashboard-task.is-done {
+  /* 残っていないものは後ろに回し、小さく見せる（残っている作業を先に目に入れる） */
+  order: 1;
+  align-self: start;
+  padding: 8px 14px;
   border-color: var(--border);
   box-shadow: none;
   color: var(--muted);
+}
+
+.dashboard-task.is-done .dashboard-task-title {
+  font-weight: 400;
+}
+
+/* 開く先のある作業は、カード全体を押せる */
+.dashboard-task.is-link {
+  position: relative;
+}
+
+.dashboard-task.is-link:hover {
+  border-color: var(--count-ink);
+}
+
+.dashboard-task.is-link .dashboard-task-open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
 }
 
 .dashboard-task-head {

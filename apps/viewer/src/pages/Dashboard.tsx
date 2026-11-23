@@ -46,8 +46,10 @@ function Task({
   children?: ReactNode;
 }) {
   const done = count === 0;
+  // 開く先のある、残っている作業は、カード全体を押して開ける（「開く」の文字を狙わなくてよい）
+  const whole = !done && to !== undefined && children === undefined;
   return (
-    <li className={`dashboard-task ${done ? "is-done" : ""}`}>
+    <li className={`dashboard-task ${done ? "is-done" : ""} ${whole ? "is-link" : ""}`}>
       <div className="dashboard-task-head">
         <span className="dashboard-task-title">{title}</span>
         <span className="dashboard-task-count" aria-label={`${title} ${count} ${unit}`}>
