@@ -538,3 +538,47 @@ describe("下書きに付いた仮置きのファイルを見せる", () => {
       expect((await ctx.call("GET", `/intake/${id}/files/not-a-hash`)).status).toBe(400);
     }));
 });
+
+describe("どの下書きにも紐付いていない仮置きのファイルの片付け（Issue #71）", () => {
+  it("紐付いていない古いものだけをごみ箱に移し、下書きが指すもの・置いたばかりのものは残す", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const { cleanupStaging } = await import("../src/staging-cleanup.ts");
+      const kept = await stage(ctx, "1001");
+      await intakeWith(ctx, d, [kept]);
+      const orphan = await stage(ctx, "1002", 1, "fetch");
+      const fresh = await stage(ctx, "1003");
+      // 置いた日時をずらす（kept と orphan は 10 日前、fresh は 1 日前）
+      const at = (key: string, iso: string) => {
+        ctx.files.files.get(key)!.createdAt = iso;
+      };
+      at(kept.storage_key, "2026-11-10T00:00:00.000Z");
+      at(orphan.storage_key, "2026-11-10T00:00:00.000Z");
+      at(fresh.storage_key, "2026-11-19T00:00:00.000Z");
+
+      const r = await cleanupStaging(ctx.db, ctx.files, {
+        now: () => Date.parse("2026-11-20T00:00:00.000Z"),
+        olderThanDays: 7,
+      });
+      expect(r).toEqual({ checked: 3, trashed: 1, recent: 1, failed: 0 });
+      expect(ctx.files.trashed.has(orphan.storage_key)).toBe(true);
+      expect(ctx.files.pathOf(kept.storage_key)).toBe("_staging/discord/1001_01.jpg");
+      expect(ctx.files.pathOf(fresh.storage_key)).toBeDefined();
+    }));
+
+  it("承認の後に保存できなかったファイル（やり直しに使う）も、下書きが指すので残す", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const { cleanupStaging } = await import("../src/staging-cleanup.ts");
+      const staged = await stage(ctx, "1001");
+      const id = await intakeWith(ctx, d, [staged]);
+      vi.spyOn(ctx.files, "move").mockRejectedValueOnce(new Error("一時的な失敗"));
+      await ctx.call("POST", `/intake/${id}/approve`, {});
+      ctx.files.files.get(staged.storage_key)!.createdAt = "2026-01-01T00:00:00.000Z";
+      const r = await cleanupStaging(ctx.db, ctx.files, {
+        now: () => Date.parse("2026-11-20T00:00:00.000Z"),
+      });
+      expect(r.trashed).toBe(0);
+      expect(ctx.files.pathOf(staged.storage_key)).toBe("_staging/discord/1001_01.jpg");
+    }));
+});

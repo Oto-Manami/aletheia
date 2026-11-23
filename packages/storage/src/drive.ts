@@ -3,7 +3,14 @@
 // 専用アカウントの OAuth（更新用トークン）で接続する（決定記録 0001。サービスアカウントは
 // 個人のドライブに保存容量を持たないため使わない）。Google のライブラリは使わず、Drive の REST API を直接呼ぶ。
 
-import type { FileStore, FolderEntry, FolderPath, FolderStore, StoredFile } from "./types.ts";
+import type {
+  FileEntry,
+  FileStore,
+  FolderEntry,
+  FolderPath,
+  FolderStore,
+  StoredFile,
+} from "./types.ts";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const API = "https://www.googleapis.com/drive/v3";
@@ -188,6 +195,30 @@ export class DriveFileStore implements FileStore, FolderStore {
         nextPageToken?: string;
       }>(`${API}/files?${params.toString()}`);
       entries.push(...page.files.map((f) => ({ name: f.name, key: f.id })));
+      pageToken = page.nextPageToken;
+    } while (pageToken);
+    return entries;
+  }
+
+  async listFiles(folder: FolderPath): Promise<FileEntry[]> {
+    const parent = await this.folderId(folder);
+    const q = `${quote(parent)} in parents and mimeType != '${FOLDER}' and trashed = false`;
+    const entries: FileEntry[] = [];
+    let pageToken: string | undefined;
+    do {
+      const params = new URLSearchParams({
+        q,
+        fields: "nextPageToken,files(id,name,createdTime)",
+        pageSize: "1000",
+      });
+      if (pageToken) params.set("pageToken", pageToken);
+      const page = await this.call<{
+        files: { id: string; name: string; createdTime?: string }[];
+        nextPageToken?: string;
+      }>(`${API}/files?${params.toString()}`);
+      entries.push(
+        ...page.files.map((f) => ({ name: f.name, key: f.id, createdAt: f.createdTime ?? null })),
+      );
       pageToken = page.nextPageToken;
     } while (pageToken);
     return entries;

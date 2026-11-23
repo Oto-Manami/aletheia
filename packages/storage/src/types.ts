@@ -42,10 +42,20 @@ export interface FolderEntry {
   key: string;
 }
 
+export interface FileEntry {
+  name: string;
+  /** 保存先でのファイルの ID（StoredFile.key と同じ） */
+  key: string;
+  /** 保存先に置いた日時（ISO 8601）。分からなければ null */
+  createdAt: string | null;
+}
+
 /** フォルダの単位で扱う保存先（バックアップの置き場所。決定記録 0016） */
 export interface FolderStore {
   /** フォルダの直下のフォルダの一覧。フォルダが無ければ作る */
   listFolders(folder: FolderPath): Promise<FolderEntry[]>;
+  /** フォルダの直下のファイルの一覧（ごみ箱のものは除く）。フォルダが無ければ作る */
+  listFiles(folder: FolderPath): Promise<FileEntry[]>;
   /** フォルダを中身ごとごみ箱に移す（すぐには消えない） */
   trashFolder(key: string): Promise<void>;
 }
