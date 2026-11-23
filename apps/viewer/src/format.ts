@@ -253,7 +253,19 @@ export function eventDateLabel(
 ): string {
   if (!startsOn) return "日付なし";
   const start = formatDate(startsOn, precision);
-  return endsOn && endsOn !== startsOn ? `${start}〜${formatDate(endsOn, precision)}` : start;
+  if (!endsOn || endsOn === startsOn) return start;
+  // 終わりの日付は、始まりと同じ年・月を繰り返さない（2026年12月1日〜2日、2026年11月30日〜12月2日）
+  let end = formatDate(endsOn, precision);
+  if (end === start) return start;
+  const [sy, sm] = startsOn.split("-");
+  const [ey, em] = endsOn.split("-");
+  if (sy === ey && precision !== "year" && end.startsWith(`${ey}年`)) {
+    end = end.slice(`${ey}年`.length);
+    if (sm === em && precision !== "month" && end.startsWith(`${Number(em)}月`)) {
+      end = end.slice(`${Number(em)}月`.length);
+    }
+  }
+  return end ? `${start}〜${end}` : start;
 }
 
 /** 時刻（JST の HH:MM）。無ければ空 */
