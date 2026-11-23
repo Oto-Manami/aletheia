@@ -1364,6 +1364,11 @@ select:disabled {
   margin-bottom: 8px;
 }
 
+/* 検索: 題名が当てはまる投稿（Issue #66） */
+.search-titles {
+  margin-bottom: 20px;
+}
+
 .hits {
   list-style: none;
   margin: 0;

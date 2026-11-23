@@ -143,6 +143,14 @@ export interface SearchHit {
   snippetHtml: string;
 }
 
+/** 題名が当てはまる投稿 */
+export interface PostTitleHit {
+  postId: string;
+  title: string;
+  channelName: string;
+  date: string | null;
+}
+
 export interface AssetView {
   id: string;
   position: number | null;
@@ -833,6 +841,8 @@ export interface ArchiveSource {
   /** 登場する人・写っている人のタグ付けの候補（entities.attributes.tag_candidate） */
   listTagCandidates(): Promise<RefLabel[]>;
   search(query: string): Promise<SearchHit[]>;
+  /** 投稿の題名（SNS ならアカウント名を含む）で探す。新しい順に上限 50 件（Issue #66） */
+  searchPostTitles(query: string): Promise<PostTitleHit[]>;
   getPost(id: string): Promise<PostView>;
   /**
    * 要らない素材（画像・動画など）を外す。素材と、その紐付け・文字を消し、原本は却下の場所へ移す（消さない）。

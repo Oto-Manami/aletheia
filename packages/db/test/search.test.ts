@@ -70,6 +70,50 @@ describe("全文検索", () => {
       expect(atLeastOne).toHaveLength(1);
     }));
 
+  it("投稿の題名（アカウント名）で見つかり、見えない投稿・登録のない人には出ない（Issue #66）", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      await c.query("update public.posts set title = $1 where id = $2", [
+        "見本 花子 (@Mihon_Hanako)",
+        d.freePost.post,
+      ]);
+      await c.query("update public.posts set title = $1 where id = $2", [
+        "内部 (@mihon_hanako)",
+        d.privatePost.post,
+      ]);
+      const viewer = await createUser(c, {});
+      await actAs(c, "authenticated", viewer);
+      type Row = { post_id: string; title: string; channel_name: string };
+      // 全角・大文字小文字の違いを吸収する。閲覧サイトでは非公開の投稿も見える
+      const { rows } = await c.query<Row>(
+        "select post_id, title, channel_name from public.search_post_titles('＠mihon_hanako')",
+      );
+      expect(rows.map((r) => r.post_id).sort()).toEqual(
+        [d.freePost.post, d.privatePost.post].sort(),
+      );
+      expect(rows.every((r) => r.channel_name !== "")).toBe(true);
+      const { rows: one } = await c.query(
+        "select post_id from public.search_post_titles('花子', 1)",
+      );
+      expect(one).toHaveLength(1);
+
+      await actAsOwner(c);
+      const stranger = await createUser(c);
+      await actAs(c, "authenticated", stranger);
+      const { rows: none } = await c.query(
+        "select post_id from public.search_post_titles('mihon_hanako')",
+      );
+      expect(none).toEqual([]);
+
+      await actAsOwner(c);
+      await actAs(c, "anon");
+      await c.query("savepoint s");
+      await expect(
+        c.query("select * from public.search_post_titles('mihon_hanako')"),
+      ).rejects.toMatchObject({ code: "42501" });
+      await c.query("rollback to savepoint s");
+    }));
+
   it("人物の別名でも見つかる", () =>
     withRollback(async (c) => {
       const d = await seed(c);
