@@ -100,6 +100,27 @@ describe("振り分けの画面", () => {
     expect(screen.getByRole("tab", { name: "言及なし 0" })).toBeTruthy();
   });
 
+  it("選んでいる間は、画面の下の帯からもまとめて言及なしにでき、選ぶのをやめられる", async () => {
+    const user = userEvent.setup();
+    open();
+    await screen.findByText("リハーサルの日");
+    expect(screen.queryByRole("region", { name: "選んだ記事の操作" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" }));
+    const bar = screen.getByRole("region", { name: "選んだ記事の操作" });
+    expect(within(bar).getByText("3 件を選んでいます")).toBeTruthy();
+    await user.click(within(bar).getByRole("button", { name: "選ぶのをやめる" }));
+    expect(screen.queryByRole("region", { name: "選んだ記事の操作" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "言及も写真の選択も無いものを選ぶ" }));
+    await user.click(
+      within(screen.getByRole("region", { name: "選んだ記事の操作" })).getByRole("button", {
+        name: "まとめて言及なしにする",
+      }),
+    );
+    expect(await screen.findByText("3 件を言及なしにしました")).toBeTruthy();
+    expect(cards()).toHaveLength(3);
+  });
+
   it("まとめて言及なしにする途中で止まったら、終わった分を伝え、一覧を読み直して画面を合わせる", async () => {
     const user = userEvent.setup();
     const source = new DemoSource(0);
