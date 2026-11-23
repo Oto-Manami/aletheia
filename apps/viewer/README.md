@@ -21,6 +21,7 @@
 - 承認・出来事の記録などの書き込みは API を呼ぶ。API が利用者かどうかと、作業者・運営者の操作か（閲覧者は見るだけ）、運営者だけの操作かを確かめる
 - `/events/:id` は、閲覧者には直す欄を触れない形で見せる（保存・消すのボタンは出さない）
 - サーバーを持たない静的なサイト。置き場所の設定は `vercel.json`
+- 防御のヘッダー（`vercel.json`）: 枠への埋め込みの禁止（`X-Frame-Options`）・HTTPS の強制（`Strict-Transport-Security`）・カメラなどの機能の禁止（`Permissions-Policy`）。読み込んでよい場所の決まり（Content-Security-Policy）は、まず違反を記録するだけの形（`Report-Only`）で入れている。ブラウザの開発者ツールのコンソールに `[Report Only]` の違反が出ないことを確かめてから、効かせる形にする
 
 ## 動かす
 
