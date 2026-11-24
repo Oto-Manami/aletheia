@@ -2545,6 +2545,15 @@ details.more[open] > summary {
   font-size: 12px;
 }
 
+/* 狭い画面では、見出しの下に回るので、枚数と「すべてに付ける」を横に並べて左に寄せる */
+@media (max-width: 640px) {
+  .photos-count {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+}
+
 .record-list {
   display: grid;
   gap: 4px 0;
@@ -3784,19 +3793,60 @@ details.more[open] > summary {
 }
 
 @media (max-width: 960px) {
-  /* 狭い画面では右側を下に回し、判断のボタンを画面の下に留める */
+  /*
+   * 狭い画面では右側を下に回し、判断のボタンを画面の下に留める。右側の欄の中に留める（sticky）と、
+   * 写真の多い記事では欄そのものが画面の下の方にあるため、ボタンまで何画面も下りる必要があった。
+   * 画面の下に固定し、承認する・保留・却下を 1 行に並べる
+   */
   .approval-side {
     order: 0;
   }
 
   .decision {
-    position: sticky;
+    position: fixed;
+    z-index: 30;
+    left: var(--sidebar);
+    right: 0;
     bottom: 0;
-    margin: 0 -20px -20px;
-    padding: 12px 20px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 8px;
+    margin: 0;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
     background: var(--surface);
-    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-    box-shadow: 0 -4px 12px rgb(15 23 42 / 0.06);
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: 0 -4px 12px rgb(15 23 42 / 0.08);
+  }
+
+  .decision > * {
+    grid-column: 1 / -1;
+  }
+
+  .decision > .button.primary {
+    grid-column: 1;
+  }
+
+  .decision > .decision-secondary {
+    grid-column: 2;
+  }
+
+  .decision-summary {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  /* 固定した判断の欄の下に、記事の最後が隠れないようにする */
+  .intake:has(.decision) {
+    padding-bottom: 180px;
+  }
+}
+
+@media (max-width: 767px) {
+  .decision {
+    left: 0;
   }
 }
 
@@ -4848,6 +4898,16 @@ button.participation {
 
 .photo-series .field {
   margin: 0;
+}
+
+/* 欄の名前は「シリーズ」の見出しと重なるので、画面には出さない（読み上げでは読む） */
+.photo-series .picker > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .photo-tag-series {
