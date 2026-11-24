@@ -582,6 +582,21 @@ export function TriagePage() {
   ];
   const count = (f: TriageMentionFilter) => (counts ? ` ${counts[f].toLocaleString("ja-JP")}` : "");
 
+  /** 選んだ記事をまとめて言及なし（関係なし）にする */
+  const discardPicked = () => {
+    setBulkBusy(true);
+    setMessage(null);
+    discard(picked)
+      .then((n) => setMessage({ text: `${n} 件を${route.discard}にしました`, error: false }))
+      .catch((e: unknown) =>
+        setMessage({ text: e instanceof Error ? e.message : String(e), error: true }),
+      )
+      .finally(() => setBulkBusy(false));
+  };
+  const bulkLabel = progress
+    ? `${route.discard}にしています（${progress.done} / ${progress.total} 件）`
+    : `選んだ ${picked.length} 件を${route.discard}にする`;
+
   return (
     <section className="page wide">
       <div className="page-head">
@@ -702,22 +717,9 @@ export function TriagePage() {
             type="button"
             className="button danger"
             disabled={picked.length === 0 || bulkBusy}
-            onClick={() => {
-              setBulkBusy(true);
-              setMessage(null);
-              discard(picked)
-                .then((n) =>
-                  setMessage({ text: `${n} 件を${route.discard}にしました`, error: false }),
-                )
-                .catch((e: unknown) =>
-                  setMessage({ text: e instanceof Error ? e.message : String(e), error: true }),
-                )
-                .finally(() => setBulkBusy(false));
-            }}
+            onClick={discardPicked}
           >
-            {progress
-              ? `${route.discard}にしています（${progress.done} / ${progress.total} 件）`
-              : `選んだ ${picked.length} 件を${route.discard}にする`}
+            {bulkLabel}
           </button>
         </div>
       </div>
@@ -829,6 +831,36 @@ export function TriagePage() {
           />
         ))}
       </ul>
+
+      {/*
+       * 記事を選んでいる間は、まとめて言及なしにする操作を画面の下に留める（一覧を下りていくと、
+       * 上のボタンが見えなくなるため）
+       */}
+      {(picked.length > 0 || progress) && (
+        <div className="selection-bar" role="region" aria-label="選んだ記事の操作">
+          <span className="selection-bar-count" aria-live="polite">
+            {progress
+              ? `進み具合 ${progress.done} / ${progress.total} 件`
+              : `${picked.length.toLocaleString("ja-JP")} 件を選んでいます`}
+          </span>
+          <button
+            type="button"
+            className="link-button"
+            disabled={bulkBusy}
+            onClick={() => setSelected(new Set())}
+          >
+            選ぶのをやめる
+          </button>
+          <button
+            type="button"
+            className="button danger"
+            disabled={picked.length === 0 || bulkBusy}
+            onClick={discardPicked}
+          >
+            まとめて{route.discard}にする
+          </button>
+        </div>
+      )}
     </section>
   );
 }

@@ -5062,3 +5062,39 @@ button.participation {
   display: grid;
   gap: 12px;
 }
+
+/* 振り分け: 記事を選んでいる間、画面の下に留める操作の帯 */
+.selection-bar {
+  position: fixed;
+  z-index: 30;
+  left: var(--sidebar);
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 16px;
+  padding: 10px 24px calc(10px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 12px rgb(15 23 42 / 0.08);
+}
+
+.selection-bar-count {
+  margin-right: auto;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 帯の下に、一覧の最後が隠れないようにする */
+.page:has(> .selection-bar) {
+  padding-bottom: 96px;
+}
+
+@media (max-width: 767px) {
+  .selection-bar {
+    left: 0;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  }
+}
