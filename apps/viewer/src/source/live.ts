@@ -45,6 +45,7 @@ import {
   type InviteState,
   type InviteView,
   type MemberView,
+  type PostTitleHit,
   type PostView,
   type RefLabel,
   type Role,
@@ -1053,6 +1054,24 @@ export class LiveSource implements ArchiveSource {
         snippetHtml: h.snippet,
       };
     });
+  }
+
+  async searchPostTitles(query: string): Promise<PostTitleHit[]> {
+    const q = query.trim();
+    if (!q) return [];
+    const rows = rowsOf<{
+      post_id: string;
+      title: string;
+      channel_name: string;
+      published_at: string | null;
+      published_date: string | null;
+    }>(await this.supabase.rpc("search_post_titles", { query: q, max_rows: 50 }));
+    return rows.map((r) => ({
+      postId: r.post_id,
+      title: r.title,
+      channelName: r.channel_name,
+      date: r.published_at ?? r.published_date,
+    }));
   }
 
   async listAssets(

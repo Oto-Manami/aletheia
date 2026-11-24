@@ -55,6 +55,7 @@ import {
   type MemberView,
   type NewEntity,
   type SourcePreview,
+  type PostTitleHit,
   type PostView,
   type RefLabel,
   type Role,
@@ -486,6 +487,22 @@ export class DemoSource implements ArchiveSource {
   async listTagCandidates(): Promise<RefLabel[]> {
     await this.delay();
     return REFS.filter((r) => r.type === "entity" && r.id !== PEOPLE.gen5);
+  }
+
+  async searchPostTitles(query: string): Promise<PostTitleHit[]> {
+    await this.delay();
+    const fold = (v: string) => v.normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+    const q = fold(query);
+    if (!q) return [];
+    return this.posts
+      .filter((p) => p.title && fold(p.title).includes(q))
+      .map((p) => ({
+        postId: p.id,
+        title: p.title!,
+        channelName: p.channelName,
+        date: p.publishedAt ?? p.publishedDate,
+      }))
+      .slice(0, 50);
   }
 
   async search(query: string): Promise<SearchHit[]> {

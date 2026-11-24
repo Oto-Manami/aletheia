@@ -15,12 +15,22 @@ export function SearchPage() {
   const query = params.get("q") ?? "";
   const [input, setInput] = useState(query);
   const [hits] = useLoad(() => source.search(query), [source, query], [], `search:${query}`);
+  // 投稿の題名（SNS ならアカウント名を含む）でも探す（Issue #66）
+  const [titles] = useLoad(
+    () => source.searchPostTitles(query),
+    [source, query],
+    [],
+    `search-titles:${query}`,
+  );
+  const titleHits = titles.status === "ready" ? titles.data : [];
 
   return (
     <section className="page">
       <div className="page-head">
         <h1 className="page-title">検索</h1>
-        <p className="page-sub">本文・キャプション・誌面の文字・書き起こしから探します</p>
+        <p className="page-sub">
+          投稿の題名（アカウント名）と、本文・キャプション・誌面の文字・書き起こしから探します
+        </p>
       </div>
       <form
         className="search-form"
@@ -55,12 +65,34 @@ export function SearchPage() {
           探せませんでした: {hits.error.message}
         </p>
       )}
+      {query && titleHits.length > 0 && (
+        <section className="search-titles" aria-label="題名が当てはまる投稿">
+          <h2 className="column-title">題名が当てはまる投稿 {titleHits.length} 件</h2>
+          <ol className="panel hits">
+            {titleHits.map((t) => (
+              <li key={t.postId} className="hit">
+                <p className="hit-meta">
+                  <Link to={`/posts/${t.postId}`}>{t.title}</Link>
+                  <span className="sep" aria-hidden="true" />
+                  {t.channelName}
+                  {formatHitDate(t.date) && (
+                    <>
+                      <span className="sep" aria-hidden="true" />
+                      {formatHitDate(t.date)}
+                    </>
+                  )}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
       {query && hits.status === "ready" && (
         <>
           <p className="result-count">
-            「{query}」 {hits.data.length} 件
+            「{query}」 本文などに {hits.data.length} 件
           </p>
-          {hits.data.length === 0 && (
+          {hits.data.length === 0 && titleHits.length === 0 && (
             <p className="empty">
               見つかりませんでした。言葉を短くするか、別の言い方で探してください。
             </p>
