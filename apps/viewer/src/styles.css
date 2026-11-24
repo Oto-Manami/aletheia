@@ -5098,3 +5098,17 @@ button.participation {
     padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
   }
 }
+
+/* 閲覧サイトの新しい版が出ているとき（Issue #73） */
+.notice-update {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-size: 13px;
+}
+
+.notice-update .link-button {
+  font-size: inherit;
+  color: inherit;
+  font-weight: 600;
+}

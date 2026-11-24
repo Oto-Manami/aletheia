@@ -19,6 +19,7 @@ import { useApp } from "../context.tsx";
 import { DecisionQueue, type QueuedDecision } from "../decision-queue.ts";
 import { TRIAGE_ROUTES, type TriageRoute } from "../triage-routes.ts";
 import { useLoad } from "../use-load.ts";
+import { startVersionPolling, versionWatcher } from "../version.ts";
 
 export interface LayoutOutlet {
   /** 承認・却下などで件数が変わったときに呼ぶ */
@@ -54,6 +55,12 @@ function Brand() {
 export function Layout() {
   const { source, viewer, signOut } = useApp();
   const [version, setVersion] = useState(0);
+  // 閲覧サイトの新しい版が出ていれば知らせる（勝手には読み直さない。Issue #73）
+  const newerVersion = useSyncExternalStore(
+    (onChange) => versionWatcher.subscribe(onChange),
+    () => versionWatcher.newer,
+  );
+  useEffect(() => startVersionPolling(), []);
   const [menuOpen, setMenuOpen] = useState(false);
   const changed = useCallback(() => setVersion((v) => v + 1), []);
   // 判断は列に入れて 1 件ずつ送る。1 件終わるたびに、一覧と件数を裏で読み直す
@@ -179,6 +186,15 @@ export function Layout() {
       </aside>
 
       <main className="main">
+        {newerVersion && (
+          <p className="notice notice-update" role="status">
+            閲覧サイトの新しい版が出ています。入力の途中のものがあれば控えてから、
+            <button type="button" className="link-button" onClick={() => window.location.reload()}>
+              読み直してください
+            </button>
+            。古い版のままでは、承認などの操作を送れません。
+          </p>
+        )}
         {source.demo && (
           <p className="notice">
             デモ版です。人物・情報源はすべて架空で、操作はこの画面の中だけで反映されます。
