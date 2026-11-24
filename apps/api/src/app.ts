@@ -130,7 +130,7 @@ const knownBody = z.object({
 
 const decisionBody = z.object({
   note: z.string().optional(),
-  /** Bot から呼ぶときに、操作した運営者の利用者 ID を伝える */
+  /** 鍵で呼ぶ仕組みが承認するときに、操作した運営者の利用者 ID を伝える（今の Bot・収集の処理は承認しない） */
   reviewer_id: uuid.optional(),
 });
 
@@ -219,7 +219,7 @@ const reviewerName = sql<string | null>`(
   limit 1
 )`.as("reviewed_by_name");
 
-/** 誰の判断として記録するか。ログインした利用者ならその人、Bot なら伝えられた人 */
+/** 誰の判断として記録するか。ログインした利用者ならその人、鍵で呼ぶ仕組みなら伝えられた人 */
 function reviewerOf(actor: Actor, body: { reviewer_id?: string | undefined }): string | undefined {
   return actor.kind === "user" ? actor.userId : body.reviewer_id;
 }
@@ -466,7 +466,6 @@ export function createApp(
     return c.json({ items, total, kinds });
   });
 
-  /** 言及なしの置き場（直近 10 件。決定記録 0031）。本文は返さず、題名・URL・判断した人だけ。作業者・運営者 */
   /**
    * 画面のメニューに出す件数（承認待ち、ブログ・ニュースの振り分け待ち）。下書きの中身は読まず、
    * 数えるだけにする（ページを開くたびに呼ぶため。決定記録 0038）
@@ -489,6 +488,7 @@ export function createApp(
     });
   });
 
+  /** 言及なしの置き場（直近 10 件。決定記録 0031）。本文は返さず、題名・URL・判断した人だけ。作業者・運営者 */
   app.get("/intake/discarded", async (c) => {
     assertWorker(c.get("actor"));
     const items = await db

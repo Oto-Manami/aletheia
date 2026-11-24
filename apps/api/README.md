@@ -1,6 +1,6 @@
 # @aletheia/api
 
-承認・取り込みの API。Discord Bot・収集の処理・閲覧サイトから呼ばれる。運営者の手元のサーバー用の機械で動かし、運用が固まったら Cloud Run に移す（設計書 決定記録 0002・0022）。設定はすべて環境変数で渡す。
+承認・取り込みの API。閲覧サイト（承認・修正など）と、Discord の Bot・自動の収集の処理（下書きを作る）から呼ばれる。運営者の手元のサーバー用の機械で動かし、Tailscale Funnel で公開の住所を付ける（設計書 決定記録 0022・0026）。設定はすべて環境変数で渡す。
 
 ## 起動
 
@@ -13,33 +13,34 @@ pnpm --filter @aletheia/api dev
 
 収集の処理と同じ機械で、常に動かしておく（設計書 決定記録 0022）。待ち受けるのは同じ機械からだけ（`HOST=127.0.0.1`）。
 
-1. Node.js（22 以上）と pnpm（`package.json` の `packageManager` の版）を入れ、このリポジトリを置いて `pnpm install` する
-2. 環境変数を 1 つのファイル（例: `/etc/aletheia/api.env`。持ち主だけが読める権限 `600`）に書く。項目は `.env.example` のとおりで、`FILE_STORE=drive` にする。値はパスワード管理アプリから写し、ここにもチャットにも書かない
-3. systemd のサービスとして登録する
+専用の利用者（`aletheia`）の **systemd のユーザーサービス**（`aletheia-api`）として動かす。起動・停止・記録を見るのに管理者の権限は要らない。
+
+1. Node.js（22 以上）と pnpm（`package.json` の `packageManager` の版）を入れ、`aletheia` の利用者でこのリポジトリを `~/aletheia` に置いて `pnpm install` する。ログアウト中も動くよう、管理者が `sudo loginctl enable-linger aletheia` を実行する
+2. 環境変数を `~/.config/aletheia/api.env`（持ち主だけが読める権限 `600`）に書く。項目は `.env.example` のとおりで、`FILE_STORE=drive` にする。値はパスワード管理アプリから写し、ここにもチャットにも書かない
+3. ユーザーサービスとして登録する。サービスの定義と、設定ファイルの雛形を作る手順は、自動の収集の処理のリポジトリ（非公開）の `scripts/setup-server.sh` にまとめている
 
 ```ini
-# /etc/systemd/system/aletheia-api.service
+# ~/.config/systemd/user/aletheia-api.service
 [Unit]
 Description=aletheia API
-After=network-online.target
-Wants=network-online.target
 
 [Service]
-User=aletheia
-WorkingDirectory=/home/aletheia/aletheia
-EnvironmentFile=/etc/aletheia/api.env
+WorkingDirectory=%h/aletheia
+EnvironmentFile=%h/.config/aletheia/api.env
 ExecStart=/usr/bin/env pnpm --filter @aletheia/api start
 Restart=on-failure
+RestartSec=10
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 ```
 
 ```sh
-sudo systemctl daemon-reload
-sudo systemctl enable --now aletheia-api
+systemctl --user daemon-reload
+systemctl --user enable --now aletheia-api
 curl http://127.0.0.1:8787/health   # {"ok":true}
 curl http://127.0.0.1:8787/ready    # {"ok":true}（データベースまで使える）
+journalctl --user -u aletheia-api   # 記録
 ```
 
 ### 読み込みを軽くする仕組み
@@ -89,10 +90,10 @@ curl http://127.0.0.1:8787/ready    # {"ok":true}（データベースまで使�
 
 閲覧サイトの利用者の役割は、運営者（`admin`）・作業者（`worker`）・閲覧者（`viewer`）の 3 つ（設計書 決定記録 0032）。閲覧者は見るだけで、変更（`POST`）は作業者・運営者だけ。下書きの振り分け（「言及なし」を含む）・承認・出来事の記録は作業者・運営者が扱え、印の付け直しは運営者だけ。
 
-| 呼び出す側      | `Authorization` ヘッダー                                          | 承認者として残るもの       |
-| --------------- | ----------------------------------------------------------------- | -------------------------- |
-| Bot・収集の処理 | `Bearer <API_SERVICE_TOKEN>`                                      | リクエストの `reviewer_id` |
-| 閲覧サイト      | `Bearer <ログインした利用者のトークン>`（運営者・作業者・閲覧者） | ログインした利用者         |
+| 呼び出す側                      | `Authorization` ヘッダー                                          | 承認者として残るもの                                                       |
+| ------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Bot・収集の処理（下書きを作る） | `Bearer <API_SERVICE_TOKEN>`                                      | リクエストの `reviewer_id`（今の Bot・収集の処理は承認しないので使わない） |
+| 閲覧サイト                      | `Bearer <ログインした利用者のトークン>`（運営者・作業者・閲覧者） | ログインした利用者                                                         |
 
 承認済み・却下の一覧（`GET /intake?state=approved`）は、判断した新しい順に、判断した日時（`reviewed_at`）と人（`reviewed_by_name`）を返す。トーク（`message`）の下書きは、書いた人（`author`）が情報源の持ち主 1 人だけのときに限って承認できる（違えば 422、`code` は `author_mismatch`。決定記録 0068）。素材・投稿を消すエンドポイントは無い（データベースの権限でも、ログインした利用者は読み取りだけ）。
 

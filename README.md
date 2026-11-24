@@ -21,12 +21,12 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.svg">
-  <img src="docs/images/architecture-light.svg" alt="閲覧サイト（Vercel）はログインした人の権限のまま Supabase を読み、承認などの書き込みは API に送る。Discord の入口と承認カードは Bot が扱い、Bot も API に下書きと承認を送る。API は Supabase に書き込み、ファイル実体を Google Drive に置く。バックアップは GitHub Actions が読み取り専用で Supabase を読み、毎日 Drive・毎週 非公開の GitHub に置く。ファンサイトは予定で、公開用のビューから public かつ承認済みのものだけで作る" width="900">
+  <img src="docs/images/architecture-light.svg" alt="閲覧サイト（Vercel）はログインした人の権限のまま Supabase を読み、承認などの書き込みは API に送る。Discord の入口チャンネルへの投稿は Bot が、公式サイトのブログ・ニュースは自動の収集の処理が、それぞれ下書きにして API に送る（どちらもサーバー用の機械で動く）。API は Supabase に書き込み、ファイル実体を Google Drive に置く。バックアップは GitHub Actions が読み取り専用で Supabase を読み、毎日 Drive・毎週 非公開の GitHub に置く。ファンサイトは予定で、公開用のビューから public かつ承認済みのものだけで作る" width="900">
 </picture>
 
-- **書き込みの窓口は API の 1 か所**: 閲覧サイトも Bot も、自動の収集の処理も、下書き・承認などの書き込みは API を通す（Bot と自動の収集の処理は非公開のリポジトリに置く）
+- **書き込みの窓口は API の 1 か所**: 閲覧サイトの承認・修正も、Bot と自動の収集の処理が作る下書きも、書き込みは API を通す（Bot と自動の収集の処理は非公開のリポジトリに置く。承認は閲覧サイトだけで行う）
 - **読み取りはデータベースが守る**: 閲覧サイトはログインした人の権限のまま読み、見える範囲は行レベルセキュリティが決める
-- **費用は無料の範囲**: Supabase・Vercel・Google Drive・GitHub Actions の無料枠で動く。API は当面、運営者の手元のサーバー用の機械で動かす
+- **費用は無料の範囲**: Supabase・Vercel・Google Drive・GitHub Actions の無料枠で動く。API・Bot・自動の収集は、運営者の手元のサーバー用の機械で動かし、Tailscale Funnel で API にだけ公開の住所を付ける
 
 1 つの素材（アセット）が持つ情報の一覧は [docs/data.md](docs/data.md)。
 
@@ -39,7 +39,7 @@
 | `packages/intake/`     | 取り込みの下書きの形と、承認・却下・保留の処理                                                                             |
 | `packages/storage/`    | ファイル実体の保存先（Google Drive・手元のフォルダ）と、置き場所・ファイル名の規則                                         |
 | `packages/backup/`     | データベースのバックアップ（表ごとの JSON Lines・SQL のダンプ・件数の照合・SHA-256 の一覧と、Drive への配置）              |
-| `apps/api/`            | 承認・取り込みの API（Bot・閲覧サイトから呼ぶ）                                                                            |
+| `apps/api/`            | 承認・取り込みの API（閲覧サイト・Bot・自動の収集の処理から呼ぶ）                                                          |
 | `apps/viewer/`         | 閲覧サイト（見る・探す・下書きの確認と承認）。Discord でログインする                                                       |
 | `ops/deploy/`          | サーバーの API の自動更新（main への取り込みで GitHub Actions から更新する。新しいマイグレーションがあれば止めて知らせる） |
 | `ops/file-mirror/`     | ファイル実体の 2 つ目の控え（Drive をサーバー用の機械に毎日写し、毎週ハッシュで突き合わせる）                              |
