@@ -300,25 +300,10 @@ export function createApp(
     }
   });
 
-  // 閲覧者は見るだけ。変更（POST）は作業者・運営者だけ（決定記録 0032）
-  app.use("/intake/*", requireMember(db, auth), writesNeedWorker);
-  app.use("/intake", requireMember(db, auth), writesNeedWorker);
-  app.use("/resolve", requireMember(db, auth), writesNeedWorker);
-  app.use("/resolve/*", requireMember(db, auth), writesNeedWorker);
-  app.use("/files/*", requireMember(db, auth), writesNeedWorker);
-  app.use("/events", requireMember(db, auth), writesNeedWorker);
-  app.use("/events/*", requireMember(db, auth), writesNeedWorker);
-  app.use("/entities", requireMember(db, auth), writesNeedWorker);
-  app.use("/assets/*", requireMember(db, auth), writesNeedWorker);
-  app.use("/posts/*", requireMember(db, auth), writesNeedWorker);
-  app.use("/dashboard", requireMember(db, auth), writesNeedWorker);
-  app.use("/works", requireMember(db, auth), writesNeedWorker);
-  app.use("/works/*", requireMember(db, auth), writesNeedWorker);
-  app.use("/songs", requireMember(db, auth), writesNeedWorker);
-  app.use("/event-items/*", requireMember(db, auth), writesNeedWorker);
-  app.use("/songs/*", requireMember(db, auth), writesNeedWorker);
-  app.use("/duplicates", requireMember(db, auth), writesNeedWorker);
-  app.use("/duplicates/*", requireMember(db, auth), writesNeedWorker);
+  // ここより後のすべての道は、参加者だけが使える（新しい道を足しても、守りを付け忘れない。
+  // 上の /health・/ready だけは、誰でも呼べる）。閲覧者は見るだけで、変更（POST）は作業者・運営者だけ
+  // （決定記録 0032）
+  app.use("*", requireMember(db, auth), writesNeedWorker);
   registerSimilarRoutes(app, db);
   registerEventRoutes(app, db);
   registerArticleRoutes(app, db);
