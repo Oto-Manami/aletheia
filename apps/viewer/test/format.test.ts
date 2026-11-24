@@ -1,7 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { clipLabel, formatDate, formatInstant, formatPublished, pageLabel } from "../src/format.ts";
+import {
+  clipLabel,
+  eventDateLabel,
+  formatDate,
+  formatInstant,
+  formatPublished,
+  pageLabel,
+} from "../src/format.ts";
 
 describe("表示の書式", () => {
+  it("出来事の日付の範囲は、終わりの側で同じ年・月を繰り返さない", () => {
+    expect(eventDateLabel("2026-12-01", "2026-12-02", "day")).toBe("2026年12月1日〜2日");
+    expect(eventDateLabel("2026-11-30", "2026-12-02", "day")).toBe("2026年11月30日〜12月2日");
+    expect(eventDateLabel("2026-12-30", "2027-01-02", "day")).toBe("2026年12月30日〜2027年1月2日");
+    expect(eventDateLabel("2026-09-01", "2026-10-01", "month")).toBe("2026年9月〜10月");
+    expect(eventDateLabel("2026-01-01", "2026-12-31", "year")).toBe("2026年");
+    expect(eventDateLabel("2026-12-01", "2026-12-01", "day")).toBe("2026年12月1日");
+    expect(eventDateLabel("2026-12-01", null, null)).toBe("2026年12月1日");
+  });
+
   it("日時は JST で表示する（UTC の日付をまたぐ場合も）", () => {
     expect(formatInstant("2026-10-15T15:30:00Z")).toBe("2026年10月16日 00:30");
     expect(formatInstant("2026-10-15T21:58:00+09:00")).toBe("2026年10月15日 21:58");

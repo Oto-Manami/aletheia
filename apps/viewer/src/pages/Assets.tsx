@@ -391,7 +391,7 @@ export function AssetsPage() {
   };
 
   return (
-    <section className="page">
+    <section className="page wide">
       <div className="page-head">
         <h1 className="page-title">アセット</h1>
         <p className="page-sub">
