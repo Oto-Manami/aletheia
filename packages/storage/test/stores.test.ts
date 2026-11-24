@@ -52,6 +52,17 @@ describe("メモリ", () => {
     expect(store.trashed.has(key)).toBe(true);
   });
 
+  it("フォルダの直下のファイルを、置いた日時つきで一覧する", async () => {
+    const store = new MemoryFileStore();
+    store.now = () => new Date("2026-11-01T00:00:00Z");
+    const a = await store.put(["_staging", "fetch"], "a.jpg", bytes, "image/jpeg");
+    await store.put(["_staging", "fetch", "sub"], "b.jpg", bytes, "image/jpeg");
+    await store.put(["_staging"], "c.jpg", bytes, "image/jpeg");
+    expect(await store.listFiles(["_staging", "fetch"])).toEqual([
+      { key: a.key, name: "a.jpg", createdAt: "2026-11-01T00:00:00.000Z" },
+    ]);
+  });
+
   it("フォルダを一覧し、中身ごとごみ箱に移せる", async () => {
     const store = new MemoryFileStore();
     await store.put(["b", "2026-10-01"], "x.gz", bytes, "application/gzip");
@@ -78,6 +89,7 @@ function fakeDrive() {
   const folders = new Map<string, string>(); // "parent/name" → id
   const folderMeta = new Map<string, { name: string; parent: string | null }>(); // id → 名前と親
   const parents = new Map<string, string[]>(); // file id → parents
+  const fileNames = new Map<string, string>(); // file id → name
   const trashed = new Set<string>();
   let seq = 0;
   let tokens = 0;
@@ -107,6 +119,17 @@ function fakeDrive() {
       const q = url.searchParams.get("q") ?? "";
       const name = /name = '([^']*)'/.exec(q)?.[1];
       const parent = /'([^']*)' in parents/.exec(q)?.[1];
+      if (q.includes("mimeType != ")) {
+        // 直下のファイルの一覧（ごみ箱に移したものは除く）
+        const files = [...parents]
+          .filter(([id, ps]) => ps.includes(parent ?? "") && !trashed.has(id))
+          .map(([id]) => ({
+            id,
+            name: fileNames.get(id),
+            createdTime: "2026-11-01T00:00:00.000Z",
+          }));
+        return json({ files });
+      }
       if (name === undefined) {
         // 直下のフォルダの一覧（ごみ箱に移したものは除く）
         const files = [...folders]
@@ -125,9 +148,10 @@ function fakeDrive() {
       return json({ id });
     }
     if (method === "POST" && url.pathname === "/upload/drive/v3/files") {
-      const meta = JSON.parse(/\{.*\}/.exec(body)![0]) as { parents: string[] };
+      const meta = JSON.parse(/\{.*\}/.exec(body)![0]) as { parents: string[]; name: string };
       const id = `file-${++seq}`;
       parents.set(id, meta.parents);
+      fileNames.set(id, meta.name);
       return json({ id });
     }
     if (method === "GET" && url.pathname.startsWith("/drive/v3/files/")) {
@@ -259,6 +283,18 @@ describe("Google Drive", () => {
     expect(await store.locate(key)).toBeNull();
     // 既に無いものをごみ箱に移しても失敗にしない
     await store.trash("missing");
+  });
+
+  it("フォルダの直下のファイルを一覧し、置いた日時を返す。ごみ箱のもの・下のフォルダのものは出さない", async () => {
+    const fake = fakeDrive();
+    const store = drive(fake);
+    const a = await store.put(["_staging", "fetch"], "a.jpg", bytes, "image/jpeg");
+    const b = await store.put(["_staging", "fetch"], "b.jpg", bytes, "image/jpeg");
+    await store.put(["_staging", "fetch", "sub"], "c.jpg", bytes, "image/jpeg");
+    await store.trash(b.key);
+    expect(await store.listFiles(["_staging", "fetch"])).toEqual([
+      { key: a.key, name: "a.jpg", createdAt: "2026-11-01T00:00:00.000Z" },
+    ]);
   });
 
   it("検索式に入る名前の ' と \\ を逃がす", async () => {

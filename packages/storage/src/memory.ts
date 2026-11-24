@@ -1,10 +1,22 @@
 import { randomUUID } from "node:crypto";
-import type { FileStore, FolderEntry, FolderPath, FolderStore, StoredFile } from "./types.ts";
+import type {
+  FileEntry,
+  FileStore,
+  FolderEntry,
+  FolderPath,
+  FolderStore,
+  StoredFile,
+} from "./types.ts";
 
 /** テスト用の保存先。中身と場所をメモリに持つ */
 export class MemoryFileStore implements FileStore, FolderStore {
   readonly provider = "memory";
-  readonly files = new Map<string, { path: string; bytes: Uint8Array; contentType: string }>();
+  readonly files = new Map<
+    string,
+    { path: string; bytes: Uint8Array; contentType: string; createdAt: string }
+  >();
+  /** 置いた日時を決める（テストで日時を変えるため） */
+  now: () => Date = () => new Date();
 
   put(
     folder: FolderPath,
@@ -13,7 +25,12 @@ export class MemoryFileStore implements FileStore, FolderStore {
     contentType: string,
   ): Promise<StoredFile> {
     const key = randomUUID();
-    this.files.set(key, { path: [...folder, name].join("/"), bytes, contentType });
+    this.files.set(key, {
+      path: [...folder, name].join("/"),
+      bytes,
+      contentType,
+      createdAt: this.now().toISOString(),
+    });
     return Promise.resolve({ key });
   }
 
@@ -46,6 +63,17 @@ export class MemoryFileStore implements FileStore, FolderStore {
       if (rest.length > 1) names.add(rest[0]!);
     }
     return Promise.resolve([...names].sort().map((name) => ({ name, key: `${prefix}${name}` })));
+  }
+
+  listFiles(folder: FolderPath): Promise<FileEntry[]> {
+    const dir = folder.join("/");
+    const entries: FileEntry[] = [];
+    for (const [key, file] of this.files) {
+      const at = file.path.lastIndexOf("/");
+      if ((at < 0 ? "" : file.path.slice(0, at)) !== dir) continue;
+      entries.push({ key, name: file.path.slice(at + 1), createdAt: file.createdAt });
+    }
+    return Promise.resolve(entries.sort((a, b) => a.name.localeCompare(b.name)));
   }
 
   trashFolder(key: string): Promise<void> {

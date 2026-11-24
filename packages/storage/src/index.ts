@@ -13,4 +13,11 @@ export {
   THUMBNAILS,
   thumbnailLocation,
 } from "./naming.ts";
-export type { FileStore, FolderEntry, FolderPath, FolderStore, StoredFile } from "./types.ts";
+export type {
+  FileEntry,
+  FileStore,
+  FolderEntry,
+  FolderPath,
+  FolderStore,
+  StoredFile,
+} from "./types.ts";

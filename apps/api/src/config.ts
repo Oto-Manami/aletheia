@@ -31,6 +31,10 @@ const schema = z.object({
   ROLE_CACHE_SECONDS: z.coerce.number().int().min(0).max(600).default(60),
   /** 画像の見た目のハッシュを裏で計算するか（on / off。決定記録 0069） */
   IMAGE_HASH_JOB: z.enum(["on", "off"]).default("on"),
+  /** どの下書きにも紐付いていない仮置きのファイルを、1 日 1 回ごみ箱に移すか（on / off） */
+  STAGING_CLEANUP_JOB: z.enum(["on", "off"]).default("on"),
+  /** 仮置きの片付けで、置いてから何日たったものを移すか（それより新しいものは、下書きを作る途中かもしれない） */
+  STAGING_CLEANUP_DAYS: z.coerce.number().int().min(1).default(7),
   /** ファイルの保存先。drive（本番）か local（開発用。手元のフォルダ） */
   FILE_STORE: z.enum(["drive", "local"]).default("local"),
   LOCAL_STORE_DIR: z.string().default(".files"),
