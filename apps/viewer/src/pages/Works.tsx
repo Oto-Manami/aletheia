@@ -4,8 +4,9 @@
 // - 一覧（/works）: 種類と名前で絞る。作業者・運営者は作品を作れる
 // - 作品の画面（/works/:id）: その作品の回・号の一覧と、回・号や作品に紐付いた素材の画像
 // - 楽曲・シングル・アルバム・MV は楽曲の画面で扱う（決定記録 0066）
+// - レギュラーの印の作品は、回・号をここで足し、出来事の一覧には出さない（決定記録 0071）
 
-import { ChevronLeft, Plus } from "lucide-react";
+import { CalendarPlus, ChevronLeft, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { ClassificationChoice } from "../components/EntityPicker.tsx";
@@ -13,11 +14,21 @@ import { type GalleryImage, GalleryGrid, ImageViewer } from "../components/Mater
 import { useApp } from "../context.tsx";
 import {
   ENTITY_SUBTYPE_LABELS,
+  EVENT_KIND_LABELS,
   EVENT_KIND_SHORT,
   eventDateLabel,
   formatPublished,
+  PARTICIPANT_ROLE_LABELS,
   PARTICIPANT_STATUS_LABELS,
 } from "../format.ts";
+import {
+  episodeKindOf,
+  parseEpisodeNumber,
+  regularEpisodeInput,
+  regularRoleOf,
+  regularStatusOf,
+  regularTitleOf,
+} from "../source/regular.ts";
 import type { Classification, WorkView } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 
@@ -245,6 +256,7 @@ function WorkList() {
               <tr key={w.id}>
                 <th scope="row">
                   <Link to={`/works/${w.id}`}>{w.name}</Link>
+                  {w.regular && <span className="tag work-regular-tag">レギュラー</span>}
                 </th>
                 <td className="quiet">{subtypeLabel(w.subtype)}</td>
                 <td className="dashboard-num">{nf.format(w.events)}</td>
@@ -259,17 +271,179 @@ function WorkList() {
   );
 }
 
+/**
+ * レギュラーの印。付けると、この作品の回・号は出来事の一覧に出さず、ここで足して見る（決定記録 0071）
+ */
+function RegularToggle({ view, onChanged }: { view: WorkView; onChanged: () => void }) {
+  const { source } = useApp();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!source.setWorkRegular) return null;
+  const set = source.setWorkRegular.bind(source);
+  const toggle = async (regular: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await set(view.work.id, regular);
+      onChanged();
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="work-regular">
+      <label>
+        <input
+          type="checkbox"
+          checked={view.work.regular}
+          disabled={busy}
+          onChange={(e) => void toggle(e.target.checked)}
+        />
+        レギュラー（回・号をここで足し、出来事の一覧には出さない）
+      </label>
+      {error && (
+        <p className="error" role="alert">
+          変えられませんでした: {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** 回・号を足す（作業者・運営者。決定記録 0071）。蓄積対象の人物の出演を付けて作る */
+function AddEpisode({ view, onAdded }: { view: WorkView; onAdded: () => void }) {
+  const { source } = useApp();
+  const kind = episodeKindOf(view.work.subtype);
+  const [open, setOpen] = useState(false);
+  const [startsOn, setStartsOn] = useState("");
+  const [number, setNumber] = useState("");
+  const [title, setTitle] = useState("");
+  const [role, setRole] = useState(regularRoleOf(kind));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [added, setAdded] = useState<string | null>(null);
+  if (!open) {
+    return (
+      <button type="button" className="button" onClick={() => setOpen(true)}>
+        <CalendarPlus size={14} aria-hidden="true" />
+        {kind === "publication" ? "号を足す" : "回を足す"}
+      </button>
+    );
+  }
+  const episodeNumber = parseEpisodeNumber(number);
+  const add = async () => {
+    if (episodeNumber === undefined) return setError("回の番号は 0 以上の整数で入れてください");
+    if (!startsOn && episodeNumber === null && !title.trim()) {
+      return setError("日付・回の番号・題名のどれかを入れてください");
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const subjects = await source.listArchiveSubjects();
+      const input = regularEpisodeInput({
+        work: view.work,
+        title,
+        startsOn: startsOn || null,
+        episodeNumber,
+        role,
+        subjects,
+      });
+      await source.saveEvent(null, input);
+      setAdded(input.title);
+      setStartsOn("");
+      setNumber("");
+      setTitle("");
+      onAdded();
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const status = regularStatusOf(startsOn || null);
+  return (
+    <div className="panel panel-pad work-add-episode" role="group" aria-label="回・号を足す">
+      <div className="field-row">
+        <div className="field">
+          <label htmlFor="work-episode-date">
+            {kind === "publication" ? "発売日" : "放送・配信日"}
+          </label>
+          <input
+            id="work-episode-date"
+            type="date"
+            value={startsOn}
+            onChange={(e) => setStartsOn(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="work-episode-number">回の番号（任意）</label>
+          <input
+            id="work-episode-number"
+            inputMode="numeric"
+            value={number}
+            onChange={(e) => setNumber(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="work-episode-role">出演の役割</label>
+          <select id="work-episode-role" value={role} onChange={(e) => setRole(e.target.value)}>
+            {Object.entries(PARTICIPANT_ROLE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="field">
+        <label htmlFor="work-episode-title">題名（任意）</label>
+        <input
+          id="work-episode-title"
+          value={title}
+          placeholder={regularTitleOf(view.work.name, episodeNumber ?? null)}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+      </div>
+      <p className="field-hint">
+        {EVENT_KIND_LABELS[kind] ?? kind}として作り、
+        {view.subject ? `${view.subject.name} の出演を` : "蓄積対象の人物の出演を"}「
+        {PARTICIPANT_STATUS_LABELS[status] ?? status}」で付けます。詳細は回・号の画面で直せます。
+      </p>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      {added && !error && <p className="done">「{added}」を足しました。</p>}
+      <div className="actions">
+        <button type="button" className="button primary" disabled={busy} onClick={() => void add()}>
+          足す
+        </button>
+        <button type="button" className="button" onClick={() => setOpen(false)}>
+          閉じる
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** 回・号の一覧（多いときは先頭だけを出し、押すと全部） */
-function WorkEvents({ view }: { view: WorkView }) {
+function WorkEvents({ view, onChanged }: { view: WorkView; onChanged: () => void }) {
+  const { viewer } = useApp();
   const [all, setAll] = useState(false);
   const LIMIT = 20;
   const shown = all ? view.events : view.events.slice(0, LIMIT);
   return (
     <section className="event-view-section" aria-labelledby="work-events">
       <h2 id="work-events">回・号（{nf.format(view.events.length)} 件）</h2>
+      {viewer.canWork && view.work.regular && <AddEpisode view={view} onAdded={onChanged} />}
       {view.events.length === 0 ? (
         <p className="quiet">
-          この作品を指す回・号はまだありません。出来事の画面で、作品にこの作品を選んで作ります。
+          {view.work.regular
+            ? "この作品の回・号はまだありません。「回・号を足す」で作ります。"
+            : "この作品を指す回・号はまだありません。出来事の画面で、作品にこの作品を選んで作ります。"}
         </p>
       ) : (
         <ul className="work-events">
@@ -377,11 +551,14 @@ function WorkImages({ view }: { view: WorkView }) {
 }
 
 function WorkPage({ id }: { id: string }) {
-  const { source } = useApp();
+  const { source, viewer } = useApp();
+  // 印を変えた・回を足したときは、今の画面を見せたまま裏で読み直す（足す欄を閉じない）
+  const [version, setVersion] = useState(0);
+  const reload = () => setVersion((v) => v + 1);
   const [loaded] = useLoad(
     () => (source.getWork ? source.getWork(id) : Promise.resolve(null)),
     [source, id],
-    [],
+    [version],
     `work:${id}`,
   );
   return (
@@ -414,9 +591,13 @@ function WorkPage({ id }: { id: string }) {
           <>
             <div className="page-head">
               <h1 className="page-title">{loaded.data.work.name}</h1>
-              <p className="page-sub">{subtypeLabel(loaded.data.work.subtype)}</p>
+              <p className="page-sub">
+                {subtypeLabel(loaded.data.work.subtype)}
+                {loaded.data.work.regular && " ・ レギュラー"}
+              </p>
             </div>
-            <WorkEvents view={loaded.data} />
+            {viewer.canWork && <RegularToggle view={loaded.data} onChanged={reload} />}
+            <WorkEvents view={loaded.data} onChanged={reload} />
             <WorkImages view={loaded.data} />
           </>
         )}

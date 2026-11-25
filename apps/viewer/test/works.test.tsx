@@ -17,6 +17,7 @@ const LIST: WorkSummary[] = [
     id: WORK_ID,
     name: "架空の冠番組",
     subtype: "tv_program",
+    regular: false,
     events: 2,
     latest: "2026-10-12",
     materials: 3,
@@ -24,7 +25,7 @@ const LIST: WorkSummary[] = [
 ];
 
 const VIEW: WorkView = {
-  work: { id: WORK_ID, name: "架空の冠番組", subtype: "tv_program", reading: null },
+  work: { id: WORK_ID, name: "架空の冠番組", subtype: "tv_program", reading: null, regular: false },
   subject: { id: "m1", name: "試験 花子" },
   events: [
     {
@@ -85,8 +86,13 @@ function open(path: string, canWork = true, view: WorkView = VIEW) {
   const source = Object.assign(new DemoSource(0), {
     listWorks: vi.fn(() => Promise.resolve(LIST)),
     getWork: vi.fn(() => Promise.resolve(view)),
+    setWorkRegular: vi.fn(() => Promise.resolve()),
     assetThumbnail: vi.fn(() => Promise.resolve(null)),
   });
+  vi.spyOn(source, "listArchiveSubjects").mockResolvedValue([
+    { id: "m1", type: "entity", label: "試験 花子" },
+  ]);
+  const saveEvent = vi.spyOn(source, "saveEvent").mockResolvedValue("ep3");
   const createEntity = vi.spyOn(source, "createEntity").mockResolvedValue({
     id: WORK_ID,
     label: "架空の冠番組",
@@ -105,7 +111,7 @@ function open(path: string, canWork = true, view: WorkView = VIEW) {
       <RouterProvider router={router} />
     </Ctx.Provider>,
   );
-  return { source, router, createEntity };
+  return { source, router, createEntity, saveEvent };
 }
 
 describe("作品の一覧", () => {
@@ -163,6 +169,56 @@ describe("作品の画面", () => {
   });
 });
 
+describe("レギュラーの作品（決定記録 0071）", () => {
+  const REGULAR: WorkView = { ...VIEW, work: { ...VIEW.work, regular: true } };
+
+  it("作業者はレギュラーの印を付け外しでき、閲覧者には出さない", async () => {
+    const { source } = open(`/works/${WORK_ID}`);
+    const box = await screen.findByLabelText(/レギュラー（回・号をここで足し/);
+    await userEvent.click(box);
+    expect(source.setWorkRegular).toHaveBeenCalledWith(WORK_ID, true);
+    await vi.waitFor(() => expect(source.getWork).toHaveBeenCalledTimes(2));
+    cleanup();
+    open(`/works/${WORK_ID}`, false, REGULAR);
+    await screen.findByRole("heading", { name: "架空の冠番組" });
+    expect(screen.queryByLabelText(/レギュラー（回・号をここで足し/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "回を足す" })).toBeNull();
+  });
+
+  it("レギュラーの作品は、回を足すと作品の回として作り、本人の出演を付ける", async () => {
+    const { saveEvent, source } = open(`/works/${WORK_ID}`, true, REGULAR);
+    await userEvent.click(await screen.findByRole("button", { name: "回を足す" }));
+    const form = screen.getByRole("group", { name: "回・号を足す" });
+    await userEvent.type(within(form).getByLabelText("放送・配信日"), "2026-10-19");
+    await userEvent.type(within(form).getByLabelText("回の番号（任意）"), "3");
+    await userEvent.click(within(form).getByRole("button", { name: "足す" }));
+    await vi.waitFor(() => expect(saveEvent).toHaveBeenCalledTimes(1));
+    expect(saveEvent.mock.calls[0]![0]).toBeNull();
+    expect(saveEvent.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({
+        kind: "episode",
+        title: "架空の冠番組 #3",
+        workId: WORK_ID,
+        episodeNumber: 3,
+        startsOn: "2026-10-19",
+        datePrecision: "day",
+        classification: "public",
+        participants: [
+          { entityId: "m1", role: "regular", status: "appeared", characterName: null },
+        ],
+      }),
+    );
+    expect(await within(form).findByText("「架空の冠番組 #3」を足しました。")).toBeTruthy();
+    await vi.waitFor(() => expect(source.getWork).toHaveBeenCalledTimes(2));
+  });
+
+  it("レギュラーでない作品には、回を足す欄を出さない", async () => {
+    open(`/works/${WORK_ID}`);
+    await screen.findByRole("heading", { name: "架空の冠番組" });
+    expect(screen.queryByRole("button", { name: "回を足す" })).toBeNull();
+  });
+});
+
 describe("楽曲の画面で扱う作品（決定記録 0066）", () => {
   it("種類の絞り込みと作る欄に楽曲・シングル・アルバム・MV を出さない", async () => {
     open("/works");
@@ -179,7 +235,7 @@ describe("楽曲の画面で扱う作品（決定記録 0066）", () => {
   it("楽曲の作品の画面は、その曲の画面へ移す", async () => {
     const { router } = open(`/works/s1`, true, {
       ...VIEW,
-      work: { id: "s1", name: "架空の曲", subtype: "song", reading: null },
+      work: { id: "s1", name: "架空の曲", subtype: "song", reading: null, regular: false },
     });
     await vi.waitFor(() => expect(router.state.location.pathname).toBe("/songs/s1"));
   });

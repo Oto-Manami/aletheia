@@ -142,10 +142,18 @@ const isSchedule = sql<boolean>`(e.parent_id is not null and e.kind <> 'episode'
   where sp.id = e.parent_id and sp.kind in (${sql.join(SCHEDULE_PARENT_KINDS.map((k) => sql`${k}`))})
 ))`;
 
+/** レギュラーの印の作品（attributes.regular）を指す回・号（設計書 決定記録 0071） */
+const isRegularEpisode = sql<boolean>`(e.work_id is not null and exists (
+  select 1 from public.entities rw
+  where rw.id = e.work_id and rw.attributes @> '{"regular": true}'
+))`;
+
 const listQuery = z.object({
   q: z.string().trim().max(100).optional(),
   /** hide: 日程を出さない（出来事の一覧）。include: 日程も出す（素材を紐付ける候補） */
   schedule: z.enum(["hide", "include"]).default("include"),
+  /** hide: レギュラーの作品の回・号を出さない（出来事の一覧。設計書 決定記録 0071） */
+  regular: z.enum(["hide", "include"]).default("include"),
   kind: key.optional(),
   /** この期間（JST の暦日）に重なる出来事だけ。承認の画面で、投稿日の前後の出来事を候補に出す */
   from: date.optional(),
@@ -537,7 +545,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
   app.get("/events", async (c) => {
     const q = listQuery.safeParse(c.req.query());
     if (!q.success) badRequest("条件が正しくありません");
-    const { q: text, kind, from, to, limit, schedule } = q.data;
+    const { q: text, kind, from, to, limit, schedule, regular } = q.data;
     let query = db
       .selectFrom("events as e")
       .leftJoin("entities as w", "w.id", "e.work_id")
@@ -579,6 +587,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       .limit(limit);
     if (kind) query = query.where("e.kind", "=", kind);
     if (schedule === "hide") query = query.where(sql<boolean>`not ${isSchedule}`);
+    if (regular === "hide") query = query.where(sql<boolean>`not ${isRegularEpisode}`);
     if (to) query = query.where("e.starts_on", "<=", to);
     if (from) {
       query = query.where(sql<boolean>`coalesce(e.ends_on, e.starts_on) >= ${from}`);
@@ -593,6 +602,9 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
       .selectFrom("events as e")
       .select((eb) => eb.fn.countAll<string>().as("total"));
     if (schedule === "hide") totalQuery = totalQuery.where(sql<boolean>`not ${isSchedule}`);
+    if (regular === "hide") {
+      totalQuery = totalQuery.where(sql<boolean>`not ${isRegularEpisode}`);
+    }
     const { total } = await totalQuery.executeTakeFirstOrThrow();
     return c.json({ items: await query.execute(), total: Number(total) });
   });

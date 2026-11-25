@@ -161,6 +161,64 @@ describe("作品の画面", () => {
       expect(songs.items).toEqual([]);
     }));
 
+  it("レギュラーの印を付けると、その作品の回は出来事の一覧から外れる（決定記録 0071）", () =>
+    withApi(async (ctx) => {
+      const s = await setup(ctx);
+      const single = await id(
+        ctx,
+        `insert into public.events (kind, title, starts_on, date_precision, classification)
+         values ('performance', '架空の単発の公演', '2026-10-20', 'day', 'public') returning id`,
+      );
+      const listed = async (query: string) =>
+        (
+          (await (await ctx.call("GET", `/events?${query}`)).json()) as {
+            items: { id: string }[];
+            total: number;
+          }
+        ).items.map((e) => e.id);
+
+      const on = await ctx.call("POST", `/works/${s.program}/regular`, { regular: true });
+      expect(on.status).toBe(200);
+      const work = (await (await ctx.call("GET", `/works/${s.program}`)).json()) as {
+        work: { regular: boolean };
+      };
+      expect(work.work.regular).toBe(true);
+      const list = (await (await ctx.call("GET", "/works?q=冠番組")).json()) as {
+        items: { id: string; regular: boolean }[];
+      };
+      expect(list.items).toEqual([expect.objectContaining({ id: s.program, regular: true })]);
+
+      // 出来事の一覧（regular=hide）には出ない。承認の画面の候補（既定）には出る
+      const hidden = await listed("regular=hide");
+      expect(hidden).toContain(single);
+      expect(hidden).not.toContain(s.ep1);
+      expect(hidden).not.toContain(s.ep2);
+      expect(await listed("")).toEqual(expect.arrayContaining([single, s.ep1, s.ep2]));
+
+      // 外すと戻る
+      expect(
+        (await ctx.call("POST", `/works/${s.program}/regular`, { regular: false })).status,
+      ).toBe(200);
+      expect(await listed("regular=hide")).toEqual(expect.arrayContaining([single, s.ep1, s.ep2]));
+    }));
+
+  it("レギュラーの印は作業者・運営者だけが付けられ、作品以外には付けられない", () =>
+    withApi(async (ctx) => {
+      const s = await setup(ctx);
+      const viewer = await tokenFor(
+        await discordUser(ctx.c, "57575757-5757-4575-8575-575757575757", "viewer"),
+      );
+      expect(
+        (await ctx.call("POST", `/works/${s.program}/regular`, { regular: true }, viewer)).status,
+      ).toBe(403);
+      expect(
+        (await ctx.call("POST", `/works/${s.subject}/regular`, { regular: true })).status,
+      ).toBe(404);
+      expect(
+        (await ctx.call("POST", `/works/${s.program}/regular`, { regular: "yes" })).status,
+      ).toBe(400);
+    }));
+
   it("作品でないもの・無いものは 404。ログインなしには返さない", () =>
     withApi(async (ctx) => {
       const s = await setup(ctx);

@@ -48,8 +48,9 @@ export function EventsPage() {
   // 表示の画面（/events/:id）と編集の画面（/events/:id/edit）
   const detail = useMatch("/events/:id/*");
   const [list] = useLoad(
-    // 日程（まとまりの各日・各部）は一覧に出さず、まとまりの画面で見せる（設計書 決定記録 0034）
-    () => source.listEvents({ query, kind, schedule: "hide" }),
+    // 日程（まとまりの各日・各部）は一覧に出さず、まとまりの画面で見せる（設計書 決定記録 0034）。
+    // レギュラーの番組・連載の回・号は、作品の画面で見せる（決定記録 0071）
+    () => source.listEvents({ query, kind, schedule: "hide", regular: "hide" }),
     [source, query, kind],
     // 承認などで変わったときは、今の一覧を見せたまま裏で読み直す
     [layout.version],
@@ -88,6 +89,9 @@ export function EventsPage() {
             <p className="page-sub">
               仕事と公式の発表
               {list.status === "ready" && ` — 全 ${list.data.total.toLocaleString("ja-JP")} 件`}
+            </p>
+            <p className="field-hint">
+              レギュラーの番組・連載の回は、<Link to="/works">作品の画面</Link>にまとめています。
             </p>
           </div>
           {viewer.canWork && (

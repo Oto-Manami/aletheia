@@ -4,6 +4,7 @@
 // |----------|-------------|------------------------------------------------------------------------|
 // | GET      | /works      | 作品の一覧（種類・名前で絞る）。回・号の数、素材の数、いちばん新しい日付 |
 // | GET      | /works/:id  | 作品の回・号の一覧と、素材の画像                                       |
+// | POST     | /works/:id/regular | レギュラーの印を付け外しする（作業者・運営者。決定記録 0071）      |
 //
 // 作品の画面の素材は、次の 2 つを合わせて新しい順に並べる。
 // - 作品の回・号（events.work_id）と、その中身（event_items）に紐付いた投稿の画像
@@ -17,6 +18,7 @@ import { HTTPException } from "hono/http-exception";
 import { sql } from "kysely";
 import { z } from "zod";
 import type { AuthEnv } from "./auth.ts";
+import { inTransaction, userIdOf } from "./events.ts";
 import { archiveSubject } from "./songs.ts";
 
 /**
@@ -34,6 +36,8 @@ const listQuery = z.object({
     .optional(),
   q: z.string().trim().max(100).optional(),
 });
+
+const regularBody = z.object({ regular: z.boolean() });
 
 /** 作品の回・号（とその中身）に紐付いた投稿、または作品に直接 series で紐付いた素材の画像 */
 function imagesOf(workId: string, subjectId: string | null) {
@@ -122,11 +126,13 @@ export function registerWorkRoutes(app: Hono<AuthEnv>, db: Database): void {
       id: string;
       name: string;
       subtype: string | null;
+      regular: boolean;
       events: string;
       latest: string | null;
       assets: string;
     }>`
       select w.id, w.canonical_name as name, w.subtype,
+        w.attributes @> '{"regular": true}' as regular,
         (select count(*) from public.events e where e.work_id = w.id) as events,
         (select max(e.starts_on)::text from public.events e where e.work_id = w.id) as latest,
         (select count(distinct l.from_id) from public.links l
@@ -150,6 +156,7 @@ export function registerWorkRoutes(app: Hono<AuthEnv>, db: Database): void {
         id: r.id,
         name: r.name,
         subtype: r.subtype,
+        regular: r.regular,
         events: Number(r.events),
         latest: r.latest,
         // 素材の数は目安（投稿から紐付いたものは投稿の数）
@@ -163,7 +170,14 @@ export function registerWorkRoutes(app: Hono<AuthEnv>, db: Database): void {
     if (!id.success) throw new HTTPException(404, { message: "見つかりません" });
     const work = await db
       .selectFrom("entities")
-      .select(["id", "canonical_name as name", "subtype", "reading", "classification"])
+      .select([
+        "id",
+        "canonical_name as name",
+        "subtype",
+        "reading",
+        "classification",
+        sql<boolean>`attributes @> '{"regular": true}'`.as("regular"),
+      ])
       .where("id", "=", id.data)
       .where("type", "=", "work")
       .where("merged_into", "is", null)
@@ -202,5 +216,40 @@ export function registerWorkRoutes(app: Hono<AuthEnv>, db: Database): void {
       images: images.rows.slice(0, IMAGE_LIMIT),
       more_images: images.rows.length > IMAGE_LIMIT,
     });
+  });
+
+  // レギュラーの印を付け外しする。印の作品の回・号は、出来事の一覧に出さない（決定記録 0071）
+  app.post("/works/:id/regular", async (c) => {
+    const id = z.uuid().safeParse(c.req.param("id"));
+    if (!id.success) throw new HTTPException(404, { message: "見つかりません" });
+    let json: unknown;
+    try {
+      json = await c.req.json();
+    } catch {
+      throw new HTTPException(400, { message: "本文が JSON ではありません" });
+    }
+    const body = regularBody.safeParse(json);
+    if (!body.success)
+      throw new HTTPException(400, { message: "regular を true か false で送ってください" });
+    const userId = userIdOf(c.get("actor"));
+    const updated = await inTransaction(db, userId, (trx) =>
+      trx
+        .updateTable("entities")
+        .set({
+          attributes: body.data.regular
+            ? sql`attributes || '{"regular": true}'::jsonb`
+            : sql`attributes - 'regular'`,
+          updated_by: userId,
+        })
+        .where("id", "=", id.data)
+        .where("type", "=", "work")
+        .where("merged_into", "is", null)
+        .where(sql<boolean>`coalesce(subtype, '') <> all(${[...MUSIC_SUBTYPES]}::text[])`)
+        .executeTakeFirst(),
+    );
+    if (Number(updated.numUpdatedRows) === 0) {
+      throw new HTTPException(404, { message: "作品が見つかりません" });
+    }
+    return c.json({ ok: true, regular: body.data.regular });
   });
 }

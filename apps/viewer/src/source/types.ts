@@ -586,6 +586,8 @@ export interface WorkSummary {
   id: string;
   name: string;
   subtype: string | null;
+  /** レギュラーの印（回・号を作品の画面で扱い、出来事の一覧に出さない。決定記録 0071） */
+  regular: boolean;
   /** その作品を指す回・号（出来事）の数 */
   events: number;
   /** いちばん新しい回・号の日付 */
@@ -596,7 +598,14 @@ export interface WorkSummary {
 
 /** 作品の画面（設計書 決定記録 0065） */
 export interface WorkView {
-  work: { id: string; name: string; subtype: string | null; reading: string | null };
+  work: {
+    id: string;
+    name: string;
+    subtype: string | null;
+    reading: string | null;
+    /** レギュラーの印（決定記録 0071） */
+    regular: boolean;
+  };
   subject: { id: string; name: string } | null;
   events: {
     id: string;
@@ -786,6 +795,8 @@ export interface ArchiveSource {
   /** 作品の一覧と作品の画面（決定記録 0065） */
   listWorks?(filter: { subtype?: string; query?: string }): Promise<WorkSummary[]>;
   getWork?(id: string): Promise<WorkView>;
+  /** 作品のレギュラーの印を付け外しする（作業者・運営者。決定記録 0071） */
+  setWorkRegular?(id: string, regular: boolean): Promise<void>;
   /** ダッシュボード（決定記録 0063） */
   getDashboard?(): Promise<Dashboard>;
   /** 曲ごとの参加を付ける・外す（null は未確認に戻す） */
@@ -904,12 +915,14 @@ export interface ArchiveSource {
   setMemberRole(discordUserId: string, role: "worker" | "viewer"): Promise<void>;
   /** 出来事の一覧（日付の新しい順。題名・作品名で探す、種類・期間（JST の暦日）で絞る） */
   /** schedule: hide で日程（まとまりの各日・各部）を出さない（設計書 決定記録 0034） */
+  /** regular: hide でレギュラーの作品の回・号を出さない（設計書 決定記録 0071） */
   listEvents(filter?: {
     query?: string;
     kind?: string;
     from?: string;
     to?: string;
     schedule?: "hide" | "include";
+    regular?: "hide" | "include";
   }): Promise<{
     items: EventSummary[];
     total: number;

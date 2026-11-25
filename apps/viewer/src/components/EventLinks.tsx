@@ -4,6 +4,7 @@
 // 「関連が高そうな出来事」として先に出し、選ぶ欄は押すとプルダウンで開き、打つと絞り込める。
 // 合う出来事が無ければ、題名・種類・日付だけでその場で作れる（詳細は出来事の画面で入れる）。
 // ニュースの振り分けと承認の画面で使う（決定記録 0033・0051）。
+// レギュラーの作品を選べば、その作品の回・号として作る（決定記録 0071）。
 
 import type { DraftInput } from "@aletheia/intake/draft";
 import { CalendarPlus, ExternalLink, Plus, X } from "lucide-react";
@@ -11,8 +12,14 @@ import { type KeyboardEvent, useEffect, useId, useMemo, useState } from "react";
 import { useApp } from "../context.tsx";
 import { EVENT_KIND_LABELS, EVENT_KIND_SHORT, eventDateLabel } from "../format.ts";
 import { normalizeForMatch, rankEvents, SUGGEST_MIN } from "../source/event-relevance.ts";
+import {
+  episodeKindOf,
+  parseEpisodeNumber,
+  regularEpisodeInput,
+  regularTitleOf,
+} from "../source/regular.ts";
 import { eventsOf, setEventLink } from "../source/tags.ts";
-import type { EventSummary, RefLabel } from "../source/types.ts";
+import type { EventSummary, RefLabel, WorkSummary } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 import { useSearch } from "./EntityPicker.tsx";
 
@@ -357,10 +364,47 @@ function QuickEvent({
   const [kind, setKind] = useState("episode");
   const [title, setTitle] = useState(initialTitle);
   const [startsOn, setStartsOn] = useState("");
+  const [workId, setWorkId] = useState("");
+  const [number, setNumber] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // レギュラーの作品（選ぶと、その作品の回・号として作る。決定記録 0071）
+  const [works] = useLoad(
+    async () =>
+      source.listWorks
+        ? (await source.listWorks({})).filter((w) => w.regular)
+        : ([] as WorkSummary[]),
+    [source],
+  );
+  const regularWorks = works.status === "ready" ? works.data : [];
+  const work = regularWorks.find((w) => w.id === workId) ?? null;
+  const episodeNumber = parseEpisodeNumber(number);
+
+  const createEpisode = (w: WorkSummary) => {
+    if (episodeNumber === undefined) return setError("回の番号は 0 以上の整数で入れてください");
+    setBusy(true);
+    setError(null);
+    void (async () => {
+      try {
+        const subjects = await source.listArchiveSubjects();
+        const input = regularEpisodeInput({
+          work: w,
+          title,
+          startsOn: startsOn || null,
+          episodeNumber,
+          subjects,
+        });
+        const eventId = await source.saveEvent(null, input);
+        onCreated({ id: eventId, title: input.title });
+      } catch (e) {
+        setBusy(false);
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  };
 
   const create = () => {
+    if (work) return createEpisode(work);
     if (!title.trim()) return setError("題名を入れてください");
     setBusy(true);
     setError(null);
@@ -392,26 +436,60 @@ function QuickEvent({
   return (
     <div className="picker-create" role="group" aria-label="出来事をその場で作る">
       <p className="picker-create-title">出来事をその場で作る</p>
-      <div className="field">
-        <label htmlFor={`${id}-title`}>題名</label>
-        <input
-          id={`${id}-title`}
-          value={title}
-          autoFocus
-          onChange={(e) => setTitle(e.target.value)}
-        />
-      </div>
-      <div className="field-row">
+      {regularWorks.length > 0 && (
         <div className="field">
-          <label htmlFor={`${id}-kind`}>種類</label>
-          <select id={`${id}-kind`} value={kind} onChange={(e) => setKind(e.target.value)}>
-            {Object.entries(EVENT_KIND_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
+          <label htmlFor={`${id}-work`}>レギュラーの作品（選ぶと、その回・号として作る）</label>
+          <select
+            id={`${id}-work`}
+            value={workId}
+            onChange={(e) => {
+              setWorkId(e.target.value);
+              // 題名は省ける（作品名と回の番号になる）
+              if (e.target.value && title === initialTitle) setTitle("");
+            }}
+          >
+            <option value="">選ばない</option>
+            {regularWorks.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
               </option>
             ))}
           </select>
         </div>
+      )}
+      <div className="field">
+        <label htmlFor={`${id}-title`}>{work ? "題名（任意）" : "題名"}</label>
+        <input
+          id={`${id}-title`}
+          value={title}
+          autoFocus
+          placeholder={work ? regularTitleOf(work.name, episodeNumber ?? null) : undefined}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+      </div>
+      <div className="field-row">
+        {work ? (
+          <div className="field">
+            <label htmlFor={`${id}-number`}>回の番号（任意）</label>
+            <input
+              id={`${id}-number`}
+              inputMode="numeric"
+              value={number}
+              onChange={(e) => setNumber(e.target.value)}
+            />
+          </div>
+        ) : (
+          <div className="field">
+            <label htmlFor={`${id}-kind`}>種類</label>
+            <select id={`${id}-kind`} value={kind} onChange={(e) => setKind(e.target.value)}>
+              {Object.entries(EVENT_KIND_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="field">
           <label htmlFor={`${id}-date`}>日付（任意）</label>
           <input
@@ -439,8 +517,9 @@ function QuickEvent({
         </div>
       )}
       <p className="field-hint">
-        公開の出来事として作り、{subject}
-        に紐付けます。出演・作品・会場などの詳細は、出来事の画面で入れてください。
+        {work
+          ? `「${work.name}」の${EVENT_KIND_LABELS[episodeKindOf(work.subtype)] ?? "回"}として作り、蓄積対象の人物の出演を付けて${subject}に紐付けます。`
+          : `公開の出来事として作り、${subject}に紐付けます。出演・作品・会場などの詳細は、出来事の画面で入れてください。`}
       </p>
       {error && (
         <p className="error" role="alert">

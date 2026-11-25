@@ -807,9 +807,19 @@ export class LiveSource implements ArchiveSource {
     return items;
   }
 
+  async setWorkRegular(id: string, regular: boolean): Promise<void> {
+    await this.api("POST", `/works/${encodeURIComponent(id)}/regular`, { regular });
+  }
+
   async getWork(id: string): Promise<WorkView> {
     const r = await this.api<{
-      work: { id: string; name: string; subtype: string | null; reading: string | null };
+      work: {
+        id: string;
+        name: string;
+        subtype: string | null;
+        reading: string | null;
+        regular: boolean;
+      };
       subject: { id: string; name: string } | null;
       events: {
         id: string;
@@ -1462,10 +1472,12 @@ export class LiveSource implements ArchiveSource {
       from?: string;
       to?: string;
       schedule?: "hide" | "include";
+      regular?: "hide" | "include";
     } = {},
   ) {
     const params = new URLSearchParams({ limit: "200" });
     if (filter.schedule === "hide") params.set("schedule", "hide");
+    if (filter.regular === "hide") params.set("regular", "hide");
     if (filter.query?.trim()) params.set("q", filter.query.trim());
     if (filter.kind) params.set("kind", filter.kind);
     if (filter.from) params.set("from", filter.from);

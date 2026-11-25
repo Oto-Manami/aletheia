@@ -3,7 +3,7 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Ctx } from "../src/context.tsx";
 import { routes } from "../src/routes.tsx";
 import { DemoSource } from "../src/source/demo.ts";
@@ -484,6 +484,75 @@ describe("承認の画面のタグ付け", () => {
     const approved = await source.getIntake("d2000000-0000-4000-8000-000000000001");
     const about = (approved.draft.links ?? []).filter((l) => l.role === "about");
     expect(about).toHaveLength(3);
+  });
+});
+
+describe("レギュラーの作品の回をその場で作る（決定記録 0071）", () => {
+  it("レギュラーの作品を選ぶと、その作品の回として本人の出演を付けて作る", async () => {
+    const user = userEvent.setup();
+    const source = Object.assign(new DemoSource(0), {
+      listWorks: vi.fn(() =>
+        Promise.resolve([
+          {
+            id: "00000000-0000-4000-8000-0000000000r1",
+            name: "架空のレギュラー番組",
+            subtype: "radio_program",
+            regular: true,
+            events: 0,
+            latest: null,
+            materials: 0,
+          },
+          {
+            id: "00000000-0000-4000-8000-0000000000r2",
+            name: "架空の単発の番組",
+            subtype: "tv_program",
+            regular: false,
+            events: 0,
+            latest: null,
+            materials: 0,
+          },
+        ]),
+      ),
+    });
+    vi.spyOn(source, "listArchiveSubjects").mockResolvedValue([
+      { id: "m1", type: "entity", label: "試験 花子" },
+    ]);
+    const saveEvent = vi.spyOn(source, "saveEvent");
+    const router = createMemoryRouter(routes, {
+      initialEntries: ["/intake/d2000000-0000-4000-8000-000000000001"],
+    });
+    render(
+      <Ctx.Provider value={{ source, viewer: admin }}>
+        <RouterProvider router={router} />
+      </Ctx.Provider>,
+    );
+    const events = await screen.findByRole("region", { name: /出来事/ });
+    await user.click(within(events).getByRole("button", { name: /合う出来事が無ければ/ }));
+    const create = within(events).getByRole("group", { name: "出来事をその場で作る" });
+    const works = await within(create).findByLabelText(/レギュラーの作品/);
+    // レギュラーの印の作品だけを出す
+    expect(
+      within(works)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["選ばない", "架空のレギュラー番組"]);
+    await user.selectOptions(works, "00000000-0000-4000-8000-0000000000r1");
+    await user.type(within(create).getByLabelText("回の番号（任意）"), "7");
+    await user.type(within(create).getByLabelText("日付（任意）"), "2026-10-01");
+    await user.click(within(create).getByRole("button", { name: "作って紐付ける" }));
+    await within(events).findByRole("button", { name: "架空のレギュラー番組 #7 の紐付けを外す" });
+    expect(saveEvent.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({
+        kind: "episode",
+        title: "架空のレギュラー番組 #7",
+        workId: "00000000-0000-4000-8000-0000000000r1",
+        episodeNumber: 7,
+        startsOn: "2026-10-01",
+        participants: [
+          { entityId: "m1", role: "regular", status: "appeared", characterName: null },
+        ],
+      }),
+    );
   });
 });
 
