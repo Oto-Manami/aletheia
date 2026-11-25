@@ -5006,6 +5006,33 @@ button.participation {
   font-size: 13px;
 }
 
+/* レギュラーの作品（決定記録 0071） */
+.work-regular-tag {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.work-regular {
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.work-regular label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.work-add-episode {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.event-view-section > .button {
+  margin-bottom: 12px;
+}
+
 /* 似た画像（決定記録 0069） */
 .similar {
   margin-bottom: 16px;

@@ -2,7 +2,7 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Ctx } from "../src/context.tsx";
 import { routes } from "../src/routes.tsx";
 import { DemoSource } from "../src/source/demo.ts";
@@ -32,6 +32,16 @@ const rows = () =>
   within(screen.getByRole("region", { name: "出来事の一覧" })).queryAllByRole("listitem");
 
 describe("出来事", () => {
+  it("一覧には、レギュラーの作品の回・号を出さず、作品の画面への案内を出す（決定記録 0071）", async () => {
+    const source = new DemoSource(0);
+    const list = vi.spyOn(source, "listEvents");
+    open("/events", member, source);
+    expect(await screen.findByRole("link", { name: "作品の画面" })).toBeTruthy();
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ schedule: "hide", regular: "hide" }),
+    );
+  });
+
   it("一覧は日付の新しい順で、出典の無いものと本人の出演の状態が分かる。日程は隠して件数を出す。題名で探せる", async () => {
     const user = userEvent.setup();
     const source = new DemoSource(0);

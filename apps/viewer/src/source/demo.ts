@@ -818,6 +818,7 @@ export class DemoSource implements ArchiveSource {
     from?: string;
     to?: string;
     schedule?: "hide" | "include";
+    regular?: "hide" | "include";
   }) {
     await this.delay();
     const linked = new Set(
