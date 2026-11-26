@@ -21,6 +21,7 @@ const pages = {
   members: () => import("./pages/Members.tsx"),
   settings: () => import("./pages/Settings.tsx"),
   post: () => import("./pages/Post.tsx"),
+  postEdit: () => import("./pages/PostEdit.tsx"),
   search: () => import("./pages/Search.tsx"),
   songs: () => import("./pages/Songs.tsx"),
   triage: () => import("./pages/Triage.tsx"),
@@ -39,6 +40,7 @@ const MembersPage = page(pages.members, "MembersPage");
 const SettingsPage = page(pages.settings, "SettingsPage");
 const DisplaySettings = page(pages.settings, "DisplaySettings");
 const PostPage = page(pages.post, "PostPage");
+const PostEditPage = page(pages.postEdit, "PostEditPage");
 const SearchPage = page(pages.search, "SearchPage");
 const SongsPage = page(pages.songs, "SongsPage");
 const TriagePage = page(pages.triage, "TriagePage");
@@ -117,6 +119,7 @@ export const routes: RouteObject[] = [
       { path: "works/:id", element: <WorksPage /> },
       { path: "search", element: <SearchPage /> },
       { path: "posts/:id", element: <PostPage /> },
+      { path: "posts/:id/edit", element: <PostEditPage /> },
       {
         path: "settings",
         element: <SettingsPage />,

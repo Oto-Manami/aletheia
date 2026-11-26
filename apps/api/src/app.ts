@@ -23,6 +23,7 @@
 // | POST     | /resolve/sender           | 発信者・出どころの表記から情報源を探す（決定記録 0067・0073） |
 // | POST     | /assets/:id/remove        | 要らない素材を外す（assets.ts）     |
 // | GET      | /assets/:id/thumbnail     | 素材の縮めた画像（一覧用。保存した原本から作る） |
+// | GET/POST | /posts/:id/edit           | 取り込んだ投稿を直す（運営者。post-edit.ts。決定記録 0076） |
 // | POST     | /files/staging            | ファイルを承認待ちの場所に保存する |
 // | GET      | /intake/:id/files/:sha256 | 下書きに付いた仮置きのファイルの中身（作業者・運営者） |
 // | GET/POST | /events・/entities        | 出来事と作品・相手を作る・直す（events.ts） |
@@ -79,6 +80,7 @@ import { registerSetlistRoutes } from "./setlists.ts";
 import { registerSongRoutes } from "./songs.ts";
 import { registerDashboardRoutes } from "./dashboard.ts";
 import { registerWorkRoutes } from "./works.ts";
+import { registerPostEditRoutes } from "./post-edit.ts";
 import { listTriage, SOURCE_KINDS, triageListQuery } from "./triage-list.ts";
 import {
   assertStagedFiles,
@@ -312,6 +314,7 @@ export function createApp(
   registerSetlistRoutes(app, db);
   registerDashboardRoutes(app, db);
   registerWorkRoutes(app, db);
+  registerPostEditRoutes(app, db);
   registerSongRoutes(app, db);
   registerAssetRoutes(app, db, files, options.thumbnailFiles, options.thumbnailCache);
 

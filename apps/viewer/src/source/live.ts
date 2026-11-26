@@ -47,6 +47,7 @@ import {
   type InviteView,
   type MemberView,
   type PostTitleHit,
+  type PostEdit,
   type PostView,
   type RefLabel,
   type Role,
@@ -1425,6 +1426,34 @@ export class LiveSource implements ArchiveSource {
         approve: true,
       }),
     );
+  }
+
+  async getPostEdit(postId: string): Promise<PostEdit> {
+    const res = await this.api<{
+      draft: DraftInput;
+      based_on: string;
+      channel: {
+        name: string;
+        kind: string | null;
+        availability: string | null;
+        ownerEntityId: string | null;
+      };
+    }>("GET", `/posts/${encodeURIComponent(postId)}/edit`);
+    return {
+      draft: res.draft,
+      basedOn: res.based_on,
+      channelName: res.channel.name,
+      channelKind: res.channel.kind,
+      channelAvailability: res.channel.availability,
+      channelOwnerId: res.channel.ownerEntityId,
+    };
+  }
+
+  async savePostEdit(postId: string, draft: DraftInput, basedOn: string): Promise<void> {
+    await this.api("POST", `/posts/${encodeURIComponent(postId)}/edit`, {
+      draft,
+      based_on: basedOn,
+    });
   }
 
   async retryPostFiles(postId: string): Promise<{ stored: number; missing: number }> {

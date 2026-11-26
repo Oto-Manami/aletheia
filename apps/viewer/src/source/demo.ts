@@ -57,6 +57,7 @@ import {
   type NewEntity,
   type SourcePreview,
   type PostTitleHit,
+  type PostEdit,
   type PostView,
   type RefLabel,
   type Role,
@@ -606,6 +607,95 @@ export class DemoSource implements ArchiveSource {
       throw new SourceError("本文・保存したページは投稿の中身なので外せません", 422);
     }
     post.assets = post.assets.filter((a) => a.id !== assetId);
+  }
+
+  /** デモ版の投稿の中身を、直すための下書きの形にする（紐付けは投稿のものとして扱う。決定記録 0076） */
+  private postDraftOf(post: PostView): DraftInput {
+    const own = (c: string) => (c === post.classification ? undefined : (c as "public"));
+    return {
+      version: 1,
+      post: {
+        ...(post.title ? { title: post.title } : {}),
+        ...(post.publishedAt ? { published_at: post.publishedAt } : {}),
+        ...(post.publishedDate ? { published_date: post.publishedDate } : {}),
+        ...(post.publishedDatePrecision
+          ? { published_date_precision: post.publishedDatePrecision as "day" }
+          : {}),
+        ...(post.url ? { url: post.url } : {}),
+        ...(post.archivedUrl ? { archived_url: post.archivedUrl } : {}),
+        ...(post.availability ? { availability: post.availability as "free" } : {}),
+        classification: post.classification,
+      },
+      assets: post.assets.map((a) => ({
+        ref: a.id,
+        media_type: a.mediaType as "image",
+        ...(a.title ? { title: a.title } : {}),
+        ...(a.description ? { description: a.description } : {}),
+        ...(own(a.classification) ? { classification: own(a.classification)! } : {}),
+        texts: a.texts.map((t) => ({ text_type: t.textType as "body", content: t.content })),
+      })),
+      links: post.links.map((l) => ({
+        from: "post" as const,
+        to_type: l.target.type,
+        to_id: l.target.id,
+        role: l.role,
+      })),
+      statements: [],
+    };
+  }
+
+  async getPostEdit(postId: string): Promise<PostEdit> {
+    await this.delay();
+    const post = this.posts.find((p) => p.id === postId);
+    if (!post) throw new SourceError("投稿が見つかりません", 404);
+    const draft = this.postDraftOf(post);
+    return {
+      draft,
+      basedOn: JSON.stringify(draft),
+      channelName: post.channelName,
+      channelKind: null,
+      channelAvailability: null,
+      channelOwnerId: null,
+    };
+  }
+
+  async savePostEdit(postId: string, draft: DraftInput, basedOn: string): Promise<void> {
+    await this.delay();
+    const post = this.posts.find((p) => p.id === postId);
+    if (!post) throw new SourceError("投稿が見つかりません", 404);
+    if (JSON.stringify(this.postDraftOf(post)) !== basedOn) {
+      throw new SourceError(
+        "開いている間に、この投稿がほかで変わりました。開き直してから直してください",
+        409,
+      );
+    }
+    const parsed = draftSchema.safeParse(draft);
+    if (!parsed.success) throw new SourceError("下書きの形が正しくありません", 422);
+    const d = parsed.data;
+    const refs = new Set(d.assets.map((a) => a.ref));
+    if (refs.size !== post.assets.length || post.assets.some((a) => !refs.has(a.id))) {
+      throw new SourceError("編集では素材を足したり消したりできません", 422);
+    }
+    post.title = d.post.title ?? null;
+    post.publishedAt = d.post.published_at ?? null;
+    post.publishedDate = d.post.published_date ?? null;
+    post.publishedDatePrecision = d.post.published_date_precision ?? null;
+    post.url = d.post.url ?? null;
+    post.archivedUrl = d.post.archived_url ?? null;
+    post.availability = d.post.availability ?? null;
+    post.classification = d.post.classification;
+    for (const a of post.assets) {
+      const next = d.assets.find((x) => x.ref === a.id)!;
+      a.title = next.title ?? null;
+      a.description = next.description ?? null;
+      a.classification = next.classification ?? d.post.classification;
+      a.texts = next.texts.map((t) => ({ textType: t.text_type, content: t.content }));
+    }
+    const labels = await this.labels(d.links.map((l) => ({ id: l.to_id, type: l.to_type })));
+    post.links = d.links
+      .map((l, i) => ({ accepted: l.accepted, role: l.role, target: labels[i]! }))
+      .filter((l) => l.accepted)
+      .map(({ role, target }) => ({ role, target }));
   }
 
   /** デモ版では、原本の無い素材をすべて保存できたことにする */
