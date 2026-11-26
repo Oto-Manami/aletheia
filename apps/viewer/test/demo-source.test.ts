@@ -48,6 +48,19 @@ describe("デモ版の窓口", () => {
     expect((again as SourceError).status).toBe(409);
   });
 
+  it("直近に承認したものは取り消せ、承認待ちに戻る（決定記録 0075）", async () => {
+    const source = new DemoSource(0);
+    const first = (await source.listIntake("pending")).find((i) => i.title === "冬の衣装合わせ");
+    await source.decide(first!.id, "approve");
+    expect((await source.getIntake(first!.id)).undoable).toBe(true);
+    await source.undoApproval(first!.id);
+    const detail = await source.getIntake(first!.id);
+    expect(detail.state).toBe("pending");
+    expect(detail.undoable).toBe(false);
+    const again = await source.undoApproval(first!.id).catch((e: unknown) => e);
+    expect((again as SourceError).status).toBe(409);
+  });
+
   it("検索の抜き出しは HTML を無害にして、一致した部分だけを囲む", () => {
     expect(demoSnippet("<b>おでん</b>の大根", "大根")).toBe(
       '&#60;b&#62;おでん&#60;/b&#62;の<span class="keyword">大根</span>',

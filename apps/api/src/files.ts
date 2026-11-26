@@ -6,11 +6,14 @@
 // - 既に同じファイルが保存されている（重複）場合は、却下の場所（_rejected）へ移す（削除しない）
 // - 却下したものは、直近 10 件の間は仮置きの場所のまま置き、押し出されたら消す（決定記録 0043）
 // - 承認した下書きの素材に無いファイル（振り分けで選ばなかった画像など）は、保存せずに消す（決定記録 0037）
+// - 承認を取り消したときは、保存したファイルを仮置きの場所へ戻す（決定記録 0075）。もう一度承認できるように、
+//   下書きの staged_files の場所も戻した先に合わせる
 // - 下書きの staged_files は、取り込みのときに仮置きの場所にあることを確かめ、動かす・消す直前にも
 //   確かめ直す。仮置きの場所に無いファイルには触らない。消すときはごみ箱に移す（決定記録 0048）
 
 import { createHash } from "node:crypto";
 import type { Database } from "@aletheia/db/client";
+import type { UndoneFile } from "@aletheia/intake";
 import {
   extensionOf,
   type FileStore,
@@ -389,6 +392,79 @@ export async function removeStagedFiles(
     } catch (e) {
       report.failed.push({
         storage_key: file.storage_key,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  return report;
+}
+
+/**
+ * 承認を取り消した後: 承認で保存したファイルを、下書きの仮置きの場所へ戻す（設計書 決定記録 0075）。
+ * 下書きのファイル（staged_files）に対応する原本・表紙はその名前で戻し、staged_files の場所を戻した先に直す。
+ * 重複として却下の場所へ移したものも戻す。下書きのファイルに無いもの（後から作った派生のファイル）は、
+ * 却下の場所（_rejected/removed）へ移す。戻せなかったものは結果に返す（取り消しは取り消さない）
+ */
+export async function restageUndoneFiles(
+  db: Database,
+  files: FileStore,
+  intakeId: string,
+  undone: UndoneFile[],
+): Promise<{ restaged: number; failed: { storage_key: string; error: string }[] }> {
+  const report = { restaged: 0, failed: [] as { storage_key: string; error: string }[] };
+  const intake = await db
+    .selectFrom("intake_items")
+    .select(["staged_files", "route"])
+    .where("id", "=", intakeId)
+    .executeTakeFirstOrThrow();
+  const raw: unknown[] = Array.isArray(intake.staged_files) ? [...intake.staged_files] : [];
+  const mine = undone.filter((f) => f.provider === files.provider);
+  const used = new Set<UndoneFile>();
+  let changed = false;
+
+  for (const [i, value] of raw.entries()) {
+    const parsed = stagedFileSchema.safeParse(value);
+    if (!parsed.success || parsed.data.provider !== files.provider) continue;
+    const file = parsed.data;
+    const stored = mine.find(
+      (f) =>
+        !used.has(f) &&
+        f.sha256 === file.sha256 &&
+        (f.variant === "original" || f.variant === "preview"),
+    );
+    if (stored) used.add(stored);
+    const key = stored?.storage_key ?? file.storage_key;
+    try {
+      if (await isStaged(files, key, intake.route)) continue;
+      // ごみ箱へ移したもの（承認で選ばなかった画像）は、戻さない
+      if (!stored && !(await files.locate(key))) continue;
+      const moved = await files.move(key, [STAGING, safeSegment(intake.route)], file.staged_name);
+      if (moved.key !== file.storage_key) {
+        raw[i] = { ...file, storage_key: moved.key };
+        changed = true;
+      }
+      report.restaged++;
+    } catch (e) {
+      // 選ばなかった画像としてごみ箱へ移したものなどは戻せないことがある
+      if (stored) {
+        report.failed.push({ storage_key: key, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+  }
+  if (changed) {
+    await db
+      .updateTable("intake_items")
+      .set({ staged_files: JSON.stringify(raw) })
+      .where("id", "=", intakeId)
+      .execute();
+  }
+  for (const f of mine.filter((m) => !used.has(m))) {
+    try {
+      const place = rejectedLocation("removed", `${f.asset_id}_${f.variant}`);
+      await files.move(f.storage_key, place.folder, place.name);
+    } catch (e) {
+      report.failed.push({
+        storage_key: f.storage_key,
         error: e instanceof Error ? e.message : String(e),
       });
     }

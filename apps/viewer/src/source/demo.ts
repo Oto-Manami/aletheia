@@ -400,7 +400,30 @@ export class DemoSource implements ArchiveSource {
       channelAvailability: item.channelKey.startsWith("blog:") ? "free" : null,
       channelOwnerId: item.channelOwnerId ?? null,
       chosenImagesOnly: item.triaged === true,
+      undoable: item.state === "approved" && this.recentApproved().includes(item.id),
     };
+  }
+
+  /** 承認を取り消せる、直近に承認した 10 件（API と同じ規則。決定記録 0075） */
+  private recentApproved(): string[] {
+    return this.intakes
+      .filter((i) => i.state === "approved")
+      .sort((a, b) => (b.reviewedAt ?? "").localeCompare(a.reviewedAt ?? ""))
+      .slice(0, 10)
+      .map((i) => i.id);
+  }
+
+  async undoApproval(id: string): Promise<void> {
+    await this.delay();
+    const item = this.intakes.find((i) => i.id === id);
+    if (!item) throw new SourceError("下書きが見つかりません", 404);
+    if (item.state !== "approved") throw new SourceError("この下書きは承認されていません", 409);
+    if (!this.recentApproved().includes(id)) {
+      throw new SourceError("取り消せるのは、直近に承認した 10 件だけです", 409);
+    }
+    item.state = "pending";
+    item.reviewNote = null;
+    item.reviewedAt = null;
   }
 
   async decide(

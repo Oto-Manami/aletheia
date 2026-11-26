@@ -582,3 +582,86 @@ describe("どの下書きにも紐付いていない仮置きのファイルの�
       expect(ctx.files.pathOf(staged.storage_key)).toBe("_staging/discord/1001_01.jpg");
     }));
 });
+
+describe("承認の取り消し（決定記録 0075）", () => {
+  it("承認で足したものを外し、ファイルを仮置きの場所へ戻す。もう一度承認できる", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const staged = await stage(ctx, "1001");
+      const id = await intakeWith(ctx, d, [staged]);
+      const approved = (await (await ctx.call("POST", `/intake/${id}/approve`, {})).json()) as {
+        postId: string;
+      };
+      const detail = (await (await ctx.call("GET", `/intake/${id}`)).json()) as {
+        undoable: boolean;
+      };
+      expect(detail.undoable).toBe(true);
+
+      const res = await ctx.call("POST", `/intake/${id}/undo-approve`, {});
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as { files: { restaged: number } }).files.restaged).toBe(1);
+      const { rows: posts } = await ctx.c.query("select id from public.posts where id = $1", [
+        approved.postId,
+      ]);
+      expect(posts).toHaveLength(0);
+      const { rows: links } = await ctx.c.query(
+        "select id from public.links where from_type = 'post' and from_id = $1",
+        [approved.postId],
+      );
+      expect(links).toHaveLength(0);
+      const after = (await (await ctx.call("GET", `/intake/${id}`)).json()) as {
+        item: { state: string; reviewed_at: string | null; applied: unknown };
+        undoable: boolean;
+      };
+      expect(after.item).toMatchObject({ state: "pending", reviewed_at: null, applied: null });
+      expect(after.undoable).toBe(false);
+      expect(ctx.files.pathOf(staged.storage_key)).toBe("_staging/discord/1001_01.jpg");
+      // 承認待ちのものは取り消せない
+      expect((await ctx.call("POST", `/intake/${id}/undo-approve`, {})).status).toBe(409);
+
+      // もう一度承認すると、ファイルは本来の場所へ移る
+      const again = await ctx.call("POST", `/intake/${id}/approve`, {});
+      expect(((await again.json()) as { files: { stored: number } }).files.stored).toBe(1);
+    }));
+
+  it("承認の後に人が足した紐付けがあれば取り消さない", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const staged = await stage(ctx, "1001");
+      const id = await intakeWith(ctx, d, [staged]);
+      const approved = (await (await ctx.call("POST", `/intake/${id}/approve`, {})).json()) as {
+        assetIds: Record<string, string>;
+      };
+      await ctx.c.query(
+        `insert into public.links (from_type, from_id, to_type, to_id, role, origin)
+         values ('asset', $1, 'entity', $2, 'depicts', 'human')`,
+        [approved.assetIds["a0"], d.person],
+      );
+      const res = await ctx.call("POST", `/intake/${id}/undo-approve`, {});
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { code: string }).code).toBe("cannot_undo");
+    }));
+
+  it("作業者は取り消せない（運営者だけ）", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const staged = await stage(ctx, "1001");
+      const id = await intakeWith(ctx, d, [staged]);
+      expect((await ctx.call("POST", `/intake/${id}/approve`, {})).status).toBe(200);
+      const worker = await tokenFor(
+        await discordUser(ctx.c, "77777777-7777-4777-8777-777777777777", "worker"),
+      );
+      expect((await ctx.call("POST", `/intake/${id}/undo-approve`, {}, worker)).status).toBe(403);
+    }));
+
+  it("取り消しの記録が無い承認（取り消しを入れる前の承認）は取り消せない", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const staged = await stage(ctx, "1001");
+      const id = await intakeWith(ctx, d, [staged]);
+      expect((await ctx.call("POST", `/intake/${id}/approve`, {})).status).toBe(200);
+      await ctx.c.query("update public.intake_items set applied = null where id = $1", [id]);
+      const res = await ctx.call("POST", `/intake/${id}/undo-approve`, {});
+      expect(res.status).toBe(409);
+    }));
+});

@@ -10,7 +10,12 @@ import { onlyChosenImages, usesChosenImagesOnly } from "./images.ts";
 import { recordImagePair, registerSimilarPairs } from "./similar.ts";
 
 export type IntakeErrorCode =
-  "not_found" | "already_decided" | "invalid_draft" | "draft_replaced" | "author_mismatch";
+  | "not_found"
+  | "already_decided"
+  | "invalid_draft"
+  | "draft_replaced"
+  | "author_mismatch"
+  | "cannot_undo";
 
 export class IntakeError extends Error {
   constructor(
@@ -56,6 +61,26 @@ export interface ApproveResult {
 }
 
 type Trx = Transaction<DB>;
+
+/**
+ * 承認で事実の層に足したもの（intake_items.applied。設計書 決定記録 0075）。承認を取り消すとき、
+ * これに載っているものだけを外す
+ */
+export interface Applied {
+  version: 1;
+  post_id: string;
+  /** 投稿をこの承認で作ったか（false は既にある投稿への補完） */
+  post_created: boolean;
+  /** 補完で埋めた投稿の項目（取り消すと空に戻す） */
+  post_filled: string[];
+  asset_ids: string[];
+  link_ids: string[];
+  statement_ids: string[];
+  /** この承認で作った同じ画像のまとまり */
+  group_ids: string[];
+  /** この承認で、まとまりに入れた既にある素材（代表） */
+  grouped_asset_ids: string[];
+}
 
 async function lockUndecided(trx: Trx, intakeId: string) {
   const intake = await trx
@@ -183,6 +208,7 @@ async function storedTwin(trx: Trx, sha256: string) {
 async function repostGroupOf(
   trx: Trx,
   twin: { id: string; content_group_id: string | null; classification: "public" | "private" },
+  applied: Applied,
   note = "同じファイル（SHA-256 が一致）",
 ): Promise<string> {
   if (twin.content_group_id) return twin.content_group_id;
@@ -201,6 +227,10 @@ async function repostGroupOf(
     .set({ content_group_id: group.id })
     .where("id", "=", twin.id)
     .execute();
+  // 同じ承認の中で、続く素材が同じ代表を指しても、まとまりは 1 つにする
+  twin.content_group_id = group.id;
+  applied.group_ids.push(group.id);
+  applied.grouped_asset_ids.push(twin.id);
   return group.id;
 }
 
@@ -334,6 +364,7 @@ export async function approveIntakeIn(
   };
 
   let postId: string;
+  const filled: string[] = [];
   if (existing) {
     postId = existing.id;
     // 既にある値は変えず、空いている項目だけを埋める
@@ -344,6 +375,7 @@ export async function approveIntakeIn(
     );
     if (Object.keys(patch).length > 0) {
       await trx.updateTable("posts").set(patch).where("id", "=", postId).execute();
+      filled.push(...Object.keys(patch));
     }
   } else {
     const post = await trx
@@ -360,6 +392,17 @@ export async function approveIntakeIn(
     postId = post.id;
   }
 
+  const applied: Applied = {
+    version: 1,
+    post_id: postId,
+    post_created: !existing,
+    post_filled: filled,
+    asset_ids: [],
+    link_ids: [],
+    statement_ids: [],
+    group_ids: [],
+    grouped_asset_ids: [],
+  };
   const known = existing ? await existingAssets(trx, postId) : [];
   let nextPosition = known.reduce((max, k) => Math.max(max, k.position ?? 0), 0) + 1;
 
@@ -399,6 +442,7 @@ export async function approveIntakeIn(
               content_group_id: await repostGroupOf(
                 trx,
                 twin,
+                applied,
                 twin === same ? "見た目が同じ画像（承認の画面で確かめた）" : undefined,
               ),
             }
@@ -419,6 +463,7 @@ export async function approveIntakeIn(
       .returning("id")
       .executeTakeFirstOrThrow();
     assetIds[a.ref] = id;
+    applied.asset_ids.push(id);
     counts.assets++;
     await recordSimilarity(trx, id, a, { same, stored: !twin, reviewedBy: options.reviewerId });
 
@@ -473,8 +518,10 @@ export async function approveIntakeIn(
       .onConflict((oc) =>
         oc.columns(["from_type", "from_id", "to_type", "to_id", "role"]).doNothing(),
       )
+      .returning("id")
       .executeTakeFirst();
-    if (Number(inserted.numInsertedOrUpdatedRows ?? 0) === 0) continue;
+    if (!inserted) continue;
+    applied.link_ids.push(inserted.id);
     if (l.accepted) counts.links++;
     else counts.rejectedLinks++;
   }
@@ -483,7 +530,7 @@ export async function approveIntakeIn(
     const { evidence_asset, accepted, evidence, classification, ...fields } = s;
     const evidenceAssetId = evidence_asset ? assetIdOf(evidence_asset) : null;
     if (existing && (await hasSameStatement(trx, fields, evidenceAssetId))) continue;
-    await trx
+    const statement = await trx
       .insertInto("statements")
       .values({
         ...fields,
@@ -494,7 +541,9 @@ export async function approveIntakeIn(
         reviewed_at: new Date(),
         classification: classification ?? inherit,
       })
-      .execute();
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    applied.statement_ids.push(statement.id);
     if (accepted) counts.statements++;
     else counts.rejectedStatements++;
   }
@@ -508,6 +557,7 @@ export async function approveIntakeIn(
       reviewed_by: reviewedBy,
       reviewed_at: new Date(),
       review_note: options.note ?? null,
+      applied: JSON.stringify(applied),
     })
     .where("id", "=", intakeId)
     .execute();
@@ -639,4 +689,208 @@ export function holdIntake(
   options: { reviewerId?: string; note?: string } = {},
 ): Promise<void> {
   return inTransaction(db, (trx) => holdIntakeIn(trx, intakeId, options));
+}
+
+/** 承認を取り消せる件数（直近に承認したもの。設計書 決定記録 0075） */
+export const APPROVE_UNDO_KEEP = 10;
+
+/** 取り消した承認で外したファイルの記録（呼ぶ側が、保存先で仮置きの場所へ戻す） */
+export interface UndoneFile {
+  asset_id: string;
+  provider: string;
+  storage_key: string;
+  variant: string;
+  sha256: string | null;
+}
+
+const cannotUndo = (message: string) => new IntakeError("cannot_undo", message);
+
+/** 直近に承認した {@link APPROVE_UNDO_KEEP} 件に入っていて、足したものの記録があるか */
+export async function canUndoApproval(
+  db: Pick<Database, "selectFrom">,
+  intake: { id: string; state: string; applied: unknown },
+): Promise<boolean> {
+  if (intake.state !== "approved" || !intake.applied) return false;
+  const recent = await db
+    .selectFrom("intake_items")
+    .select("id")
+    .where("state", "=", "approved")
+    .orderBy("reviewed_at", "desc")
+    .orderBy("id")
+    .limit(APPROVE_UNDO_KEEP)
+    .execute();
+  return recent.some((r) => r.id === intake.id);
+}
+
+/**
+ * 承認を取り消し、承認待ちに戻す（直近に承認した {@link APPROVE_UNDO_KEEP} 件だけ。設計書 決定記録 0075）。
+ * 承認で足したもの（applied）だけを事実の層から外す。外す前の状態は変更履歴に残る。
+ * 承認の後に人が足した紐付け・メモなどが、足したものを指していれば取り消さない（先に外してもらう）。
+ * 外した素材のファイルの記録を返す（呼ぶ側が、保存先で仮置きの場所へ戻す）
+ */
+export async function undoApprovalIn(
+  trx: Trx,
+  intakeId: string,
+): Promise<{ files: UndoneFile[]; postId: string }> {
+  await lockApprovals(trx);
+  const intake = await trx
+    .selectFrom("intake_items")
+    .select(["id", "state", "applied"])
+    .where("id", "=", intakeId)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!intake) throw new IntakeError("not_found", `下書きが見つかりません: ${intakeId}`);
+  if (intake.state !== "approved") {
+    throw new IntakeError("already_decided", `この下書きは承認されていません（${intake.state}）`);
+  }
+  if (!intake.applied) {
+    throw cannotUndo(
+      "この承認は、足したものの記録が無いため取り消せません（取り消しを入れる前の承認）",
+    );
+  }
+  if (!(await canUndoApproval(trx, intake))) {
+    throw cannotUndo(`取り消せるのは、直近に承認した ${APPROVE_UNDO_KEEP} 件だけです`);
+  }
+  const a = intake.applied as unknown as Applied;
+  const assets = a.asset_ids;
+  const links = new Set(a.link_ids);
+  const none = ["00000000-0000-0000-0000-000000000000"];
+  const assetList = assets.length > 0 ? assets : none;
+
+  // 承認の後に人が足したものが、足したものを指していれば取り消さない
+  const { rows: later } = await sql<{
+    links: number;
+    statements: number;
+    notes: number;
+    groups: number;
+    checks: number;
+  }>`
+    select
+      (select count(*)::int from public.links l
+        where ((l.from_type = 'asset' and l.from_id = any(${assetList}::uuid[]))
+            or (${a.post_created} and l.from_type = 'post' and l.from_id = ${a.post_id}))
+          and not (l.id = any(${a.link_ids.length > 0 ? a.link_ids : none}::uuid[]))) as links,
+      (select count(*)::int from public.statements s
+        where s.evidence_asset_id = any(${assetList}::uuid[])
+          and not (s.id = any(${a.statement_ids.length > 0 ? a.statement_ids : none}::uuid[]))) as statements,
+      (select count(*)::int from public.notes n
+        where (n.target_type = 'asset' and n.target_id = any(${assetList}::uuid[]))
+           or (${a.post_created} and n.target_type = 'post' and n.target_id = ${a.post_id}))
+      + (select count(*)::int from public.article_refs r
+        where (r.ref_type = 'asset' and r.ref_id = any(${assetList}::uuid[]))
+           or (${a.post_created} and r.ref_type = 'post' and r.ref_id = ${a.post_id})) as notes,
+      (select count(*)::int from public.assets x
+        where x.content_group_id in (select g.id from public.content_groups g
+                                     where g.representative_asset_id = any(${assetList}::uuid[]))
+          and not (x.id = any(${assetList}::uuid[]))) as groups,
+      (select count(*)::int from public.coverage_checks k
+        where ${a.post_created} and k.post_id = ${a.post_id} and k.external_id is null) as checks`.execute(
+    trx,
+  );
+  const l = later[0];
+  if ((l?.links ?? 0) > 0) {
+    throw cannotUndo(
+      "承認の後に、この投稿・素材へ紐付け（出来事・人物など）が足されているため取り消せません。先にその紐付けを外してください",
+    );
+  }
+  if ((l?.statements ?? 0) > 0) {
+    throw cannotUndo("承認の後に、この素材を根拠にした言明が足されているため取り消せません");
+  }
+  if ((l?.notes ?? 0) > 0) {
+    throw cannotUndo("この投稿・素材はメモ・記事から参照されているため取り消せません");
+  }
+  if ((l?.checks ?? 0) > 0) {
+    throw cannotUndo("承認の後に、この投稿へ確認済みの印が付いているため取り消せません");
+  }
+  if ((l?.groups ?? 0) > 0) {
+    throw cannotUndo(
+      "この承認の素材が、後から承認した別の投稿の同じ画像の代表になっているため取り消せません",
+    );
+  }
+
+  // 足したものを外す（素材の文字・ファイルの記録・重複の疑いの組も一緒に）
+  if (a.link_ids.length > 0) {
+    await trx
+      .deleteFrom("links")
+      .where("id", "in", [...links])
+      .execute();
+  }
+  if (a.statement_ids.length > 0) {
+    await trx.deleteFrom("statements").where("id", "in", a.statement_ids).execute();
+  }
+  let files: UndoneFile[] = [];
+  if (assets.length > 0) {
+    await trx
+      .deleteFrom("merge_candidates")
+      .where("kind", "=", "asset")
+      .where((eb) => eb.or([eb("left_id", "in", assets), eb("right_id", "in", assets)]))
+      .execute();
+    await trx.deleteFrom("asset_texts").where("asset_id", "in", assets).execute();
+    files = await trx
+      .deleteFrom("asset_files")
+      .where("asset_id", "in", assets)
+      .returning(["asset_id", "provider", "storage_key", "variant", "sha256"])
+      .execute();
+  }
+  // この承認で作ったまとまりは、代表（既にある素材）から外してから消す
+  if (a.grouped_asset_ids.length > 0) {
+    await trx
+      .updateTable("assets")
+      .set({ content_group_id: null })
+      .where("id", "in", a.grouped_asset_ids)
+      .where("content_group_id", "in", a.group_ids.length > 0 ? a.group_ids : none)
+      .execute();
+  }
+  if (assets.length > 0) {
+    await trx
+      .updateTable("assets")
+      .set({ content_group_id: null })
+      .where("id", "in", assets)
+      .execute();
+  }
+  if (a.group_ids.length > 0) {
+    await trx
+      .updateTable("posts")
+      .set({ content_group_id: null })
+      .where("content_group_id", "in", a.group_ids)
+      .execute();
+    await trx.deleteFrom("content_groups").where("id", "in", a.group_ids).execute();
+  }
+  if (assets.length > 0) {
+    await trx.deleteFrom("assets").where("id", "in", assets).execute();
+  }
+  if (a.post_created) {
+    // 確認済みの記録が投稿を指していれば外す（記事の ID の記録は残る）
+    await trx
+      .updateTable("coverage_checks")
+      .set({ post_id: null })
+      .where("post_id", "=", a.post_id)
+      .where("external_id", "is not", null)
+      .execute();
+    await trx.deleteFrom("posts").where("id", "=", a.post_id).execute();
+  } else if (a.post_filled.length > 0) {
+    const cleared = Object.fromEntries(a.post_filled.map((k) => [k, null]));
+    await trx.updateTable("posts").set(cleared).where("id", "=", a.post_id).execute();
+  }
+
+  await trx
+    .updateTable("intake_items")
+    .set({
+      state: "pending",
+      reviewed_by: null,
+      reviewed_at: null,
+      review_note: null,
+      applied: null,
+    })
+    .where("id", "=", intakeId)
+    .execute();
+  return { files, postId: a.post_id };
+}
+
+/** 承認を取り消す（トランザクションを張って行う） */
+export function undoApproval(
+  db: Database,
+  intakeId: string,
+): Promise<{ files: UndoneFile[]; postId: string }> {
+  return inTransaction(db, (trx) => undoApprovalIn(trx, intakeId));
 }

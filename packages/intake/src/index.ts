@@ -14,6 +14,12 @@ export {
   rejectIntake,
   rejectIntakeIn,
   reopenRejected,
+  type Applied,
+  APPROVE_UNDO_KEEP,
+  canUndoApproval,
+  type UndoneFile,
+  undoApproval,
+  undoApprovalIn,
 } from "./approve.ts";
 export {
   applyCollectionRules,
