@@ -37,8 +37,11 @@ describe("出来事", () => {
     const list = vi.spyOn(source, "listEvents");
     open("/events", member, source);
     expect(await screen.findByRole("link", { name: "作品の画面" })).toBeTruthy();
-    expect(list).toHaveBeenCalledWith(
-      expect.objectContaining({ schedule: "hide", regular: "hide" }),
+    // 一覧の読み込みは描画の後に始まるので、呼ばれるのを待つ
+    await vi.waitFor(() =>
+      expect(list).toHaveBeenCalledWith(
+        expect.objectContaining({ schedule: "hide", regular: "hide" }),
+      ),
     );
   });
 
