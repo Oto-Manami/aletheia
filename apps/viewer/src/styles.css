@@ -271,6 +271,15 @@ select {
   width: 100%;
 }
 
+/* チェック・ラジオは、文字の入力欄の幅・高さにしない */
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  height: auto;
+  padding: 0;
+  margin: 0;
+}
+
 input::placeholder {
   color: var(--faint);
 }
@@ -5002,35 +5011,232 @@ button.participation {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 10px;
   font-size: 13px;
 }
 
-/* レギュラーの作品（決定記録 0071） */
+/* 作品の画面（決定記録 0065・0071・0072） */
 .work-regular-tag {
   margin-left: 8px;
   vertical-align: middle;
 }
 
-.work-regular {
-  margin-bottom: 16px;
-  font-size: 13px;
+.work-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px 24px;
 }
 
-.work-regular label {
+.work-regular {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  max-width: 320px;
+  text-align: right;
+}
+
+.work-regular-toggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-.work-add-episode {
+.work-regular-toggle.is-on {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.work-regular-toggle:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.work-section {
   display: grid;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 12px;
+  margin-top: 28px;
 }
 
-.event-view-section > .button {
-  margin-bottom: 12px;
+.work-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.work-section-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.work-count {
+  margin-left: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.work-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.work-section-actions .button.is-active {
+  border-color: var(--ink);
+}
+
+.work-form {
+  display: grid;
+  gap: 10px;
+}
+
+.work-form-fields {
+  display: grid;
+  grid-template-columns: 170px 120px minmax(0, 1fr) 170px;
+  gap: 10px 12px;
+}
+
+.work-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.work-bulk-text {
+  width: 100%;
+  min-height: 160px;
+  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.work-bulk-help {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.work-bulk-help summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.work-bulk-help ul {
+  margin: 6px 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 2px;
+}
+
+.work-bulk-preview {
+  display: grid;
+  gap: 6px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.work-bulk-preview p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.work-episodes {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.work-episodes th,
+.work-episodes td {
+  text-align: left;
+  padding: 7px 12px 7px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: baseline;
+}
+
+.work-episodes thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.work-episodes-year th {
+  padding-top: 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.work-episode-date,
+.work-episode-number,
+.work-episode-num {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.work-episode-date {
+  width: 4.5em;
+}
+
+.work-episode-number {
+  width: 4em;
+  color: var(--muted);
+}
+
+.work-episode-num {
+  width: 4em;
+  text-align: right !important;
+  padding-right: 0 !important;
+}
+
+.work-episodes tr.is-skipped td {
+  color: var(--faint);
+}
+
+.work-episodes .event-status {
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .work-head {
+    grid-template-columns: 1fr;
+  }
+
+  .work-regular {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .work-form-fields {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .work-form-title {
+    grid-column: 1 / -1;
+  }
+
+  /* 狭い画面では素材の数を出さない（題名に幅を回す） */
+  .work-episodes .work-episode-num {
+    display: none;
+  }
 }
 
 /* 似た画像（決定記録 0069） */

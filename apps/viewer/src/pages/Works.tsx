@@ -6,7 +6,7 @@
 // - 楽曲・シングル・アルバム・MV は楽曲の画面で扱う（決定記録 0066）
 // - レギュラーの印の作品は、回・号をここで足し、出来事の一覧には出さない（決定記録 0071）
 
-import { CalendarPlus, ChevronLeft, Plus } from "lucide-react";
+import { CalendarPlus, Check, ChevronLeft, ListPlus, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { ClassificationChoice } from "../components/EntityPicker.tsx";
@@ -22,8 +22,11 @@ import {
   PARTICIPANT_STATUS_LABELS,
 } from "../format.ts";
 import {
+  EPISODES_EXAMPLE,
+  type EpisodeRow,
   episodeKindOf,
   parseEpisodeNumber,
+  parseEpisodesJson,
   regularEpisodeInput,
   regularRoleOf,
   regularStatusOf,
@@ -280,11 +283,12 @@ function RegularToggle({ view, onChanged }: { view: WorkView; onChanged: () => v
   const [error, setError] = useState<string | null>(null);
   if (!source.setWorkRegular) return null;
   const set = source.setWorkRegular.bind(source);
-  const toggle = async (regular: boolean) => {
+  const on = view.work.regular;
+  const toggle = async () => {
     setBusy(true);
     setError(null);
     try {
-      await set(view.work.id, regular);
+      await set(view.work.id, !on);
       onChanged();
     } catch (e) {
       setError(message(e));
@@ -294,15 +298,22 @@ function RegularToggle({ view, onChanged }: { view: WorkView; onChanged: () => v
   };
   return (
     <div className="work-regular">
-      <label>
-        <input
-          type="checkbox"
-          checked={view.work.regular}
-          disabled={busy}
-          onChange={(e) => void toggle(e.target.checked)}
-        />
-        レギュラー（回・号をここで足し、出来事の一覧には出さない）
-      </label>
+      <button
+        type="button"
+        className={`work-regular-toggle ${on ? "is-on" : ""}`}
+        aria-pressed={on}
+        aria-describedby="work-regular-hint"
+        disabled={busy}
+        onClick={() => void toggle()}
+      >
+        {on && <Check size={14} aria-hidden="true" />}
+        レギュラー
+      </button>
+      <p id="work-regular-hint" className="field-hint">
+        {on
+          ? "回・号はこの画面で足し、出来事の一覧には出しません"
+          : "レギュラーにすると、回・号をこの画面で足せます（出来事の一覧には出さなくなります）"}
+      </p>
       {error && (
         <p className="error" role="alert">
           変えられませんでした: {error}
@@ -313,10 +324,17 @@ function RegularToggle({ view, onChanged }: { view: WorkView; onChanged: () => v
 }
 
 /** 回・号を足す（作業者・運営者。決定記録 0071）。蓄積対象の人物の出演を付けて作る */
-function AddEpisode({ view, onAdded }: { view: WorkView; onAdded: () => void }) {
+function AddEpisode({
+  view,
+  onAdded,
+  onClose,
+}: {
+  view: WorkView;
+  onAdded: () => void;
+  onClose: () => void;
+}) {
   const { source } = useApp();
   const kind = episodeKindOf(view.work.subtype);
-  const [open, setOpen] = useState(false);
   const [startsOn, setStartsOn] = useState("");
   const [number, setNumber] = useState("");
   const [title, setTitle] = useState("");
@@ -324,14 +342,6 @@ function AddEpisode({ view, onAdded }: { view: WorkView; onAdded: () => void }) 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState<string | null>(null);
-  if (!open) {
-    return (
-      <button type="button" className="button" onClick={() => setOpen(true)}>
-        <CalendarPlus size={14} aria-hidden="true" />
-        {kind === "publication" ? "号を足す" : "回を足す"}
-      </button>
-    );
-  }
   const episodeNumber = parseEpisodeNumber(number);
   const add = async () => {
     if (episodeNumber === undefined) return setError("回の番号は 0 以上の整数で入れてください");
@@ -364,8 +374,8 @@ function AddEpisode({ view, onAdded }: { view: WorkView; onAdded: () => void }) 
   };
   const status = regularStatusOf(startsOn || null);
   return (
-    <div className="panel panel-pad work-add-episode" role="group" aria-label="回・号を足す">
-      <div className="field-row">
+    <div className="panel panel-pad work-form" role="group" aria-label="回・号を足す">
+      <div className="work-form-fields">
         <div className="field">
           <label htmlFor="work-episode-date">
             {kind === "publication" ? "発売日" : "放送・配信日"}
@@ -377,13 +387,22 @@ function AddEpisode({ view, onAdded }: { view: WorkView; onAdded: () => void }) 
             onChange={(e) => setStartsOn(e.target.value)}
           />
         </div>
-        <div className="field">
+        <div className="field work-form-number">
           <label htmlFor="work-episode-number">回の番号（任意）</label>
           <input
             id="work-episode-number"
             inputMode="numeric"
             value={number}
             onChange={(e) => setNumber(e.target.value)}
+          />
+        </div>
+        <div className="field work-form-title">
+          <label htmlFor="work-episode-title">題名（任意）</label>
+          <input
+            id="work-episode-title"
+            value={title}
+            placeholder={regularTitleOf(view.work.name, episodeNumber ?? null)}
+            onChange={(e) => setTitle(e.target.value)}
           />
         </div>
         <div className="field">
@@ -397,15 +416,6 @@ function AddEpisode({ view, onAdded }: { view: WorkView; onAdded: () => void }) 
           </select>
         </div>
       </div>
-      <div className="field">
-        <label htmlFor="work-episode-title">題名（任意）</label>
-        <input
-          id="work-episode-title"
-          value={title}
-          placeholder={regularTitleOf(view.work.name, episodeNumber ?? null)}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-      </div>
       <p className="field-hint">
         {EVENT_KIND_LABELS[kind] ?? kind}として作り、
         {view.subject ? `${view.subject.name} の出演を` : "蓄積対象の人物の出演を"}「
@@ -416,12 +426,12 @@ function AddEpisode({ view, onAdded }: { view: WorkView; onAdded: () => void }) 
           {error}
         </p>
       )}
-      {added && !error && <p className="done">「{added}」を足しました。</p>}
-      <div className="actions">
+      {added && !error && <p className="done">「{added}」を足しました。続けて足せます。</p>}
+      <div className="work-form-actions">
         <button type="button" className="button primary" disabled={busy} onClick={() => void add()}>
           足す
         </button>
-        <button type="button" className="button" onClick={() => setOpen(false)}>
+        <button type="button" className="button" onClick={onClose}>
           閉じる
         </button>
       </div>
@@ -429,43 +439,301 @@ function AddEpisode({ view, onAdded }: { view: WorkView; onAdded: () => void }) 
   );
 }
 
+type BulkPreview = {
+  rows: EpisodeRow[];
+  created: { index: number; id: string | null; title: string }[];
+  skipped: { index: number; reason: string }[];
+};
+
+/**
+ * 回・号をまとめて入れる（作業者・運営者。決定記録 0072）。貼り付けた JSON を確かめてから作る。
+ * 既にある回（同じ回の番号。番号が無ければ同じ日付）は飛ばすので、同じものを何度入れても重ならない
+ */
+function BulkEpisodes({
+  view,
+  onAdded,
+  onClose,
+}: {
+  view: WorkView;
+  onAdded: () => void;
+  onClose: () => void;
+}) {
+  const { source } = useApp();
+  const [text, setText] = useState("");
+  const [preview, setPreview] = useState<BulkPreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  if (!source.addWorkEpisodes) return null;
+  const send = source.addWorkEpisodes.bind(source);
+
+  const check = async () => {
+    setError(null);
+    setDone(null);
+    setPreview(null);
+    const parsed = parseEpisodesJson(text);
+    if ("error" in parsed) return setError(parsed.error);
+    setBusy(true);
+    try {
+      const r = await send(view.work.id, parsed.rows, true);
+      setPreview({ rows: parsed.rows, ...r });
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const create = async () => {
+    if (!preview) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await send(view.work.id, preview.rows, false);
+      setDone(
+        `${nf.format(r.created.length)} 件を作りました` +
+          (r.skipped.length > 0
+            ? `（既にある ${nf.format(r.skipped.length)} 件は飛ばしました）`
+            : ""),
+      );
+      setPreview(null);
+      setText("");
+      onAdded();
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const kind = episodeKindOf(view.work.subtype);
+  return (
+    <div className="panel panel-pad work-form" role="group" aria-label="回・号をまとめて入れる">
+      <div className="field">
+        <label htmlFor="work-bulk-text">回・号の一覧（JSON）</label>
+        <textarea
+          id="work-bulk-text"
+          className="work-bulk-text"
+          rows={8}
+          spellCheck={false}
+          value={text}
+          placeholder={EPISODES_EXAMPLE}
+          onChange={(e) => {
+            setText(e.target.value);
+            setPreview(null);
+          }}
+        />
+      </div>
+      <details className="work-bulk-help">
+        <summary>書き方</summary>
+        <ul>
+          <li>
+            1 回・1 号を <code>{"{ … }"}</code> 1 つにして、<code>[ … ]</code> で並べます
+          </li>
+          <li>
+            <code>date</code>（{kind === "publication" ? "発売日" : "放送・配信日"}
+            。2026-10-05）か <code>number</code>（回の番号）のどちらかは必ず書きます
+          </li>
+          <li>
+            <code>title</code> は省くと「{regularTitleOf(view.work.name, 12)}」のようになります
+          </li>
+          <li>
+            <code>status</code> は出演の状態（<code>appeared</code> 出演した・
+            <code>not_appearing</code> 出ていない・<code>scheduled</code> 予定・
+            <code>cancelled</code> 中止）。省くと、日付が過ぎていれば 「出演した」
+          </li>
+          <li>
+            <code>role</code> は出演の役割（省くと <code>{regularRoleOf(kind)}</code>）
+          </li>
+          <li>同じ回の番号（番号が無ければ同じ日付）の回・号が既にあれば飛ばします</li>
+        </ul>
+        <button type="button" className="link-button" onClick={() => setText(EPISODES_EXAMPLE)}>
+          見本を入れる
+        </button>
+      </details>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      {done && <p className="done">{done}</p>}
+      {preview && (
+        <div className="work-bulk-preview" aria-label="入れる前の確かめ">
+          <p>
+            作る {nf.format(preview.created.length)} 件
+            {preview.skipped.length > 0 && ` ・ 飛ばす ${nf.format(preview.skipped.length)} 件`}
+          </p>
+          <table className="work-episodes">
+            <thead>
+              <tr>
+                <th scope="col">日付</th>
+                <th scope="col">回</th>
+                <th scope="col">題名</th>
+                <th scope="col">扱い</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.rows.map((row, index) => {
+                const made = preview.created.find((c) => c.index === index);
+                const skip = preview.skipped.find((c) => c.index === index);
+                return (
+                  <tr key={index} className={skip ? "is-skipped" : undefined}>
+                    <td className="work-episode-date">
+                      {row.date ? eventDateLabel(row.date, null, "day") : "—"}
+                    </td>
+                    <td className="work-episode-number">
+                      {row.number !== undefined ? `#${row.number}` : ""}
+                    </td>
+                    <td>{made?.title ?? row.title ?? ""}</td>
+                    <td className="quiet">{skip ? skip.reason : "作る"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="work-form-actions">
+        {preview ? (
+          <button
+            type="button"
+            className="button primary"
+            disabled={busy || preview.created.length === 0}
+            onClick={() => void create()}
+          >
+            {nf.format(preview.created.length)} 件を作る
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="button primary"
+            disabled={busy || !text.trim()}
+            onClick={() => void check()}
+          >
+            確かめる
+          </button>
+        )}
+        <button type="button" className="button" onClick={onClose}>
+          閉じる
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** 年ごとにまとめる（新しい年から） */
+function byYear<T extends { startsOn: string | null }>(events: readonly T[]) {
+  const groups = new Map<string, T[]>();
+  for (const e of events) {
+    const year = e.startsOn ? e.startsOn.slice(0, 4) : "日付なし";
+    groups.set(year, [...(groups.get(year) ?? []), e]);
+  }
+  return [...groups.entries()];
+}
+
 /** 回・号の一覧（多いときは先頭だけを出し、押すと全部） */
 function WorkEvents({ view, onChanged }: { view: WorkView; onChanged: () => void }) {
   const { viewer } = useApp();
   const [all, setAll] = useState(false);
-  const LIMIT = 20;
+  const [form, setForm] = useState<"one" | "bulk" | null>(null);
+  const LIMIT = 30;
   const shown = all ? view.events : view.events.slice(0, LIMIT);
+  const kind = episodeKindOf(view.work.subtype);
+  const canAdd = viewer.canWork && view.work.regular;
   return (
-    <section className="event-view-section" aria-labelledby="work-events">
-      <h2 id="work-events">回・号（{nf.format(view.events.length)} 件）</h2>
-      {viewer.canWork && view.work.regular && <AddEpisode view={view} onAdded={onChanged} />}
+    <section className="work-section" aria-labelledby="work-events">
+      <div className="work-section-head">
+        <h2 id="work-events">
+          回・号 <span className="work-count">{nf.format(view.events.length)} 件</span>
+        </h2>
+        {canAdd && (
+          <div className="work-section-actions">
+            <button
+              type="button"
+              className={`button ${form === "one" ? "is-active" : ""}`}
+              aria-expanded={form === "one"}
+              onClick={() => setForm(form === "one" ? null : "one")}
+            >
+              <CalendarPlus size={14} aria-hidden="true" />
+              {kind === "publication" ? "号を足す" : "回を足す"}
+            </button>
+            <button
+              type="button"
+              className={`button ${form === "bulk" ? "is-active" : ""}`}
+              aria-expanded={form === "bulk"}
+              onClick={() => setForm(form === "bulk" ? null : "bulk")}
+            >
+              <ListPlus size={14} aria-hidden="true" />
+              まとめて入れる
+            </button>
+          </div>
+        )}
+      </div>
+      {form === "one" && (
+        <AddEpisode view={view} onAdded={onChanged} onClose={() => setForm(null)} />
+      )}
+      {form === "bulk" && (
+        <BulkEpisodes view={view} onAdded={onChanged} onClose={() => setForm(null)} />
+      )}
       {view.events.length === 0 ? (
         <p className="quiet">
-          {view.work.regular
-            ? "この作品の回・号はまだありません。「回・号を足す」で作ります。"
-            : "この作品を指す回・号はまだありません。出来事の画面で、作品にこの作品を選んで作ります。"}
+          {canAdd
+            ? `まだありません。「${kind === "publication" ? "号を足す" : "回を足す"}」か「まとめて入れる」で作ります。`
+            : view.work.regular
+              ? "まだありません。"
+              : "この作品を指す回・号はまだありません。出来事の画面で、作品にこの作品を選んで作ります。"}
         </p>
       ) : (
-        <ul className="work-events">
-          {shown.map((e) => (
-            <li key={e.id}>
-              <span className="quiet event-material-date">
-                {eventDateLabel(e.startsOn, null, e.datePrecision)}
-              </span>
-              <Link to={eventPath(e)}>
-                {e.title ?? "（題名なし）"}
-                {e.episodeNumber !== null && ` #${e.episodeNumber}`}
-              </Link>
-              <span className="quiet">{EVENT_KIND_SHORT[e.kind] ?? e.kind}</span>
-              {e.materials > 0 && <span className="quiet">素材 {e.materials}</span>}
-              {e.subjectStatus && (
-                <span className={`event-status status-${e.subjectStatus}`}>
-                  {PARTICIPANT_STATUS_LABELS[e.subjectStatus] ?? e.subjectStatus}
-                </span>
-              )}
-            </li>
+        <table className="work-episodes">
+          <thead>
+            <tr>
+              <th scope="col">日付</th>
+              <th scope="col">回</th>
+              <th scope="col">題名</th>
+              <th scope="col">出演</th>
+              <th scope="col" className="work-episode-num">
+                素材
+              </th>
+            </tr>
+          </thead>
+          {byYear(shown).map(([year, events]) => (
+            <tbody key={year}>
+              <tr className="work-episodes-year">
+                <th scope="rowgroup" colSpan={5}>
+                  {year === "日付なし" ? year : `${year}年`}
+                </th>
+              </tr>
+              {events.map((e) => (
+                <tr key={e.id}>
+                  <td className="work-episode-date">
+                    {e.startsOn
+                      ? e.datePrecision === "day"
+                        ? `${Number(e.startsOn.slice(5, 7))}/${Number(e.startsOn.slice(8, 10))}`
+                        : eventDateLabel(e.startsOn, null, e.datePrecision)
+                      : "—"}
+                  </td>
+                  <td className="work-episode-number">
+                    {e.episodeNumber !== null ? `#${e.episodeNumber}` : ""}
+                  </td>
+                  <td>
+                    <Link to={eventPath(e)}>{e.title ?? "（題名なし）"}</Link>
+                    {e.kind !== kind && (
+                      <span className="quiet"> ・ {EVENT_KIND_SHORT[e.kind] ?? e.kind}</span>
+                    )}
+                  </td>
+                  <td>
+                    {e.subjectStatus && (
+                      <span className={`event-status status-${e.subjectStatus}`}>
+                        {PARTICIPANT_STATUS_LABELS[e.subjectStatus] ?? e.subjectStatus}
+                      </span>
+                    )}
+                  </td>
+                  <td className="work-episode-num">
+                    {e.materials > 0 ? nf.format(e.materials) : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
           ))}
-        </ul>
+        </table>
       )}
       {!all && view.events.length > LIMIT && (
         <button type="button" className="link-button" onClick={() => setAll(true)}>
@@ -492,26 +760,31 @@ function WorkImages({ view }: { view: WorkView }) {
     };
   });
   return (
-    <section className="event-view-section" aria-labelledby="work-images">
-      <h2 id="work-images">素材（{nf.format(picked.length)} 枚）</h2>
-      {view.subject && (
-        <label className="work-only-subject">
-          <input
-            type="checkbox"
-            checked={onlySubject}
-            onChange={(e) => {
-              setOnlySubject(e.target.checked);
-              setViewing(null);
-            }}
-          />
-          {view.subject.name} が写っているものだけ
-        </label>
-      )}
+    <section className="work-section" aria-labelledby="work-images">
+      <div className="work-section-head">
+        <h2 id="work-images">
+          素材 <span className="work-count">{nf.format(picked.length)} 枚</span>
+        </h2>
+        {view.subject && (
+          <label className="work-only-subject">
+            <input
+              type="checkbox"
+              checked={onlySubject}
+              onChange={(e) => {
+                setOnlySubject(e.target.checked);
+                setViewing(null);
+              }}
+            />
+            {view.subject.name} が写っているものだけ
+          </label>
+        )}
+      </div>
       {picked.length === 0 ? (
         <p className="quiet">
           {onlySubject
             ? `${view.subject?.name ?? ""} が写っている画像はまだありません。`
             : "画像はまだありません。"}
+          回・号に素材を紐付けると、ここに並びます。
         </p>
       ) : (
         <GalleryGrid images={gallery} onOpen={setViewing} />
@@ -548,6 +821,19 @@ function WorkImages({ view }: { view: WorkView }) {
       )}
     </section>
   );
+}
+
+/** 見出しの下の要約（回・号の数・素材の数・いちばん新しい回・号） */
+function workSummary(view: WorkView): string {
+  const latest = view.events.find((e) => e.startsOn)?.startsOn ?? null;
+  return [
+    subtypeLabel(view.work.subtype),
+    `回・号 ${nf.format(view.events.length)} 件`,
+    `素材 ${nf.format(view.images.length)}${view.moreImages ? " 枚以上" : " 枚"}`,
+    latest ? `最新 ${eventDateLabel(latest, null, "day")}` : null,
+  ]
+    .filter(Boolean)
+    .join(" ・ ");
 }
 
 function WorkPage({ id }: { id: string }) {
@@ -589,14 +875,17 @@ function WorkPage({ id }: { id: string }) {
         loaded.data &&
         !MUSIC_SUBTYPES.has(loaded.data.work.subtype ?? "") && (
           <>
-            <div className="page-head">
-              <h1 className="page-title">{loaded.data.work.name}</h1>
-              <p className="page-sub">
-                {subtypeLabel(loaded.data.work.subtype)}
-                {loaded.data.work.regular && " ・ レギュラー"}
-              </p>
+            <div className="page-head work-head">
+              <div>
+                <h1 className="page-title">{loaded.data.work.name}</h1>
+                <p className="page-sub">{workSummary(loaded.data)}</p>
+              </div>
+              {viewer.canWork ? (
+                <RegularToggle view={loaded.data} onChanged={reload} />
+              ) : (
+                loaded.data.work.regular && <span className="tag">レギュラー</span>
+              )}
             </div>
-            {viewer.canWork && <RegularToggle view={loaded.data} onChanged={reload} />}
             <WorkEvents view={loaded.data} onChanged={reload} />
             <WorkImages view={loaded.data} />
           </>

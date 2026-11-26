@@ -12,7 +12,10 @@ import {
   type NewEntity,
   type RefLabel,
   SourceError,
+  type WorkSummary,
+  type WorkView,
 } from "./types.ts";
+import { type EpisodeRow, episodeKindOf, regularRoleOf, regularStatusOf } from "./regular.ts";
 
 const WORKS = {
   radio: "b1000000-0000-4000-8000-000000000001",
@@ -26,7 +29,15 @@ const PERFORMANCE = "e1000000-0000-4000-8000-000000000011";
 /** 日程になる親の種類（設計書 決定記録 0034） */
 const SCHEDULE_PARENT_KINDS: readonly string[] = ["live", "meet_greet", "event"];
 
-type DemoEntity = EntityOption & { classification: "public" | "private"; archiveSubject?: boolean };
+type DemoEntity = EntityOption & {
+  classification: "public" | "private";
+  archiveSubject?: boolean;
+  /** レギュラーの印（作品。決定記録 0071） */
+  regular?: boolean;
+};
+
+/** 楽曲の画面で扱う種類（作品の一覧に出さない。決定記録 0066） */
+const MUSIC_SUBTYPES: readonly string[] = ["song", "single", "album", "music_video"];
 
 function demoEntities(): DemoEntity[] {
   const person = (id: string, label: string, archiveSubject = false): DemoEntity => ({
@@ -237,14 +248,17 @@ export class DemoEvents {
       from?: string;
       to?: string;
       schedule?: "hide" | "include";
+      regular?: "hide" | "include";
     } = {},
     linked: ReadonlySet<string> = new Set(),
   ) {
     const q = filter.query?.trim() ?? "";
     const { from, to } = filter;
+    const regularIds = new Set(this.entities.filter((e) => e.regular).map((e) => e.id));
     const items = this.events
       .filter((e) => !filter.kind || e.kind === filter.kind)
       .filter((e) => filter.schedule !== "hide" || !this.isSchedule(e))
+      .filter((e) => filter.regular !== "hide" || !e.workId || !regularIds.has(e.workId))
       .filter((e) => !to || (e.startsOn !== null && e.startsOn <= to))
       .filter((e) => !from || (e.endsOn ?? e.startsOn ?? "") >= from)
       .filter((e) => !q || e.title.includes(q) || (e.workName ?? "").includes(q))
@@ -421,6 +435,133 @@ export class DemoEvents {
       people: this.entities.filter((e) => e.type === "person").length,
       songs: this.entities.filter((e) => e.type === "work" && e.subtype === "song").length,
     };
+  }
+
+  /** 作品の一覧（決定記録 0065）。デモ版では素材を数えない */
+  works(filter: { subtype?: string; query?: string } = {}): WorkSummary[] {
+    const q = filter.query?.trim() ?? "";
+    return this.entities
+      .filter((e) => e.type === "work" && !MUSIC_SUBTYPES.includes(e.subtype ?? ""))
+      .filter((e) => !filter.subtype || e.subtype === filter.subtype)
+      .filter((e) => !q || e.label.includes(q))
+      .map((w) => {
+        const events = this.events.filter((e) => e.workId === w.id);
+        const latest = events
+          .map((e) => e.startsOn)
+          .filter((d): d is string => d !== null)
+          .sort()
+          .at(-1);
+        return {
+          id: w.id,
+          name: w.label,
+          subtype: w.subtype,
+          regular: w.regular === true,
+          events: events.length,
+          latest: latest ?? null,
+          materials: 0,
+        };
+      });
+  }
+
+  /** 作品の画面（決定記録 0065）。デモ版では画像を出さない */
+  work(id: string): WorkView {
+    const w = this.entities.find((e) => e.id === id && e.type === "work");
+    if (!w) throw new SourceError("作品が見つかりません", 404);
+    const subject = this.entities.find((e) => e.archiveSubject);
+    return {
+      work: {
+        id: w.id,
+        name: w.label,
+        subtype: w.subtype,
+        reading: null,
+        regular: w.regular === true,
+      },
+      subject: subject ? { id: subject.id, name: subject.label } : null,
+      events: this.events
+        .filter((e) => e.workId === id)
+        .sort(
+          (a, b) =>
+            (b.startsOn ?? "").localeCompare(a.startsOn ?? "") ||
+            (b.episodeNumber ?? -1) - (a.episodeNumber ?? -1),
+        )
+        .map((e) => ({
+          id: e.id,
+          title: e.title,
+          kind: e.kind,
+          startsOn: e.startsOn,
+          datePrecision: e.datePrecision,
+          episodeNumber: e.episodeNumber,
+          parentId: e.parentId,
+          subjectStatus: this.subjectStatus(e),
+          materials: 0,
+        })),
+      images: [],
+      moreImages: false,
+    };
+  }
+
+  /** レギュラーの印（決定記録 0071） */
+  setRegular(id: string, regular: boolean): void {
+    const w = this.entities.find((e) => e.id === id && e.type === "work");
+    if (!w) throw new SourceError("作品が見つかりません", 404);
+    w.regular = regular;
+  }
+
+  /** 回・号をまとめて作る（決定記録 0072）。API と同じく、同じ回の番号・日付は飛ばす */
+  addEpisodes(id: string, rows: readonly EpisodeRow[], dryRun: boolean) {
+    const w = this.entities.find((e) => e.id === id && e.type === "work");
+    if (!w) throw new SourceError("作品が見つかりません", 404);
+    const kind = episodeKindOf(w.subtype);
+    const existing = this.events.filter((e) => e.workId === id);
+    const numbers = new Set(
+      existing.flatMap((e) => (e.episodeNumber === null ? [] : [e.episodeNumber])),
+    );
+    const dates = new Set(
+      existing.flatMap((e) => (e.episodeNumber === null && e.startsOn ? [e.startsOn] : [])),
+    );
+    const subjects = this.subjects();
+    const created: { index: number; id: string | null; title: string }[] = [];
+    const skipped: { index: number; reason: string }[] = [];
+    for (const [index, row] of rows.entries()) {
+      const number = row.number ?? null;
+      const date = row.date ?? null;
+      if (number !== null ? numbers.has(number) : date !== null && dates.has(date)) {
+        skipped.push({
+          index,
+          reason: number !== null ? `#${number} は既にあります` : `${date} の回は既にあります`,
+        });
+        continue;
+      }
+      if (number !== null) numbers.add(number);
+      else if (date !== null) dates.add(date);
+      const title = row.title || (number === null ? w.label : `${w.label} #${number}`);
+      const eventId = dryRun
+        ? null
+        : this.save(null, {
+            kind,
+            eventType: null,
+            title,
+            parentId: null,
+            workId: id,
+            venueId: null,
+            episodeNumber: number,
+            startsOn: date,
+            endsOn: null,
+            datePrecision: date ? "day" : null,
+            startsAt: null,
+            endsAt: null,
+            sources: [],
+            classification: "public",
+            participants: subjects.map((s) => ({
+              entityId: s.id,
+              role: row.role ?? regularRoleOf(kind),
+              status: row.status ?? regularStatusOf(date),
+              characterName: null,
+            })),
+          });
+      created.push({ index, id: eventId, title });
+    }
+    return { created, skipped };
   }
 
   subjects(): RefLabel[] {

@@ -219,6 +219,101 @@ describe("作品の画面", () => {
       ).toBe(400);
     }));
 
+  it("回・号をまとめて作り、既にある回は飛ばす。確かめだけなら作らない（決定記録 0072）", () =>
+    withApi(async (ctx) => {
+      const s = await setup(ctx);
+      const episodes = [
+        { date: "2026-10-12", number: 2 }, // 既にある（#2）
+        { date: "2026-10-19", number: 3 },
+        { date: "2026-10-26", number: 4, title: "架空の特番", status: "not_appearing" },
+        { date: "2026-11-02" }, // 番号なし
+        { date: "2026-11-02" }, // 入力の中で重なる
+      ];
+      const dry = await ctx.call("POST", `/works/${s.program}/episodes`, {
+        episodes,
+        dry_run: true,
+      });
+      expect(dry.status).toBe(200);
+      const preview = (await dry.json()) as {
+        created: { index: number; id: string | null; title: string }[];
+        skipped: { index: number; reason: string }[];
+      };
+      expect(preview.created.map((c) => [c.index, c.id, c.title])).toEqual([
+        [1, null, "架空の冠番組 #3"],
+        [2, null, "架空の特番"],
+        [3, null, "架空の冠番組"],
+      ]);
+      expect(preview.skipped.map((x) => x.index)).toEqual([0, 4]);
+      const before = await ctx.c.query<{ n: number }>(
+        "select count(*)::int as n from public.events where work_id = $1",
+        [s.program],
+      );
+      expect(before.rows[0]?.n).toBe(2);
+
+      const res = await ctx.call("POST", `/works/${s.program}/episodes`, { episodes });
+      expect(res.status).toBe(201);
+      const { rows } = await ctx.c.query<{
+        episode_number: number | null;
+        starts_on: string;
+        kind: string;
+        status: string;
+        role: string;
+      }>(
+        `select e.episode_number, e.starts_on::text as starts_on, e.kind, p.status, p.role
+         from public.events e join public.event_participants p on p.event_id = e.id
+         where e.work_id = $1 and p.entity_id = $2 and e.starts_on > '2026-10-12'
+         order by e.starts_on, e.episode_number`,
+        [s.program, s.subject],
+      );
+      expect(rows).toEqual([
+        {
+          episode_number: 3,
+          starts_on: "2026-10-19",
+          kind: "episode",
+          status: "appeared",
+          role: "regular",
+        },
+        {
+          episode_number: 4,
+          starts_on: "2026-10-26",
+          kind: "episode",
+          status: "not_appearing",
+          role: "regular",
+        },
+        {
+          episode_number: null,
+          starts_on: "2026-11-02",
+          kind: "episode",
+          status: "appeared",
+          role: "regular",
+        },
+      ]);
+      // もう一度入れても増えない
+      const again = (await (
+        await ctx.call("POST", `/works/${s.program}/episodes`, { episodes })
+      ).json()) as { created: unknown[] };
+      expect(again.created).toEqual([]);
+    }));
+
+  it("まとめて作るときの形の誤り・権限", () =>
+    withApi(async (ctx) => {
+      const s = await setup(ctx);
+      const post = (body: unknown, token?: string | null) =>
+        ctx.call("POST", `/works/${s.program}/episodes`, body, token);
+      expect((await post({ episodes: [{ title: "日付も番号も無い" }] })).status).toBe(400);
+      expect((await post({ episodes: [{ date: "2026/10/01" }] })).status).toBe(400);
+      expect((await post({ episodes: [{ number: 1, unknown: true }] })).status).toBe(400);
+      expect((await post({ episodes: [] })).status).toBe(400);
+      const viewer = await tokenFor(
+        await discordUser(ctx.c, "58585858-5858-4585-8585-585858585858", "viewer"),
+      );
+      expect((await post({ episodes: [{ number: 9 }] }, viewer)).status).toBe(403);
+      expect(
+        (await ctx.call("POST", `/works/${s.subject}/episodes`, { episodes: [{ number: 1 }] }))
+          .status,
+      ).toBe(404);
+    }));
+
   it("作品でないもの・無いものは 404。ログインなしには返さない", () =>
     withApi(async (ctx) => {
       const s = await setup(ctx);

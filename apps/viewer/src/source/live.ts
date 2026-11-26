@@ -8,6 +8,7 @@ import type { DraftInput } from "@aletheia/intake/draft";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import { triageItemOf } from "./triage.ts";
+import type { EpisodeRow } from "./regular.ts";
 import {
   type Dashboard,
   type WorkSummary,
@@ -805,6 +806,13 @@ export class LiveSource implements ArchiveSource {
       `/works${params.size > 0 ? `?${params.toString()}` : ""}`,
     );
     return items;
+  }
+
+  async addWorkEpisodes(id: string, episodes: EpisodeRow[], dryRun: boolean) {
+    return this.api<{
+      created: { index: number; id: string | null; title: string }[];
+      skipped: { index: number; reason: string }[];
+    }>("POST", `/works/${encodeURIComponent(id)}/episodes`, { episodes, dry_run: dryRun });
   }
 
   async setWorkRegular(id: string, regular: boolean): Promise<void> {

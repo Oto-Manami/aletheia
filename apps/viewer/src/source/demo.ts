@@ -21,6 +21,7 @@ import { proposeSubjectLinks } from "@aletheia/intake/mentions";
 import { hasOnlyAuthor } from "./tags.ts";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import { DemoEvents } from "./demo-events.ts";
+import type { EpisodeRow } from "./regular.ts";
 import {
   byNewest,
   byOldest,
@@ -892,6 +893,26 @@ export class DemoSource implements ArchiveSource {
     if (!linked?.delete(postId)) {
       throw new SourceError("この出来事には、その投稿が紐付いていません", 404);
     }
+  }
+
+  async listWorks(filter: { subtype?: string; query?: string }) {
+    await this.delay();
+    return this.events.works(filter);
+  }
+
+  async getWork(id: string) {
+    await this.delay();
+    return this.events.work(id);
+  }
+
+  async setWorkRegular(id: string, regular: boolean): Promise<void> {
+    await this.delay();
+    this.events.setRegular(id, regular);
+  }
+
+  async addWorkEpisodes(id: string, episodes: EpisodeRow[], dryRun: boolean) {
+    await this.delay();
+    return this.events.addEpisodes(id, episodes, dryRun);
   }
 
   async saveEvent(id: string | null, input: EventInput): Promise<string> {
