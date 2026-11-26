@@ -3,9 +3,10 @@
 // 並び: 題名と日付 → 記事（まとまりだけ。決定記録 0058） → 紐付いた画像（アセットの画面と同じ形のタイル。
 // 押すと原本を開く） → 出典の記事 → 日程とセットリスト（日程はこの画面の中で開く。決定記録 0060）
 
-import { ChevronLeft, ExternalLink, Pencil } from "lucide-react";
+import { ExternalLink, Pencil } from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useLocation, useParams, useSearchParams } from "react-router";
+import { BackLink } from "../components/BackLink.tsx";
 import { EventArticleSection } from "../components/EventArticle.tsx";
 import { EventSetlistsSection } from "../components/EventSetlists.tsx";
 import { type GalleryImage, GalleryGrid, ImageViewer } from "../components/MaterialGallery.tsx";
@@ -94,10 +95,13 @@ function EventView({ detail }: { detail: EventDetail }) {
     <article className="panel panel-pad event-view" aria-labelledby="event-view-title">
       <header className="event-view-head">
         <div className="event-view-nav">
-          <Link className="back-link" to={{ pathname: "/events", search }}>
-            <ChevronLeft size={16} aria-hidden="true" />
+          <BackLink list to={{ pathname: "/events", search }}>
             一覧に戻る
-          </Link>
+          </BackLink>
+          {detail.workId && (
+            // 番組の回・雑誌の号は、作品の画面にまとまっている（レギュラーの回は出来事の一覧に出ない。決定記録 0071）
+            <BackLink to={`/works/${detail.workId}`}>{detail.workName ?? "作品"}</BackLink>
+          )}
           {viewer.canWork && (
             <Link className="button" to={{ pathname: `/events/${detail.id}/edit`, search }}>
               <Pencil size={14} aria-hidden="true" />

@@ -2,6 +2,7 @@
 // 決める。どちらにしてもファイルは消さない。作業者・運営者が使う
 
 import { useState } from "react";
+import { BackLink } from "../components/BackLink.tsx";
 import { SimilarAssetCard } from "../components/SimilarImages.tsx";
 import { useApp } from "../context.tsx";
 import type { DuplicatePair } from "../source/types.ts";
@@ -43,6 +44,7 @@ export function DuplicatesPage() {
   return (
     <section className="page">
       <div className="page-head">
+        <BackLink to="/dashboard">ダッシュボード</BackLink>
         <h1 className="page-title">似た画像</h1>
         <p className="page-sub">
           見た目が似ている保存済みの画像の組

@@ -961,13 +961,31 @@ select:disabled {
 }
 
 .back-link {
-  display: none;
+  display: inline-flex;
   align-items: center;
   gap: 2px;
   justify-self: start;
   font-size: 13px;
   color: var(--muted);
   text-decoration: none;
+}
+
+.back-link:hover {
+  color: var(--ink);
+}
+
+button.back-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* 見出しの上に置くときの間 */
+.page > .back-link,
+.page-head > .back-link {
+  margin-bottom: 6px;
 }
 
 .intake-body {
@@ -2075,6 +2093,11 @@ a.tab {
     padding-right: 4px;
   }
 
+  /* 一覧が隣に見えているので、「一覧に戻る」は出さない */
+  .split .back-link-list {
+    display: none;
+  }
+
   /* 見出し・絞り込みは止めたまま、一覧だけをスクロールする（一覧の枠は、欄の高さに合わせて縮む） */
   .split-list > .intake-list,
   .split-list > .event-list {
@@ -2096,10 +2119,6 @@ a.tab {
 
   .split-list {
     position: static;
-  }
-
-  .back-link {
-    display: inline-flex;
   }
 
   .post-grid {

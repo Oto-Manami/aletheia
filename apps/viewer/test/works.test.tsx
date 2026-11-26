@@ -163,6 +163,10 @@ describe("作品の画面", () => {
   it("回の一覧と、本人が写っている素材を出し、切り替えると全部の素材を出す", async () => {
     open(`/works/${WORK_ID}`);
     expect(await screen.findByRole("heading", { name: "架空の冠番組" })).toBeTruthy();
+    // 一つ上（作品の一覧）へは、どの画面の幅でも戻れる
+    const back = screen.getByRole("link", { name: "作品の一覧" });
+    expect(back.getAttribute("href")).toBe("/works");
+    expect(back.className).not.toContain("back-link-list");
     const events = screen.getByRole("region", { name: "回・号 2 件" });
     // 年ごとにまとめ、日付・回の番号・題名・出演・素材の数を並べる
     expect(within(events).getByRole("rowheader", { name: "2026年" })).toBeTruthy();
