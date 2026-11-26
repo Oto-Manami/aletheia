@@ -120,7 +120,7 @@ export function IntakeDetailPage() {
 }
 
 function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => void }) {
-  const { source } = useApp();
+  const { source, viewer } = useApp();
   const layout = useIntakeOutlet();
   const { decisions } = layout;
   const navigate = useNavigate();
@@ -166,8 +166,10 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
     [detail.pageHtml, loaded.pageHtml],
   );
   const [note, setNote] = useState("");
-  const [busy, setBusy] = useState<"reopen" | null>(null);
+  const [busy, setBusy] = useState<"reopen" | "undo" | null>(null);
   const [reopenFailure, setReopenFailure] = useState<string | null>(null);
+  // 承認の取り消しは、押した後にもう一度確かめる
+  const [confirmUndo, setConfirmUndo] = useState(false);
   // 送って失敗したときは、その理由を見せる（直したところは残っている）
   const failure: { message: string; issues: IntakeIssue[] } | null =
     entry?.status === "failed" ? (entry.failure ?? null) : null;
@@ -240,6 +242,25 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
       void navigate(
         { pathname: `/intake/${detail.id}`, search: params.toString() },
         { replace: true, state: { done: "承認待ちに戻しました" } },
+      );
+      reload();
+    } catch (e) {
+      setReopenFailure(e instanceof Error ? e.message : String(e));
+      setBusy(null);
+    }
+  };
+
+  /** 承認を取り消し、承認待ちに戻す（運営者だけ。直近に承認した 10 件だけ。決定記録 0075） */
+  const undo = async () => {
+    setBusy("undo");
+    setReopenFailure(null);
+    try {
+      await source.undoApproval(detail.id);
+      layout.changed();
+      setConfirmUndo(false);
+      void navigate(
+        { pathname: `/intake/${detail.id}`, search: params.toString() },
+        { replace: true, state: { done: "承認を取り消し、承認待ちに戻しました" } },
       );
       reload();
     } catch (e) {
@@ -466,6 +487,48 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
               >
                 {busy === "reopen" ? "戻しています" : "承認待ちに戻す"}
               </button>
+              {reopenFailure && (
+                <p className="error" role="alert">
+                  {reopenFailure}
+                </p>
+              )}
+            </div>
+          )}
+          {detail.state === "approved" && detail.undoable && viewer.isAdmin && (
+            <div className="decision">
+              <p className="decision-summary">
+                直近に承認した 10
+                件までは、承認を取り消せます。承認で足した投稿・素材・紐付けを外し、承認待ちに戻します（ファイルは仮置きの場所に戻ります）。承認の後に足した紐付け・メモがあるときは、先にそれを外してください。
+              </p>
+              {confirmUndo ? (
+                <div className="decision-secondary">
+                  <button
+                    type="button"
+                    className="button danger"
+                    disabled={busy !== null}
+                    onClick={() => void undo()}
+                  >
+                    {busy === "undo" ? "取り消しています" : "取り消して承認待ちに戻す"}
+                  </button>
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={busy !== null}
+                    onClick={() => setConfirmUndo(false)}
+                  >
+                    やめる
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="button block"
+                  disabled={busy !== null}
+                  onClick={() => setConfirmUndo(true)}
+                >
+                  承認を取り消す
+                </button>
+              )}
               {reopenFailure && (
                 <p className="error" role="alert">
                   {reopenFailure}

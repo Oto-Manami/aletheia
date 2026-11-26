@@ -448,11 +448,12 @@ export class LiveSource implements ArchiveSource {
   }
 
   async getIntake(id: string): Promise<IntakeDetail> {
-    const { item, draft_valid, issues, chosen_images_only } = await this.api<{
+    const { item, draft_valid, issues, chosen_images_only, undoable } = await this.api<{
       item: IntakeDetailRow;
       draft_valid: boolean;
       issues: IntakeIssue[];
       chosen_images_only?: boolean;
+      undoable?: boolean;
     }>("GET", `/intake/${encodeURIComponent(id)}`);
     const [channel] = rowsOf<ChannelRow>(
       await this.supabase
@@ -478,6 +479,7 @@ export class LiveSource implements ArchiveSource {
       channelAvailability: channel?.availability ?? null,
       channelOwnerId: channel?.owner_entity_id ?? null,
       chosenImagesOnly: chosen_images_only === true,
+      undoable: undoable === true,
     };
   }
 
@@ -962,6 +964,10 @@ export class LiveSource implements ArchiveSource {
       body,
     );
     return approveOutcome(res);
+  }
+
+  async undoApproval(id: string): Promise<void> {
+    await this.api("POST", `/intake/${encodeURIComponent(id)}/undo-approve`, {});
   }
 
   async reopenIntake(id: string): Promise<void> {

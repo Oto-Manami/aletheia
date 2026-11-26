@@ -12,6 +12,7 @@
 // | POST     | /intake/:id/approve       | 承認して事実の層に反映する         |
 // | POST     | /intake/:id/reject        | 却下する（直近 10 件まで置いておく） |
 // | POST     | /intake/:id/reopen        | 却下を取り消して承認待ちへ         |
+// | POST     | /intake/:id/undo-approve  | 承認を取り消して承認待ちへ（運営者。決定記録 0075） |
 // | POST     | /intake/:id/hold          | 保留する                           |
 // | POST     | /intake/:id/keep          | 振り分け: 残す（承認待ちへ）       |
 // | POST     | /intake/:id/no-mention    | 振り分け: 言及なし（記録して置き場へ） |
@@ -49,6 +50,8 @@ import {
   rejectIntake,
   reopenRejected,
   restoreDiscarded,
+  canUndoApproval,
+  undoApproval,
   type Subject,
   usesChosenImagesOnly,
   withoutAliasMatches,
@@ -85,6 +88,7 @@ import {
   finalizeApprovedFiles,
   removeStagedFiles,
   readStagedFile,
+  restageUndoneFiles,
   retryPostFiles,
   stagedFilesOf,
   stageFile,
@@ -512,6 +516,8 @@ export function createApp(
       draft_valid: check.success,
       issues: check.error?.issues ?? [],
       chosen_images_only: await usesChosenImagesOnly(db, item),
+      // 承認を取り消せるか（直近に承認した 10 件で、足したものの記録があるもの。決定記録 0075）
+      undoable: await canUndoApproval(db, item),
     });
   });
 
@@ -881,6 +887,25 @@ export function createApp(
     return c.json({ ok: true });
   });
 
+  /**
+   * 承認を取り消し、承認待ちに戻す（運営者だけ。直近に承認した 10 件だけ。設計書 決定記録 0075）。
+   * 承認で足したもの（投稿・素材・紐付け・言明）を外し、保存したファイルを仮置きの場所へ戻す
+   */
+  app.post("/intake/:id/undo-approve", async (c) => {
+    assertAdmin(c.get("actor"));
+    const id = idParam(c.req.param("id"));
+    const report = await inOrder(async () => {
+      const result = await undoApproval(db, id);
+      for (const f of result.files) await options.thumbnailCache?.remove(f.asset_id);
+      const filesReport = files ? await restageUndoneFiles(db, files, id, result.files) : null;
+      for (const f of filesReport?.failed ?? []) {
+        console.error(`取り消した承認のファイルを戻せませんでした: ${f.storage_key}: ${f.error}`);
+      }
+      return { ok: true, post_id: result.postId, files: filesReport };
+    });
+    return c.json(report);
+  });
+
   /** 却下を取り消し、承認待ちに戻す（置いてある直近 10 件だけ。決定記録 0043） */
   app.post("/intake/:id/reopen", async (c) => {
     assertWorker(c.get("actor"));
@@ -991,6 +1016,7 @@ export function createApp(
         invalid_draft: 422,
         draft_replaced: 409,
         author_mismatch: 422,
+        cannot_undo: 409,
       } as const;
       return c.json(
         { error: err.message, code: err.code, issues: err.issues ?? [] },

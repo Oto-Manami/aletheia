@@ -426,6 +426,10 @@ export interface Events {
 }
 
 export interface IntakeItems {
+  /**
+   * 承認で事実の層に足したもの（承認の取り消しに使う。決定記録 0075）
+   */
+  applied: Json | null;
   captured_at: Timestamp;
   channel_id: string;
   classification: Generated<Classification>;

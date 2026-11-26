@@ -124,6 +124,8 @@ export interface IntakeDetail extends IntakeSummary {
    * 付けていない画像・動画は、承認しても保存しない
    */
   chosenImagesOnly: boolean;
+  /** 承認を取り消せるか（直近に承認した 10 件で、足したものの記録があるもの。決定記録 0075） */
+  undoable: boolean;
 }
 
 /** 下書きが指している人物・出来事などの表示名 */
@@ -861,6 +863,11 @@ export interface ArchiveSource {
   ): Promise<ApproveOutcome>;
   /** 却下を取り消し、承認待ちに戻す（却下した直近 10 件だけ。決定記録 0043） */
   reopenIntake(id: string): Promise<void>;
+  /**
+   * 承認を取り消し、承認待ちに戻す（運営者だけ。直近に承認した 10 件だけ。決定記録 0075）。
+   * 承認で足した投稿・素材・紐付けを外し、ファイルを仮置きの場所へ戻す
+   */
+  undoApproval(id: string): Promise<void>;
   labels(refs: { id: string; type: RefLabel["type"] }[]): Promise<RefLabel[]>;
   /** 紐付けの行き先の候補を名前で探す */
   findRefs(query: string): Promise<RefLabel[]>;
