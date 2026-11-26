@@ -41,7 +41,7 @@ const QUEUED_LABELS: Record<Decision, string> = {
   hold: "保留に回しました",
 };
 
-function issuesOf(draft: DraftInput): IntakeIssue[] {
+export function issuesOf(draft: DraftInput): IntakeIssue[] {
   const check = draftSchema.safeParse(draft);
   return check.success
     ? []
@@ -88,7 +88,7 @@ function approvalSentence(draft: DraftInput, chosenOnly: boolean): string {
     : sentence;
 }
 
-function refsOf(draft: DraftInput): { id: string; type: RefLabel["type"] }[] {
+export function refsOf(draft: DraftInput): { id: string; type: RefLabel["type"] }[] {
   return [
     ...(draft.links ?? []).map((l) => ({ id: l.to_id, type: l.to_type })),
     ...(draft.statements ?? []).map((s) => ({ id: s.subject_id, type: "entity" as const })),

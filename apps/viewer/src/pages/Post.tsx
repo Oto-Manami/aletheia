@@ -1,6 +1,6 @@
 import { Play } from "lucide-react";
 import { useState } from "react";
-import { useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 import { HistoryBack } from "../components/BackLink.tsx";
 import { originalCapture } from "../capture.ts";
 import { PageCapture } from "../components/PageCapture.tsx";
@@ -232,7 +232,11 @@ export function PostPage() {
   const { id = "" } = useParams();
   const { source, viewer } = useApp();
   const [post, reload] = useLoad(() => source.getPost(id), [source, id], [], `post:${id}`);
-  const [notice, setNotice] = useState<string | null>(null);
+  // 直す画面から戻ってきたときは、その結果を見せる
+  const location = useLocation();
+  const [notice, setNotice] = useState<string | null>(
+    (location.state as { done?: string } | null)?.done ?? null,
+  );
 
   if (post.status === "loading") return <p className="page quiet">読み込んでいます</p>;
   if (post.status === "error") {
@@ -269,6 +273,13 @@ export function PostPage() {
           <Tags classification={p.classification} availability={p.availability} />
           <span className="page-sub">{published ?? "日付なし"}</span>
         </p>
+        {viewer.isAdmin && (
+          <p className="post-actions">
+            <Link className="button" to={`/posts/${p.id}/edit`}>
+              投稿を直す
+            </Link>
+          </p>
+        )}
       </header>
 
       <div className="post-grid">

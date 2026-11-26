@@ -233,6 +233,17 @@ export interface PostView {
   links: { role: string; target: RefLabel }[];
 }
 
+/** 取り込んだ投稿を直すときの中身（承認の画面と同じ下書きの形。素材の ref は素材の ID。決定記録 0076） */
+export interface PostEdit {
+  draft: DraftInput;
+  /** 開いたときの中身の指紋（保存するときに、ほかで変わっていないか確かめる） */
+  basedOn: string;
+  channelName: string;
+  channelKind: string | null;
+  channelAvailability: string | null;
+  channelOwnerId: string | null;
+}
+
 export interface Viewer {
   name: string;
   /** 閲覧サイトの利用者として登録されているか（登録が無ければ何も見えない） */
@@ -880,6 +891,10 @@ export interface ArchiveSource {
    * stored は今回保存できた数、missing は残った「原本の無い素材」の数
    */
   retryPostFiles(postId: string): Promise<{ stored: number; missing: number }>;
+  /** 取り込んだ投稿を直すために、今の中身を下書きの形で読む（運営者だけ。決定記録 0076） */
+  getPostEdit(postId: string): Promise<PostEdit>;
+  /** 直した下書きを保存する（違いだけを反映する。開いた後にほかで変わっていたら断る） */
+  savePostEdit(postId: string, draft: DraftInput, basedOn: string): Promise<void>;
   /** アセットの一覧（保存した新しい順。同じファイルの重複は除く）。offset から limit 件 */
   listAssets(
     filter: AssetFilter,

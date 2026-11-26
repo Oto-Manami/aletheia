@@ -5376,3 +5376,10 @@ button.participation {
   color: inherit;
   font-weight: 600;
 }
+
+/* 投稿の画面の操作（運営者が投稿を直す。決定記録 0076） */
+.post-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
