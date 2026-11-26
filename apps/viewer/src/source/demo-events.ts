@@ -552,10 +552,10 @@ export class DemoEvents {
             endsAt: null,
             sources: [],
             classification: "public",
-            participants: subjects.map((s) => ({
+            participants: (row.status === "unknown" ? [] : subjects).map((s) => ({
               entityId: s.id,
               role: row.role ?? regularRoleOf(kind),
-              status: row.status ?? regularStatusOf(date),
+              status: row.status && row.status !== "unknown" ? row.status : regularStatusOf(date),
               characterName: null,
             })),
           });
