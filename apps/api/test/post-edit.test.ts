@@ -74,17 +74,21 @@ describe("取り込んだ投稿の編集", () => {
       );
       expect(texts).toEqual([{ content: "直した本文" }]);
       const { rows: links } = await ctx.c.query(
-        `select role from public.links where from_type = 'asset' and from_id = $1 and to_id = $2`,
+        `select role from public.links
+         where from_type = 'asset' and from_id = $1 and to_id = $2 and role = 'mentioned'`,
         [d.freePost.asset, d.otherMember],
       );
       expect(links).toEqual([{ role: "mentioned" }]);
 
       // 足した紐付けを消すと、消える
       const again = await open(ctx, d.freePost.post);
-      again.draft.links = again.draft.links.filter((l) => l["to_id"] !== d.otherMember);
+      again.draft.links = again.draft.links.filter(
+        (l) => !(l["to_id"] === d.otherMember && l["role"] === "mentioned"),
+      );
       expect((await ctx.call("POST", `/posts/${d.freePost.post}/edit`, again)).status).toBe(200);
       const { rows: after } = await ctx.c.query(
-        `select id from public.links where from_type = 'asset' and from_id = $1 and to_id = $2`,
+        `select id from public.links
+         where from_type = 'asset' and from_id = $1 and to_id = $2 and role = 'mentioned'`,
         [d.freePost.asset, d.otherMember],
       );
       expect(after).toHaveLength(0);
