@@ -11,7 +11,12 @@ import { CalendarPlus, ExternalLink, Plus, X } from "lucide-react";
 import { type KeyboardEvent, useEffect, useId, useMemo, useState } from "react";
 import { useApp } from "../context.tsx";
 import { EVENT_KIND_LABELS, EVENT_KIND_SHORT, eventDateLabel } from "../format.ts";
-import { normalizeForMatch, rankEvents, SUGGEST_MIN } from "../source/event-relevance.ts";
+import {
+  matchesEventQuery,
+  normalizeForMatch,
+  rankEvents,
+  SUGGEST_MIN,
+} from "../source/event-relevance.ts";
 import {
   episodeKindOf,
   parseEpisodeNumber,
@@ -60,7 +65,8 @@ function postText(draft: DraftInput): string {
 function eventMeta(e: EventSummary): string {
   // 日程は、まとまりの題名を添える（設計書 決定記録 0034）
   const of = e.parentTitle && e.kind !== "episode" ? `「${e.parentTitle}」の日程・` : "";
-  return `${of}${EVENT_KIND_SHORT[e.kind] ?? e.kind}・${eventDateLabel(e.startsOn, e.endsOn, e.datePrecision)}${e.part ? ` ${e.part}` : ""}`;
+  const no = e.episodeNumber !== null ? `#${e.episodeNumber}・` : "";
+  return `${of}${no}${EVENT_KIND_SHORT[e.kind] ?? e.kind}・${eventDateLabel(e.startsOn, e.endsOn, e.datePrecision)}${e.part ? ` ${e.part}` : ""}`;
 }
 
 function EventChip({ event, onAdd }: { event: EventSummary; onAdd: () => void }) {
@@ -151,9 +157,7 @@ export function EventLinks({
   const q = normalizeForMatch(query);
   const options = (() => {
     if (!q) return ranked.slice(0, LIST).map((r) => r.event);
-    const local = pool.filter((e) =>
-      normalizeForMatch(`${e.title}${e.workName ?? ""}`).includes(q),
-    );
+    const local = pool.filter((e) => matchesEventQuery(e, query));
     const merged = new Map<string, EventSummary>();
     for (const e of [...local, ...(found ?? [])]) if (!linked.includes(e.id)) merged.set(e.id, e);
     return rankEvents([...merged.values()], context)
@@ -244,7 +248,7 @@ export function EventLinks({
               aria-activedescendant={
                 open && count > 0 ? optionId(Math.min(active, count - 1)) : undefined
               }
-              placeholder="押すと候補が開きます。題名・作品名で探せます"
+              placeholder="押すと候補が開きます。題名・作品名・回の番号（#368）で探せます"
               value={query}
               autoComplete="off"
               onFocus={() => setOpen(true)}

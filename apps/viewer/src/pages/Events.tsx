@@ -50,8 +50,9 @@ export function EventsPage() {
   const detail = useMatch("/events/:id/*");
   const [list] = useLoad(
     // 日程（まとまりの各日・各部）は一覧に出さず、まとまりの画面で見せる（設計書 決定記録 0034）。
-    // レギュラーの番組・連載の回・号は、作品の画面で見せる（決定記録 0071）
-    () => source.listEvents({ query, kind, schedule: "hide", regular: "hide" }),
+    // レギュラーの番組・連載の回・号は、作品の画面で見せる（決定記録 0071）。探すときは回も出す
+    // （「#368」など、回の番号で探して開けるように）
+    () => source.listEvents({ query, kind, schedule: "hide", regular: query ? "include" : "hide" }),
     [source, query, kind],
     // 承認などで変わったときは、今の一覧を見せたまま裏で読み直す
     [layout.version],
@@ -104,12 +105,12 @@ export function EventsPage() {
         </div>
         <div className="events-filter">
           <label className="visually-hidden" htmlFor="events-q">
-            題名・作品名で探す
+            題名・作品名・回の番号で探す
           </label>
           <input
             id="events-q"
             type="search"
-            placeholder="題名・作品名で探す"
+            placeholder="題名・作品名・回の番号（#368）で探す"
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
           />
@@ -171,7 +172,10 @@ function EventRow({ event: e, to }: { event: EventSummary; to: string }) {
   return (
     <NavLink to={to} className="event-row">
       <span className="event-date">{eventDateLabel(e.startsOn, e.endsOn, e.datePrecision)}</span>
-      <span className="event-title">{e.title}</span>
+      <span className="event-title">
+        {e.episodeNumber !== null && <span className="event-number">#{e.episodeNumber}</span>}
+        {e.title}
+      </span>
       <span className="event-meta">
         <span className="tag">{EVENT_KIND_SHORT[e.kind] ?? e.kind}</span>
         {e.scheduleCount > 0 && <span className="tag">日程 {e.scheduleCount}</span>}
@@ -1568,8 +1572,12 @@ function ParentPicker({
                   setQuery("");
                 }}
               >
-                <span>{e.title}</span>
+                <span>
+                  {e.episodeNumber !== null && `#${e.episodeNumber} `}
+                  {e.title}
+                </span>
                 <span className="quiet">
+                  {e.workName && `${e.workName}・`}
                   {eventDateLabel(e.startsOn, e.endsOn, e.datePrecision)}
                 </span>
               </button>

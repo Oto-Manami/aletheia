@@ -94,7 +94,10 @@ describe("出来事", () => {
     const magazine = rows().find((r) => r.textContent?.includes("『月刊ミホン』12 月号"))!;
     expect(within(magazine).queryByText("出典なし")).toBeNull();
 
-    await user.type(screen.getByRole("searchbox", { name: "題名・作品名で探す" }), "仮の時間");
+    await user.type(
+      screen.getByRole("searchbox", { name: "題名・作品名・回の番号で探す" }),
+      "仮の時間",
+    );
     await waitFor(() => expect(rows()).toHaveLength(1));
     expect(rows()[0]?.textContent).toContain("ラジオ「仮の時間」第 12 回");
   });

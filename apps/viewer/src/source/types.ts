@@ -358,6 +358,8 @@ export interface EventSummary {
   endsOn: string | null;
   datePrecision: string | null;
   workName: string | null;
+  /** 番組の回などの番号（「#368」と出す） */
+  episodeNumber: number | null;
   /** 出典の URL が付いているか */
   hasSources: boolean;
   /** 蓄積対象の人物の出演の状態 */

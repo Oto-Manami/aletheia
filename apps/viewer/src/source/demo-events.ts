@@ -15,6 +15,7 @@ import {
   type WorkSummary,
   type WorkView,
 } from "./types.ts";
+import { matchesEventQuery } from "./event-relevance.ts";
 import { type EpisodeRow, episodeKindOf, regularRoleOf, regularStatusOf } from "./regular.ts";
 
 const WORKS = {
@@ -234,6 +235,7 @@ export class DemoEvents {
       endsOn: e.endsOn,
       datePrecision: e.datePrecision,
       workName: e.workName,
+      episodeNumber: e.episodeNumber,
       // 出典は、手で入れた URL か、紐付いた素材のどちらか
       hasSources: e.sources.length > 0 || linked.has(e.id),
       subjectStatus: this.subjectStatus(e),
@@ -261,7 +263,7 @@ export class DemoEvents {
       .filter((e) => filter.regular !== "hide" || !e.workId || !regularIds.has(e.workId))
       .filter((e) => !to || (e.startsOn !== null && e.startsOn <= to))
       .filter((e) => !from || (e.endsOn ?? e.startsOn ?? "") >= from)
-      .filter((e) => !q || e.title.includes(q) || (e.workName ?? "").includes(q))
+      .filter((e) => !q || matchesEventQuery(e, q))
       .sort((a, b) => (b.startsOn ?? "").localeCompare(a.startsOn ?? ""))
       .map((e) => this.summary(e, linked));
     const total =

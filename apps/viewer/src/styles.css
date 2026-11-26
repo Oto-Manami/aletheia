@@ -2977,6 +2977,13 @@ details.more[open] > summary {
   line-height: 1.45;
 }
 
+/* 番組の回などの番号 */
+.event-number {
+  margin-right: 6px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .event-meta {
   display: flex;
   flex-wrap: wrap;

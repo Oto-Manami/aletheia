@@ -142,6 +142,27 @@ const isSchedule = sql<boolean>`(e.parent_id is not null and e.kind <> 'episode'
   where sp.id = e.parent_id and sp.kind in (${sql.join(SCHEDULE_PARENT_KINDS.map((k) => sql`${k}`))})
 ))`;
 
+/**
+ * 出来事を題名・作品名で探す条件。回の番号でも探せる（「#368」「368」「日向坂で会いましょう 368」）。
+ * 番号だけなら、題名・作品名に含むものか、その番号の回。名前と番号なら、名前を含み、かつその番号の回
+ */
+export function eventTextMatch(text: string) {
+  const like = (value: string) => `%${value.replace(/[%_\\]/g, (ch) => `\\${ch}`)}%`;
+  const byName = (value: string) =>
+    sql<boolean>`(e.title ilike ${like(value)} or w.canonical_name ilike ${like(value)})`;
+  const whole = text.trim();
+  const m = /^(.*?)[\s\u3000]*[#＃]?([0-9０-９]{1,9})$/.exec(whole);
+  if (!m) return byName(whole);
+  // 全角の数字もそろえる
+  const number = Number(
+    m[2]!.replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0)),
+  );
+  const name = m[1]!.trim();
+  return name
+    ? sql<boolean>`(${byName(whole)} or (${byName(name)} and e.episode_number = ${number}))`
+    : sql<boolean>`(${byName(whole)} or e.episode_number = ${number})`;
+}
+
 /** レギュラーの印の作品（attributes.regular）を指す回・号（設計書 決定記録 0071） */
 const isRegularEpisode = sql<boolean>`(e.work_id is not null and exists (
   select 1 from public.entities rw
@@ -567,6 +588,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
         "e.ends_on",
         "e.date_precision",
         "e.classification",
+        "e.episode_number",
         "w.canonical_name as work_name",
         // 出典は、手で入れた URL か、紐付いた素材（ニュースなど）のどちらか
         sql<boolean>`(e.attributes ? 'sources' or exists (
@@ -592,12 +614,7 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
     if (from) {
       query = query.where(sql<boolean>`coalesce(e.ends_on, e.starts_on) >= ${from}`);
     }
-    if (text) {
-      const pattern = `%${text.replace(/[%_\\]/g, (ch) => `\\${ch}`)}%`;
-      query = query.where((eb) =>
-        eb.or([eb("e.title", "ilike", pattern), eb("w.canonical_name", "ilike", pattern)]),
-      );
-    }
+    if (text) query = query.where(eventTextMatch(text));
     let totalQuery = db
       .selectFrom("events as e")
       .select((eb) => eb.fn.countAll<string>().as("total"));

@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   dateScore,
+  matchesEventQuery,
   normalizeForMatch,
   rankEvents,
   textScore,
@@ -22,11 +23,32 @@ function event(id: string, title: string, startsOn: string | null, workName: str
     endsOn: null,
     datePrecision: startsOn ? "day" : null,
     workName,
+    episodeNumber: null,
     hasSources: false,
     subjectStatus: null,
     classification: "public",
   } satisfies EventSummary;
 }
+
+describe("回の番号で探す", () => {
+  const ep = {
+    title: "日向坂で会いましょう",
+    workName: "日向坂で会いましょう",
+    episodeNumber: 368,
+  };
+  it("「#368」「368」「番組名 368」で、その回が当てはまる。番号が違えば当てはまらない", () => {
+    expect(matchesEventQuery(ep, "#368")).toBe(true);
+    expect(matchesEventQuery(ep, "368")).toBe(true);
+    expect(matchesEventQuery(ep, "＃３６８")).toBe(true);
+    expect(matchesEventQuery(ep, "会いましょう 368")).toBe(true);
+    expect(matchesEventQuery(ep, "会いましょう#368")).toBe(true);
+    expect(matchesEventQuery(ep, "#367")).toBe(false);
+    expect(matchesEventQuery(ep, "なりましょう 368")).toBe(false);
+    // 番号の無い出来事は、題名・作品名だけで比べる
+    expect(matchesEventQuery({ ...ep, episodeNumber: null }, "368")).toBe(false);
+    expect(matchesEventQuery({ ...ep, episodeNumber: null }, "会いましょう")).toBe(true);
+  });
+});
 
 describe("出来事の関連の高さ", () => {
   it("全角・半角と記号の違いはそろえて比べる", () => {
