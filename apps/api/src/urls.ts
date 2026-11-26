@@ -85,18 +85,20 @@ export function normalizeSenderName(name: string): string {
 }
 
 /**
- * 発信者の表記から情報源を探す（設計書 決定記録 0067）。情報源の設定（channels.config.sender_names）に
- * 表記を持つ。例: { "sender_names": ["SampleTaro", "見本 太郎"] }
+ * 発信者・出どころの表記から情報源を探す（設計書 決定記録 0067・0073）。情報源の設定に表記を持つ。
+ * 発信者は sender_names、出どころ（配信サービス・ゲームの名前など）は source_names。どちらも同じに探す。
+ * 例: { "sender_names": ["SampleTaro", "見本 太郎"] }、{ "source_names": ["見本ゲーム"] }
  */
 export function matchSender(name: string, channels: { key: string; config: unknown }[]): string[] {
   const want = normalizeSenderName(name);
   if (!want) return [];
   return channels
     .filter((ch) => {
-      const names = (ch.config as { sender_names?: unknown } | null)?.sender_names;
-      return (
-        Array.isArray(names) &&
-        names.some((n) => typeof n === "string" && normalizeSenderName(n) === want)
+      const config = ch.config as { sender_names?: unknown; source_names?: unknown } | null;
+      return [config?.sender_names, config?.source_names].some(
+        (names) =>
+          Array.isArray(names) &&
+          names.some((n) => typeof n === "string" && normalizeSenderName(n) === want),
       );
     })
     .map((ch) => ch.key);

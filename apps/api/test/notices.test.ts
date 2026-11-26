@@ -24,7 +24,9 @@ async function setup(ctx: Ctx) {
              '{"sender_names": ["MihonTaro", "見本 太郎"]}', 'public'),
             ('message:other', 'ほかのメッセージ', 'message', null, 'paid', 'day', '{}', 'public'),
             ('blog:mihon-taro', '見本 太郎のブログ', 'blog', $1, 'free', 'post',
-             '{"sender_names": ["BlogOnly"]}', 'public')`,
+             '{"sender_names": ["BlogOnly"]}', 'public'),
+            ('game:mihon-game:photo', '見本ゲームの写真', 'game', null, 'paid', 'post',
+             '{"source_names": ["Mihon Game", "見本ゲーム"]}', 'public')`,
     [sender],
   );
   return { subject, sender };
@@ -39,6 +41,19 @@ describe("発信者の表記から情報源を探す", () => {
         expect(res.status).toBe(200);
         expect(await res.json()).toEqual({ channel_key: "message:mihon-taro" });
       }
+    }));
+
+  it("出どころの表記（source_names）からも探す。種類が違えば当てはまらない", () =>
+    withApi(async (ctx) => {
+      await setup(ctx);
+      for (const name of ["Mihon Game", "mihongame", "見本ゲーム"]) {
+        const res = await ctx.call("POST", "/resolve/sender", { kind: "game", name });
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ channel_key: "game:mihon-game:photo" });
+      }
+      expect(
+        (await ctx.call("POST", "/resolve/sender", { kind: "message", name: "見本ゲーム" })).status,
+      ).toBe(404);
     }));
 
   it("登録の無い発信者・ほかの種類の情報源は 404。ログインなしは 401", () =>
