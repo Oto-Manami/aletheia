@@ -228,6 +228,7 @@ describe("作品の画面", () => {
         { date: "2026-10-26", number: 4, title: "架空の特番", status: "not_appearing" },
         { date: "2026-11-02" }, // 番号なし
         { date: "2026-11-02" }, // 入力の中で重なる
+        { date: "2026-11-09", number: 5, status: "unknown" }, // 出演を確かめていない
       ];
       const dry = await ctx.call("POST", `/works/${s.program}/episodes`, {
         episodes,
@@ -242,6 +243,7 @@ describe("作品の画面", () => {
         [1, null, "架空の冠番組 #3"],
         [2, null, "架空の特番"],
         [3, null, "架空の冠番組"],
+        [5, null, "架空の冠番組 #5"],
       ]);
       expect(preview.skipped.map((x) => x.index)).toEqual([0, 4]);
       const before = await ctx.c.query<{ n: number }>(
@@ -288,6 +290,14 @@ describe("作品の画面", () => {
           role: "regular",
         },
       ]);
+      // 確かめていない回は作るが、出演の行は付けない（行が無いものは未確認）
+      const unknown = await ctx.c.query<{ n: number }>(
+        `select count(p.id)::int as n from public.events e
+         left join public.event_participants p on p.event_id = e.id
+         where e.work_id = $1 and e.episode_number = 5`,
+        [s.program],
+      );
+      expect(unknown.rows[0]?.n).toBe(0);
       // もう一度入れても増えない
       const again = (await (
         await ctx.call("POST", `/works/${s.program}/episodes`, { episodes })

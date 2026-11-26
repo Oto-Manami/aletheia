@@ -539,7 +539,8 @@ function BulkEpisodes({
           <li>
             <code>status</code> は出演の状態（<code>appeared</code> 出演した・
             <code>not_appearing</code> 出ていない・<code>scheduled</code> 予定・
-            <code>cancelled</code> 中止）。省くと、日付が過ぎていれば 「出演した」
+            <code>cancelled</code> 中止・<code>unknown</code> 確かめていない＝出演を付けない）。
+            省くと、日付が過ぎていれば「出演した」
           </li>
           <li>
             <code>role</code> は出演の役割（省くと <code>{regularRoleOf(kind)}</code>）

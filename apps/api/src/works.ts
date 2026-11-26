@@ -48,7 +48,8 @@ const episodeRow = z
     date: z.iso.date().optional(),
     number: z.number().int().min(0).max(1_000_000).optional(),
     title: z.string().trim().max(200).optional(),
-    status: z.enum(["scheduled", "appeared", "not_appearing", "cancelled"]).optional(),
+    /** unknown は出演を確かめていない（出演の行を作らない。行が無いものは未確認） */
+    status: z.enum(["scheduled", "appeared", "not_appearing", "cancelled", "unknown"]).optional(),
     role: z
       .string()
       .regex(/^[a-z][a-z0-9_]*$/)
@@ -330,7 +331,7 @@ export function registerWorkRoutes(app: Hono<AuthEnv>, db: Database): void {
           })
           .returning("id")
           .executeTakeFirstOrThrow();
-        if (subject) {
+        if (subject && row.status !== "unknown") {
           await trx
             .insertInto("event_participants")
             .values({

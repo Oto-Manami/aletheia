@@ -81,14 +81,21 @@ export interface EpisodeRow {
   date?: string;
   number?: number;
   title?: string;
-  status?: ParticipantStatus;
+  /** unknown は出演を確かめていない（出演を付けない） */
+  status?: ParticipantStatus | "unknown";
   role?: string;
 }
 
 /** まとめて入れるときに書ける項目 */
 export const EPISODE_ROW_KEYS = ["date", "number", "title", "status", "role"] as const;
 
-const STATUSES: readonly string[] = ["scheduled", "appeared", "not_appearing", "cancelled"];
+const STATUSES: readonly string[] = [
+  "scheduled",
+  "appeared",
+  "not_appearing",
+  "cancelled",
+  "unknown",
+];
 
 /** まとめて入れる文字の見本 */
 export const EPISODES_EXAMPLE = `[
@@ -162,7 +169,7 @@ export function parseEpisodesJson(text: string): { rows: EpisodeRow[] } | { erro
             error: `${at}: status は ${STATUSES.join("・")} のどれかです（${text}）`,
           };
         }
-        row.status = text as ParticipantStatus;
+        row.status = text as ParticipantStatus | "unknown";
       } else if (key === "role") {
         if (!/^[a-z][a-z0-9_]*$/.test(text)) {
           return { error: `${at}: role は regular などの英小文字のキーで書いてください` };

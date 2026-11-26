@@ -12,6 +12,9 @@ describe("parseEpisodesJson", () => {
     expect(
       parseEpisodesJson('{ "episodes": [{ "number": 3, "status": "not_appearing" }] }'),
     ).toEqual({ rows: [{ number: 3, status: "not_appearing" }] });
+    expect(parseEpisodesJson('[{ "number": 4, "status": "unknown" }]')).toEqual({
+      rows: [{ number: 4, status: "unknown" }],
+    });
     // 空の値は書かなかったことにする
     expect(parseEpisodesJson('[{ "date": "2026-10-05", "title": "", "number": null }]')).toEqual({
       rows: [{ date: "2026-10-05" }],
