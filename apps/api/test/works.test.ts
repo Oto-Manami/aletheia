@@ -305,6 +305,22 @@ describe("作品の画面", () => {
       expect(again.created).toEqual([]);
     }));
 
+  it("出来事は回の番号でも探せ、一覧に回の番号を返す", () =>
+    withApi(async (ctx) => {
+      const s = await setup(ctx);
+      const find = async (q: string) =>
+        (
+          (await (await ctx.call("GET", `/events?q=${encodeURIComponent(q)}`)).json()) as {
+            items: { id: string; episode_number: number | null }[];
+          }
+        ).items;
+      expect((await find("#2")).map((e) => e.id)).toContain(s.ep2);
+      expect((await find("#2")).map((e) => e.id)).not.toContain(s.ep1);
+      expect((await find("冠番組 1")).map((e) => e.id)).toEqual([s.ep1]);
+      expect((await find("冠番組 9")).map((e) => e.id)).toEqual([]);
+      expect((await find("冠番組")).find((e) => e.id === s.ep2)?.episode_number).toBe(2);
+    }));
+
   it("まとめて作るときの形の誤り・権限", () =>
     withApi(async (ctx) => {
       const s = await setup(ctx);

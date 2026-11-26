@@ -1509,6 +1509,7 @@ export class LiveSource implements ArchiveSource {
         endsOn: r.ends_on,
         datePrecision: r.date_precision,
         workName: r.work_name,
+        episodeNumber: r.episode_number ?? null,
         hasSources: r.has_sources,
         subjectStatus: r.subject_status,
         classification: r.classification,
@@ -1771,6 +1772,7 @@ interface EventRow {
   ends_on: string | null;
   date_precision: string | null;
   work_name: string | null;
+  episode_number: number | null;
   has_sources: boolean;
   subject_status: ParticipantStatus | null;
   classification: Classification;

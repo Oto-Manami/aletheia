@@ -14,6 +14,25 @@ export function normalizeForMatch(text: string): string {
     .replace(/[\s\p{P}\p{S}]/gu, "");
 }
 
+/**
+ * 打った言葉に当てはまる出来事か。題名・作品名に含むか、回の番号（「#368」「368」「番組名 368」）が合うか。
+ * API の探し方（events.ts の eventTextMatch）と同じ
+ */
+export function matchesEventQuery(
+  e: Pick<EventSummary, "title" | "workName" | "episodeNumber">,
+  query: string,
+): boolean {
+  const whole = normalizeForMatch(query);
+  if (!whole) return true;
+  const named = (q: string) => normalizeForMatch(`${e.title}${e.workName ?? ""}`).includes(q);
+  if (named(whole)) return true;
+  const m = /^(.*?)[\s#＃]*(\d{1,9})$/.exec(query.normalize("NFKC").trim());
+  if (!m || e.episodeNumber === null) return false;
+  if (Number(m[2]) !== e.episodeNumber) return false;
+  const name = normalizeForMatch(m[1]!);
+  return !name || named(name);
+}
+
 /** どの出来事にも出てきやすく、手がかりにならない並び */
 const COMMON = new Set([
   "出演",
