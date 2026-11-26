@@ -127,6 +127,52 @@ describe("取り込んだ投稿の編集", () => {
       expect((await ctx.call("POST", `/posts/${d.freePost.post}/edit`, edit)).status).toBe(422);
     }));
 
+  it("言及の根拠が指す素材を素材の ID に直して返し、「関係あり」の印を保存できる", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      // 承認のときの根拠は、下書きの ref（a0）で素材を指している
+      await ctx.c.query(
+        `insert into public.links (from_type, from_id, to_type, to_id, role, origin, confidence, evidence)
+         values ('post', $1, 'entity', $2, 'mentioned', 'rule', 0.9, $3)`,
+        [
+          d.freePost.post,
+          d.unusedPerson,
+          JSON.stringify({
+            subject: "架空の人",
+            matches: [{ asset: "a0", text_type: "body", spans: [[0, 2]] }],
+          }),
+        ],
+      );
+      const edit = await open(ctx, d.freePost.post);
+      const mention = edit.draft.links.find((l) => l["to_id"] === d.unusedPerson)!;
+      const evidence = mention["evidence"] as {
+        matches: { asset: string }[];
+        excerpts?: unknown[];
+      };
+      expect(evidence.matches[0]!.asset).toBe(d.freePost.asset);
+
+      evidence.excerpts = [
+        {
+          asset: d.freePost.asset,
+          text_type: "body",
+          start: 0,
+          end: 5,
+          text: "今日は{{",
+          marked_by: "human",
+        },
+      ];
+      const res = await ctx.call("POST", `/posts/${d.freePost.post}/edit`, edit);
+      expect(res.status).toBe(200);
+      const { rows } = await ctx.c.query(
+        `select evidence from public.links
+         where from_type = 'post' and from_id = $1 and to_id = $2 and role = 'mentioned'`,
+        [d.freePost.post, d.unusedPerson],
+      );
+      expect(rows[0]).toMatchObject({
+        evidence: { excerpts: [{ asset: d.freePost.asset, marked_by: "human" }] },
+      });
+    }));
+
   it("運営者だけが使える（作業者は開くことも直すこともできない）", () =>
     withApi(async (ctx) => {
       const d = await seed(ctx.c);

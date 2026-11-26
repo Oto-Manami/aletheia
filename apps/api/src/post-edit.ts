@@ -37,6 +37,50 @@ function compact<T extends Record<string, unknown>>(value: T): Compact<T> {
   return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as Compact<T>;
 }
 
+interface TextRef {
+  asset?: unknown;
+  text_type?: unknown;
+  spans?: unknown;
+  end?: unknown;
+}
+
+/**
+ * 言及の根拠（evidence.matches・evidence.excerpts）が指す素材を、素材の ID に直す。承認のときの根拠は
+ * 下書きの ref（a0 など）で素材を指しているので、そのままでは直す画面で言及の段落を見つけられない。
+ * ref が素材の ID でなければ、その種類の文字を持つ素材（範囲が収まるもの）が 1 つに決まるときだけ直す
+ */
+function evidenceWithAssetIds(
+  evidence: Record<string, unknown> | null,
+  assets: { id: string; texts: { text_type: string; content: string }[] }[],
+): Record<string, unknown> | undefined {
+  if (!evidence) return undefined;
+  const ids = new Set(assets.map((a) => a.id));
+  const resolve = <T extends TextRef>(item: T): T => {
+    if (typeof item.asset !== "string" || ids.has(item.asset)) return item;
+    const ends = Array.isArray(item.spans)
+      ? (item.spans as unknown[]).flatMap((sp) =>
+          Array.isArray(sp) && typeof sp[1] === "number" ? [sp[1]] : [],
+        )
+      : typeof item.end === "number"
+        ? [item.end]
+        : [];
+    const reach = Math.max(0, ...ends);
+    const found = assets.filter((a) =>
+      a.texts.some((t) => t.text_type === item.text_type && t.content.length >= reach),
+    );
+    return found.length === 1 ? { ...item, asset: found[0]!.id } : item;
+  };
+  const fix = (key: string) =>
+    Array.isArray(evidence[key])
+      ? {
+          [key]: (evidence[key] as unknown[]).map((x) =>
+            x && typeof x === "object" ? resolve(x) : x,
+          ),
+        }
+      : {};
+  return { ...evidence, ...fix("matches"), ...fix("excerpts") };
+}
+
 /** 投稿の今の中身を、承認の画面と同じ下書きの形にする。素材の ref は素材の ID */
 export async function postDraft(db: Reader, postId: string) {
   const post = await db
@@ -158,7 +202,13 @@ export async function postDraft(db: Reader, postId: string) {
         classification: own(l.classification),
         origin: l.origin,
         confidence: Number(l.confidence),
-        evidence: (l.evidence as Record<string, unknown> | null) ?? undefined,
+        evidence: evidenceWithAssetIds(
+          l.evidence as Record<string, unknown> | null,
+          assets.map((a) => ({
+            id: a.id,
+            texts: texts.filter((t) => t.asset_id === a.id),
+          })),
+        ),
         accepted: l.review_state !== "rejected",
       }),
     ),
@@ -379,6 +429,19 @@ export async function applyPostEdit(
       l,
     );
   }
+  // 開いたときの根拠（素材の ID に直したもの）。変わった紐付けだけ、根拠を書き直す（言及の「関係あり」の印など）
+  const beforeEvidence = new Map(
+    (before.links ?? []).map((l) => [
+      linkKey({
+        from_type: l.from === "post" ? "post" : "asset",
+        from_id: l.from === "post" ? postId : l.from.asset,
+        to_type: l.to_type,
+        to_id: l.to_id,
+        role: l.role,
+      }),
+      JSON.stringify(l.evidence ?? null),
+    ]),
+  );
   for (const row of existingLinks) {
     const l = wanted.get(linkKey(row));
     if (!l) {
@@ -389,12 +452,18 @@ export async function applyPostEdit(
     wanted.delete(linkKey(row));
     const reviewState = l.accepted ? "accepted" : "rejected";
     const classification = l.classification ?? inherit;
-    if (row.review_state !== reviewState || row.classification !== classification) {
+    const evidenceChanged = beforeEvidence.get(linkKey(row)) !== JSON.stringify(l.evidence ?? null);
+    if (
+      row.review_state !== reviewState ||
+      row.classification !== classification ||
+      evidenceChanged
+    ) {
       await trx
         .updateTable("links")
         .set({
           review_state: reviewState,
           classification,
+          ...(evidenceChanged ? { evidence: l.evidence ? JSON.stringify(l.evidence) : null } : {}),
           ...(row.review_state !== reviewState
             ? { reviewed_by: reviewerId, reviewed_at: new Date() }
             : {}),
