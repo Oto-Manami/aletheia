@@ -20,7 +20,7 @@
 // | GET      | /intake/counts            | 承認待ち・振り分け待ちの件数（メニュー） |
 // | POST     | /intake/:id/restore       | 言及なしを取り消して振り分け待ちへ |
 // | POST     | /resolve                  | URL から情報源と外部 ID を判定する |
-// | POST     | /resolve/sender           | 発信者の表記から情報源を探す（メッセージアプリの言及の通知。決定記録 0067） |
+// | POST     | /resolve/sender           | 発信者・出どころの表記から情報源を探す（決定記録 0067・0073） |
 // | POST     | /assets/:id/remove        | 要らない素材を外す（assets.ts）     |
 // | GET      | /assets/:id/thumbnail     | 素材の縮めた画像（一覧用。保存した原本から作る） |
 // | POST     | /files/staging            | ファイルを承認待ちの場所に保存する |
@@ -359,20 +359,20 @@ export function createApp(
     return c.json(matches[0]);
   });
 
-  // 発信者の表記から情報源を探す（メッセージアプリの言及の通知など。決定記録 0067）
+  // 発信者・出どころの表記から情報源を探す（メッセージアプリの言及の通知、他のアーカイブの画像など。決定記録 0067・0073）
   app.post("/resolve/sender", async (c) => {
     const body = await parseBody(c.req.raw, resolveSenderBody);
     const channels = await db
       .selectFrom("channels")
       .select(["key", "config"])
       .where("kind", "=", body.kind)
-      .where(sql<boolean>`config ? 'sender_names'`)
+      .where(sql<boolean>`config ?| array['sender_names', 'source_names']`)
       .orderBy("key")
       .execute();
     const keys = matchSender(body.name, channels);
     if (keys.length === 0) {
       throw new HTTPException(404, {
-        message: `発信者「${body.name}」の情報源が登録されていません`,
+        message: `「${body.name}」の情報源が登録されていません`,
       });
     }
     if (keys.length > 1) {
