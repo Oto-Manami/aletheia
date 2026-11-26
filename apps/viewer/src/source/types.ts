@@ -4,6 +4,7 @@
 // 画面はこの窓口だけを使い、どちらで動いているかを意識しない。
 
 import type { DraftInput } from "@aletheia/intake/draft";
+import type { EpisodeRow } from "./regular.ts";
 
 export type Classification = "public" | "private";
 export type IntakeState = "triage" | "pending" | "on_hold" | "approved" | "rejected";
@@ -797,6 +798,18 @@ export interface ArchiveSource {
   getWork?(id: string): Promise<WorkView>;
   /** 作品のレギュラーの印を付け外しする（作業者・運営者。決定記録 0071） */
   setWorkRegular?(id: string, regular: boolean): Promise<void>;
+  /**
+   * 作品の回・号をまとめて作る（作業者・運営者。決定記録 0072）。dryRun なら作らずに、作るもの・
+   * 飛ばすもの（既にある回）だけを返す
+   */
+  addWorkEpisodes?(
+    id: string,
+    episodes: EpisodeRow[],
+    dryRun: boolean,
+  ): Promise<{
+    created: { index: number; id: string | null; title: string }[];
+    skipped: { index: number; reason: string }[];
+  }>;
   /** ダッシュボード（決定記録 0063） */
   getDashboard?(): Promise<Dashboard>;
   /** 曲ごとの参加を付ける・外す（null は未確認に戻す） */

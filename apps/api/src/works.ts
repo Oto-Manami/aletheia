@@ -5,6 +5,7 @@
 // | GET      | /works      | 作品の一覧（種類・名前で絞る）。回・号の数、素材の数、いちばん新しい日付 |
 // | GET      | /works/:id  | 作品の回・号の一覧と、素材の画像                                       |
 // | POST     | /works/:id/regular | レギュラーの印を付け外しする（作業者・運営者。決定記録 0071）      |
+// | POST     | /works/:id/episodes | 回・号をまとめて作る（作業者・運営者。決定記録 0072）             |
 //
 // 作品の画面の素材は、次の 2 つを合わせて新しい順に並べる。
 // - 作品の回・号（events.work_id）と、その中身（event_items）に紐付いた投稿の画像
@@ -38,6 +39,37 @@ const listQuery = z.object({
 });
 
 const regularBody = z.object({ regular: z.boolean() });
+
+/** 一度にまとめて作れる回・号の数 */
+export const EPISODES_LIMIT = 500;
+
+const episodeRow = z
+  .object({
+    date: z.iso.date().optional(),
+    number: z.number().int().min(0).max(1_000_000).optional(),
+    title: z.string().trim().max(200).optional(),
+    status: z.enum(["scheduled", "appeared", "not_appearing", "cancelled"]).optional(),
+    role: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]*$/)
+      .optional(),
+  })
+  .strict()
+  .refine((r) => r.date !== undefined || r.number !== undefined, {
+    message: "日付か回の番号のどちらかが要ります",
+  });
+
+const episodesBody = z.object({
+  episodes: z.array(episodeRow).min(1).max(EPISODES_LIMIT),
+  /** true なら作らずに、作るもの・飛ばすものだけを返す（確かめ） */
+  dry_run: z.boolean().default(false),
+});
+
+/** 号として数える作品の種類（それ以外は番組の回。閲覧サイトの source/regular.ts と同じ） */
+const PUBLICATION_SUBTYPES = new Set(["magazine", "series", "book", "photobook"]);
+
+const todayJst = () =>
+  new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
 
 /** 作品の回・号（とその中身）に紐付いた投稿、または作品に直接 series で紐付いた素材の画像 */
 function imagesOf(workId: string, subjectId: string | null) {
@@ -216,6 +248,110 @@ export function registerWorkRoutes(app: Hono<AuthEnv>, db: Database): void {
       images: images.rows.slice(0, IMAGE_LIMIT),
       more_images: images.rows.length > IMAGE_LIMIT,
     });
+  });
+
+  // 回・号をまとめて作る（決定記録 0072）。同じ回の番号（番号が無ければ同じ日付）の回・号が既にあれば
+  // 飛ばすので、同じものを何度入れても重ならない。蓄積対象の人物の出演を付ける。1 つのトランザクションで作る
+  app.post("/works/:id/episodes", async (c) => {
+    const id = z.uuid().safeParse(c.req.param("id"));
+    if (!id.success) throw new HTTPException(404, { message: "見つかりません" });
+    let json: unknown;
+    try {
+      json = await c.req.json();
+    } catch {
+      throw new HTTPException(400, { message: "本文が JSON ではありません" });
+    }
+    const body = episodesBody.safeParse(json);
+    if (!body.success) {
+      const issue = body.error.issues[0];
+      const where = issue?.path.length ? `${issue.path.join(".")}: ` : "";
+      throw new HTTPException(400, {
+        message: `形が正しくありません（${where}${issue?.message ?? ""}）`,
+      });
+    }
+    const userId = userIdOf(c.get("actor"));
+    const result = await inTransaction(db, userId, async (trx) => {
+      const work = await trx
+        .selectFrom("entities")
+        .select(["id", "canonical_name as name", "subtype"])
+        .where("id", "=", id.data)
+        .where("type", "=", "work")
+        .where("merged_into", "is", null)
+        .where(sql<boolean>`coalesce(subtype, '') <> all(${[...MUSIC_SUBTYPES]}::text[])`)
+        // 同じ作品に同時にまとめて入れても重ならないよう、作品の行で順番を取る
+        .forUpdate()
+        .executeTakeFirst();
+      if (!work) throw new HTTPException(404, { message: "作品が見つかりません" });
+      const kind = PUBLICATION_SUBTYPES.has(work.subtype ?? "") ? "publication" : "episode";
+      const existing = await trx
+        .selectFrom("events")
+        .select(["episode_number", sql<string | null>`starts_on::text`.as("starts_on")])
+        .where("work_id", "=", work.id)
+        .execute();
+      const numbers = new Set(
+        existing.flatMap((e) => (e.episode_number === null ? [] : [e.episode_number])),
+      );
+      const dates = new Set(
+        existing.flatMap((e) => (e.episode_number === null && e.starts_on ? [e.starts_on] : [])),
+      );
+      const subject = await archiveSubject(trx);
+      const today = todayJst();
+      const created: { index: number; id: string | null; title: string }[] = [];
+      const skipped: { index: number; reason: string }[] = [];
+      for (const [index, row] of body.data.episodes.entries()) {
+        const number = row.number ?? null;
+        const date = row.date ?? null;
+        if (number !== null ? numbers.has(number) : date !== null && dates.has(date)) {
+          skipped.push({
+            index,
+            reason: number !== null ? `#${number} は既にあります` : `${date} の回は既にあります`,
+          });
+          continue;
+        }
+        if (number !== null) numbers.add(number);
+        else if (date !== null) dates.add(date);
+        const title = row.title || (number === null ? work.name : `${work.name} #${number}`);
+        if (body.data.dry_run) {
+          created.push({ index, id: null, title });
+          continue;
+        }
+        const event = await trx
+          .insertInto("events")
+          .values({
+            kind,
+            title,
+            work_id: work.id,
+            episode_number: number,
+            starts_on: date,
+            date_precision: date ? "day" : null,
+            classification: "public",
+            created_by: userId,
+            updated_by: userId,
+          })
+          .returning("id")
+          .executeTakeFirstOrThrow();
+        if (subject) {
+          await trx
+            .insertInto("event_participants")
+            .values({
+              event_id: event.id,
+              entity_id: subject.id,
+              role: row.role ?? (kind === "publication" ? "model" : "regular"),
+              status: row.status ?? (date && date < today ? "appeared" : "scheduled"),
+              origin: "human",
+              review_state: "accepted",
+              created_by: userId,
+              reviewed_by: userId,
+              reviewed_at: new Date().toISOString(),
+              classification: "public",
+            })
+            .execute();
+        }
+        created.push({ index, id: event.id, title });
+      }
+      return { created, skipped };
+    });
+    return c.json({ ...result, dry_run: body.data.dry_run }, body.data.dry_run ? 200 : 201);
   });
 
   // レギュラーの印を付け外しする。印の作品の回・号は、出来事の一覧に出さない（決定記録 0071）

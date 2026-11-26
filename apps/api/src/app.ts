@@ -30,6 +30,7 @@
 // | GET      | /dashboard                | ダッシュボード（dashboard.ts） |
 // | GET      | /works・/works/:id         | 作品の一覧と作品の画面（works.ts） |
 // | POST     | /works/:id/regular         | 作品のレギュラーの印（works.ts。決定記録 0071） |
+// | POST     | /works/:id/episodes        | 作品の回・号をまとめて作る（works.ts。決定記録 0072） |
 // | GET/POST | /events/:id/article       | 出来事の記事（articles.ts） |
 // | GET/POST | /events/:id/setlists・/event-items | セットリストと曲ごとの参加（setlists.ts） |
 
