@@ -6,9 +6,10 @@
 // - 楽曲・シングル・アルバム・MV は楽曲の画面で扱う（決定記録 0066）
 // - レギュラーの印の作品は、回・号をここで足し、出来事の一覧には出さない（決定記録 0071）
 
-import { CalendarPlus, Check, ChevronLeft, ListPlus, Plus } from "lucide-react";
+import { CalendarPlus, Check, ListPlus, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
+import { BackLink } from "../components/BackLink.tsx";
 import { ClassificationChoice } from "../components/EntityPicker.tsx";
 import { type GalleryImage, GalleryGrid, ImageViewer } from "../components/MaterialGallery.tsx";
 import { useApp } from "../context.tsx";
@@ -849,10 +850,7 @@ function WorkPage({ id }: { id: string }) {
   );
   return (
     <section className="page wide">
-      <Link className="back-link" to="/works">
-        <ChevronLeft size={16} aria-hidden="true" />
-        作品の一覧
-      </Link>
+      <BackLink to="/works">作品の一覧</BackLink>
       {loaded.status === "loading" && <p className="quiet">読み込んでいます</p>}
       {loaded.status === "error" && (
         <p className="error" role="alert">

@@ -32,6 +32,20 @@ const rows = () =>
   within(screen.getByRole("region", { name: "出来事の一覧" })).queryAllByRole("listitem");
 
 describe("出来事", () => {
+  it("番組の回の画面から、その作品の画面へ戻れる", async () => {
+    const source = new DemoSource(0);
+    const episode = (await source.listEvents({ query: "仮の時間" })).items.find(
+      (e) => e.kind === "episode",
+    )!;
+    const detail = await source.getEvent(episode.id);
+    open(`/events/${episode.id}`, member, source);
+    const links = await screen.findAllByRole("link", { name: detail.workName! });
+    const back = links.find((l) => l.className.includes("back-link"))!;
+    expect(back.getAttribute("href")).toBe(`/works/${detail.workId}`);
+    // 一覧に戻るは、一覧が隣に見える広い画面では隠す印を付ける
+    expect(screen.getByRole("link", { name: "一覧に戻る" }).className).toContain("back-link-list");
+  });
+
   it("一覧には、レギュラーの作品の回・号を出さず、作品の画面への案内を出す（決定記録 0071）", async () => {
     const source = new DemoSource(0);
     const list = vi.spyOn(source, "listEvents");

@@ -1,7 +1,7 @@
 // 出来事の一覧と、作る・直す画面（設計書 決定記録 0027）
 
 import { type GalleryImage, ImageViewer, MaterialThumbs } from "../components/MaterialGallery.tsx";
-import { CalendarPlus, ChevronLeft, ExternalLink, Plus, X } from "lucide-react";
+import { CalendarPlus, ExternalLink, Plus, X } from "lucide-react";
 import { type KeyboardEvent, Suspense, useEffect, useId, useState } from "react";
 import {
   Link,
@@ -13,6 +13,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router";
+import { BackLink } from "../components/BackLink.tsx";
 import { EntityPicker, type Picked, PickedChip, useSearch } from "../components/EntityPicker.tsx";
 import { useApp } from "../context.tsx";
 import {
@@ -586,18 +587,13 @@ function EventForm({
     >
       <div className="event-form-head">
         {detail ? (
-          <Link
-            className="back-link"
-            to={{ pathname: `/events/${detail.id}`, search: listSearch(params) }}
-          >
-            <ChevronLeft size={16} aria-hidden="true" />
+          <BackLink to={{ pathname: `/events/${detail.id}`, search: listSearch(params) }}>
             表示に戻る
-          </Link>
+          </BackLink>
         ) : (
-          <Link className="back-link" to={{ pathname: "/events", search: listSearch(params) }}>
-            <ChevronLeft size={16} aria-hidden="true" />
+          <BackLink list to={{ pathname: "/events", search: listSearch(params) }}>
             一覧に戻る
-          </Link>
+          </BackLink>
         )}
         {detail?.parentId && isScheduleParent(detail.parentKind) && (
           <Link className="event-schedule-of" to={`/events/${detail.parentId}`}>

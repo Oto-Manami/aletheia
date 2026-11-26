@@ -1,6 +1,7 @@
 import { Play } from "lucide-react";
 import { useState } from "react";
 import { useParams } from "react-router";
+import { HistoryBack } from "../components/BackLink.tsx";
 import { originalCapture } from "../capture.ts";
 import { PageCapture } from "../components/PageCapture.tsx";
 import { Tags } from "../components/Tags.tsx";
@@ -261,6 +262,7 @@ export function PostPage() {
   return (
     <article className="page wide post">
       <header className="page-head">
+        <HistoryBack fallback="/assets" label="アセットの一覧" />
         <h1 className="page-title">{p.title ?? "（題名なし）"}</h1>
         <p className="badges">
           <span className="badge">{p.channelName}</span>

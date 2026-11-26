@@ -1,7 +1,8 @@
 import { type DraftInput, draftSchema } from "@aletheia/intake/draft";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
-import { ChevronLeft, ExternalLink } from "lucide-react";
+import { BackLink } from "../components/BackLink.tsx";
+import { ExternalLink } from "lucide-react";
 import { DraftEditor } from "../components/DraftEditor.tsx";
 import { EventLinks } from "../components/EventLinks.tsx";
 import { MentionView } from "../components/MentionView.tsx";
@@ -292,10 +293,9 @@ function IntakeEditor({ detail, reload }: { detail: IntakeDetail; reload: () => 
   return (
     <article className="intake">
       <header className="intake-header">
-        <Link className="back-link" to={{ pathname: "/intake", search: params.toString() }}>
-          <ChevronLeft size={16} aria-hidden="true" />
+        <BackLink list to={{ pathname: "/intake", search: params.toString() }}>
           一覧に戻る
-        </Link>
+        </BackLink>
         {detail.state !== "pending" && (
           <p className="badges">
             <span className={`badge state-${detail.state}`}>{STATE_LABELS[detail.state]}</span>

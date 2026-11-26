@@ -7,6 +7,7 @@
 import { Music } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, useParams } from "react-router";
+import { BackLink } from "../components/BackLink.tsx";
 import { useApp } from "../context.tsx";
 import { EVENT_KIND_SHORT } from "../format.ts";
 import type {
@@ -241,6 +242,9 @@ function SongDetailView({ id }: { id: string }) {
   return (
     <article className="page">
       <header className="page-head">
+        <BackLink list to="/songs">
+          楽曲の一覧
+        </BackLink>
         <h2 className="page-title">{s.name}</h2>
         {s.reading && <p className="page-sub">{s.reading}</p>}
       </header>
