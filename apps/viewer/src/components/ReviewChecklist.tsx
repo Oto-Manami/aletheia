@@ -5,7 +5,7 @@
 import type { DraftInput } from "@aletheia/intake/draft";
 import { Check, CircleAlert, X } from "lucide-react";
 import { useId } from "react";
-import { MEDIA_LABELS, pageLabel, ROLE_LABELS } from "../format.ts";
+import { MEDIA_LABELS, pageLabel, ROLE_LABELS, STATEMENT_PROPERTY_LABELS } from "../format.ts";
 import { type ReviewItem, reviewItems } from "../source/summarize.ts";
 import type { ArchiveSource, RefLabel } from "../source/types.ts";
 import { AddLink } from "./DraftEditor.tsx";
@@ -30,12 +30,6 @@ export function assetLabel(draft: Draft, ref: string): string {
   const label = asset.media_type === "image" ? "写真" : (MEDIA_LABELS[asset.media_type] ?? "素材");
   return sameType.length > 1 ? `${label} ${sameType.indexOf(asset) + 1}` : label;
 }
-
-/** 言明の項目の呼び名。語彙はデータで持つため、ここに無いものはキーのまま出す */
-const PROPERTY_LABELS: Record<string, string> = {
-  started_activity: "始めたこと",
-  favorite_food: "好きな食べ物",
-};
 
 /** 紐付けを、確かめやすい文にする（写真 2 に 〇〇 が写っている） */
 function linkSentence(from: string, role: string, target: string): React.ReactNode {
@@ -154,7 +148,7 @@ function ProposalItem({
     question = (
       <>
         <strong>{label(st.subject_id)}</strong> の
-        {PROPERTY_LABELS[st.property] ?? `「${st.property}」`}は{" "}
+        {STATEMENT_PROPERTY_LABELS[st.property] ?? `「${st.property}」`}は{" "}
         <strong>
           {st.value_text ?? st.value_date ?? (st.value_entity_id ? label(st.value_entity_id) : "")}
         </strong>

@@ -5393,3 +5393,275 @@ button.participation {
   margin: 8px 0;
   font-size: 13px;
 }
+
+/* 人物の一覧と人物の画面（決定記録 0079） */
+.people-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 420px;
+  margin-bottom: 20px;
+  color: var(--muted);
+}
+
+.people-search input {
+  flex: 1;
+}
+
+.person-subjects {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.person-subject-card {
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.person-subject-card:hover {
+  background: var(--hover);
+}
+
+.person-subject-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.person-counts {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.person-group {
+  margin-bottom: 24px;
+}
+
+.person-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 2px 16px;
+}
+
+.person-list li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.person-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.person-reading {
+  margin-left: 12px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.person-to-subject {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--info-bg);
+  color: var(--info-ink);
+  font-size: 14px;
+}
+
+.person-tabs {
+  margin-bottom: 16px;
+}
+
+.person-section {
+  display: grid;
+  gap: 16px;
+  max-width: 880px;
+}
+
+.person-filter {
+  flex-wrap: wrap;
+}
+
+.person-speakers {
+  display: grid;
+  gap: 8px;
+}
+
+.person-speaker-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.person-speaker-kind {
+  min-width: 6em;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--hover);
+}
+
+.chip.is-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+
+.chip-count {
+  font-size: 12px;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.person-filter-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.person-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+
+.person-feed-item {
+  display: grid;
+  gap: 6px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.person-feed-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.person-feed-speaker {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.person-feed-title {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.person-feed-text {
+  margin: 0;
+  line-height: 1.8;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.person-feed-text mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+
+.person-feed-source {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mention-marked-tag {
+  background: var(--success-bg);
+  color: var(--success-ink);
+}
+
+.person-events {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.person-events li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.person-event-date {
+  min-width: 8.5em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.person-event-title {
+  flex: 1 1 16em;
+  color: var(--ink);
+}
+
+.person-facts dd {
+  overflow-wrap: anywhere;
+}
+
+.person-statements {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.person-statements li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.person-aliases {
+  margin: 0;
+  color: var(--text);
+}

@@ -286,6 +286,30 @@ async function assertMessageAuthor(trx: Trx, channelId: string, draft: Draft): P
   }
 }
 
+/**
+ * 紐付けの根拠（言及の一致の位置 matches・「関係あり」の印 excerpts）の中で、下書きの ref で指している素材を、
+ * 承認で作った（または既にある）素材の ID に置き換える。下書きの ref は承認の後には意味を失うため
+ * （設計書 決定記録 0079）。ref に当たる素材が無ければそのまま残す
+ */
+export function evidenceWithAssetIds(
+  evidence: Record<string, unknown>,
+  assetIds: Record<string, string>,
+): Record<string, unknown> {
+  const fix = (value: unknown) =>
+    Array.isArray(value)
+      ? value.map((item: unknown) => {
+          if (!item || typeof item !== "object") return item;
+          const ref = (item as { asset?: unknown }).asset;
+          const id = typeof ref === "string" ? assetIds[ref] : undefined;
+          return id ? { ...(item as Record<string, unknown>), asset: id } : item;
+        })
+      : value;
+  const next = { ...evidence };
+  if ("matches" in next) next["matches"] = fix(next["matches"]);
+  if ("excerpts" in next) next["excerpts"] = fix(next["excerpts"]);
+  return next;
+}
+
 export function parseDraft(value: unknown): Draft {
   const result = draftSchema.safeParse(value);
   if (!result.success) {
@@ -508,7 +532,7 @@ export async function approveIntakeIn(
         role: l.role,
         origin: l.origin,
         confidence: l.confidence,
-        evidence: l.evidence ? JSON.stringify(l.evidence) : null,
+        evidence: l.evidence ? JSON.stringify(evidenceWithAssetIds(l.evidence, assetIds)) : null,
         review_state: l.accepted ? "accepted" : "rejected",
         reviewed_by: reviewedBy,
         reviewed_at: new Date(),

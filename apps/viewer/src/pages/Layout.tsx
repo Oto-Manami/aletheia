@@ -11,6 +11,7 @@ import {
   Search,
   Settings,
   Tv,
+  Users,
   X,
 } from "lucide-react";
 import { Suspense, useCallback, useEffect, useState, useSyncExternalStore } from "react";
@@ -141,6 +142,12 @@ export function Layout() {
                 </NavLink>
               );
             })}
+          {viewer.isMember && (
+            <NavLink to="/people" className="nav-item" onClick={close}>
+              <Users size={16} aria-hidden="true" />
+              人物
+            </NavLink>
+          )}
           {viewer.isMember && (
             <NavLink to="/events" className="nav-item" onClick={close}>
               <CalendarDays size={16} aria-hidden="true" />

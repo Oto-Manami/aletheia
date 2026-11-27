@@ -13,6 +13,12 @@ import {
   type Dashboard,
   type WorkSummary,
   type WorkView,
+  type MentionSnippet,
+  type PersonEvent,
+  type PersonMention,
+  type PersonPost,
+  type PersonSummary,
+  type PersonView,
   type DashboardEvent,
   type ApproveOutcome,
   type ArticleDay,
@@ -798,6 +804,248 @@ export class LiveSource implements ArchiveSource {
         inRelease: s.in_release,
       })),
     };
+  }
+
+  async listPeople(query?: string): Promise<PersonSummary[]> {
+    const q = query?.trim();
+    const { items } = await this.api<{
+      items: {
+        id: string;
+        name: string;
+        reading: string | null;
+        subtype: string | null;
+        archive_subject: boolean;
+        groups: { id: string; name: string; subtype: string | null }[];
+        counts: {
+          posts: number;
+          mentioned: number;
+          mentions_subject: number;
+          appears: number;
+          events: number;
+        };
+      }[];
+    }>("GET", `/people${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+    return items.map((p) => ({
+      id: p.id,
+      name: p.name,
+      reading: p.reading,
+      subtype: p.subtype,
+      archiveSubject: p.archive_subject,
+      groups: p.groups,
+      counts: {
+        posts: p.counts.posts,
+        mentioned: p.counts.mentioned,
+        mentionsSubject: p.counts.mentions_subject,
+        appears: p.counts.appears,
+        events: p.counts.events,
+      },
+    }));
+  }
+
+  async getPerson(id: string): Promise<PersonView> {
+    const r = await this.api<{
+      person: {
+        id: string;
+        name: string;
+        reading: string | null;
+        aliases: string[];
+        subtype: string | null;
+        archive_subject: boolean;
+      };
+      subject: { id: string; name: string } | null;
+      relations: {
+        id: string;
+        relation: string;
+        direction: "out" | "in";
+        other_id: string;
+        other_name: string;
+        other_type: string;
+        other_subtype: string | null;
+        valid_from: string | null;
+        valid_to: string | null;
+      }[];
+      statements: {
+        id: string;
+        property: string;
+        value_text: string | null;
+        value_entity_id: string | null;
+        value_entity_name: string | null;
+        value_date: string | null;
+        stated_on: string | null;
+        valid_from: string | null;
+        valid_to: string | null;
+        speaker_type: string;
+        speaker_id: string | null;
+        speaker_name: string | null;
+        post_id: string | null;
+        post_title: string | null;
+        classification: Classification;
+      }[];
+      counts: {
+        posts: number;
+        mentioned: number;
+        appears: number;
+        events: { appeared: number; scheduled: number; not_appearing: number; cancelled: number };
+      };
+      post_kinds: { kind: string; count: number }[];
+      speakers: { id: string | null; name: string | null; type: string | null; count: number }[];
+      mentions_of_subject: number | null;
+    }>("GET", `/people/${encodeURIComponent(id)}`);
+    return {
+      person: {
+        id: r.person.id,
+        name: r.person.name,
+        reading: r.person.reading,
+        aliases: r.person.aliases,
+        subtype: r.person.subtype,
+        archiveSubject: r.person.archive_subject,
+      },
+      subject: r.subject,
+      relations: r.relations.map((x) => ({
+        id: x.id,
+        relation: x.relation,
+        direction: x.direction,
+        other: { id: x.other_id, name: x.other_name, type: x.other_type, subtype: x.other_subtype },
+        validFrom: x.valid_from,
+        validTo: x.valid_to,
+      })),
+      statements: r.statements.map((x) => ({
+        id: x.id,
+        property: x.property,
+        value: x.value_text ?? x.value_entity_name ?? x.value_date ?? "",
+        valueEntityId: x.value_entity_id,
+        statedOn: x.stated_on,
+        validFrom: x.valid_from,
+        validTo: x.valid_to,
+        speakerType: x.speaker_type,
+        speaker: x.speaker_id ? { id: x.speaker_id, name: x.speaker_name ?? "" } : null,
+        post: x.post_id ? { id: x.post_id, title: x.post_title } : null,
+        classification: x.classification,
+      })),
+      counts: {
+        posts: r.counts.posts,
+        mentioned: r.counts.mentioned,
+        appears: r.counts.appears,
+        events: {
+          appeared: r.counts.events.appeared,
+          scheduled: r.counts.events.scheduled,
+          notAppearing: r.counts.events.not_appearing,
+          cancelled: r.counts.events.cancelled,
+        },
+      },
+      postKinds: r.post_kinds,
+      speakers: r.speakers,
+      mentionsOfSubject: r.mentions_of_subject,
+    };
+  }
+
+  async listPersonPosts(
+    id: string,
+    filter: { kind?: string },
+    page: { offset: number; limit: number },
+  ): Promise<{ items: PersonPost[]; hasMore: boolean }> {
+    const params = new URLSearchParams({ offset: String(page.offset), limit: String(page.limit) });
+    if (filter.kind) params.set("kind", filter.kind);
+    const r = await this.api<{
+      items: {
+        post_id: string;
+        title: string | null;
+        date: string | null;
+        precision: string | null;
+        channel_name: string;
+        channel_kind: string;
+        availability: string | null;
+        images: number;
+        head: string | null;
+      }[];
+      has_more: boolean;
+    }>("GET", `/people/${encodeURIComponent(id)}/posts?${params.toString()}`);
+    return {
+      items: r.items.map((p) => ({
+        postId: p.post_id,
+        title: p.title,
+        date: p.date,
+        precision: p.precision,
+        channelName: p.channel_name,
+        channelKind: p.channel_kind,
+        availability: p.availability,
+        images: p.images,
+        head: p.head,
+      })),
+      hasMore: r.has_more,
+    };
+  }
+
+  async listPersonMentions(
+    id: string,
+    filter: { speaker?: string },
+    page: { offset: number; limit: number },
+  ): Promise<{ items: PersonMention[]; hasMore: boolean }> {
+    const params = new URLSearchParams({ offset: String(page.offset), limit: String(page.limit) });
+    if (filter.speaker) params.set("speaker", filter.speaker);
+    const r = await this.api<{
+      items: {
+        post_id: string;
+        title: string | null;
+        date: string | null;
+        precision: string | null;
+        channel_name: string;
+        channel_kind: string;
+        speaker: { id: string; name: string; type: string | null } | null;
+        marked: boolean;
+        snippets: MentionSnippet[];
+      }[];
+      has_more: boolean;
+    }>("GET", `/people/${encodeURIComponent(id)}/mentions?${params.toString()}`);
+    return {
+      items: r.items.map((m) => ({
+        postId: m.post_id,
+        title: m.title,
+        date: m.date,
+        precision: m.precision,
+        channelName: m.channel_name,
+        channelKind: m.channel_kind,
+        speaker: m.speaker,
+        marked: m.marked,
+        snippets: m.snippets,
+      })),
+      hasMore: r.has_more,
+    };
+  }
+
+  async listPersonEvents(id: string): Promise<PersonEvent[]> {
+    const { items } = await this.api<{
+      items: {
+        id: string;
+        title: string | null;
+        kind: string;
+        starts_on: string | null;
+        ends_on: string | null;
+        date_precision: string | null;
+        episode_number: number | null;
+        parent_id: string | null;
+        work_id: string | null;
+        work_name: string | null;
+        regular: boolean;
+        role: string;
+        status: ParticipantStatus;
+        character_name: string | null;
+      }[];
+    }>("GET", `/people/${encodeURIComponent(id)}/events`);
+    return items.map((e) => ({
+      id: e.id,
+      title: e.title,
+      kind: e.kind,
+      startsOn: e.starts_on,
+      endsOn: e.ends_on,
+      datePrecision: e.date_precision,
+      episodeNumber: e.episode_number,
+      parentId: e.parent_id,
+      work: e.work_id ? { id: e.work_id, name: e.work_name ?? "", regular: e.regular } : null,
+      role: e.role,
+      status: e.status,
+      characterName: e.character_name,
+    }));
   }
 
   async listWorks(filter: { subtype?: string; query?: string }): Promise<WorkSummary[]> {
