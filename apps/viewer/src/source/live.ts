@@ -971,6 +971,10 @@ export class LiveSource implements ArchiveSource {
     await this.api("POST", `/intake/${encodeURIComponent(id)}/undo-approve`, {});
   }
 
+  async redetectIntake(): Promise<{ checked: number; updated: number }> {
+    return this.api<{ checked: number; updated: number }>("POST", "/intake/redetect", {});
+  }
+
   async reopenIntake(id: string): Promise<void> {
     await this.api("POST", `/intake/${encodeURIComponent(id)}/reopen`, {});
   }
