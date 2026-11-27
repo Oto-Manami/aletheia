@@ -200,6 +200,49 @@ describe("期への言及と、言及の印の付け直し", () => {
       expect(await links(ctx, created.id)).toContainEqual(["author", d.person, true]);
     }));
 
+  it("持ち主の無い情報源では、投稿したアカウントの持ち主を発信者にする（決定記録 0078）", () =>
+    withApi(async (ctx) => {
+      const d: Seed = await seed(ctx.c);
+      const posted = (externalId: string, applyRules: boolean) => ({
+        channel_key: "web:test_site",
+        external_id: externalId,
+        route: "discord",
+        route_ref: externalId,
+        captured_at: "2026-10-13T00:00:00+09:00",
+        ...(applyRules ? { apply_rules: true } : {}),
+        draft: {
+          version: 1,
+          post: { published_at: "2026-10-12T21:00:00+09:00", classification: "public" },
+          context: { x_author: { id: "1", name: "架空の公式", screen_name: "Kakuu_Official" } },
+        },
+      });
+      // 規則を当てずに入ったもの（付け直しで発信者が付く）
+      const before = (await (
+        await ctx.call("POST", "/intake", posted("801", false))
+      ).json()) as Created;
+      await ctx.c.query(
+        `update public.entities set attributes = attributes || '{"accounts": ["x:@kakuu_official"]}'
+          where id = $1`,
+        [d.group],
+      );
+      const created = (await (
+        await ctx.call("POST", "/intake", posted("802", true))
+      ).json()) as Created;
+      expect(await links(ctx, created.id)).toEqual([["author", d.group, true]]);
+      const res = await ctx.call("GET", `/intake/${created.id}`);
+      const { item } = (await res.json()) as {
+        item: { draft: { links: { evidence: unknown }[] } };
+      };
+      expect(item.draft.links[0]!.evidence).toEqual({
+        rule: "account_owner",
+        account: "x:kakuu_official",
+      });
+
+      expect(await links(ctx, before.id)).toEqual([]);
+      await ctx.call("POST", "/intake/redetect", {});
+      expect(await links(ctx, before.id)).toEqual([["author", d.group, true]]);
+    }));
+
   it("タグ付けの候補のメンバーは、承認待ちの本人の記事にも登場の候補として付け直す", () =>
     withApi(async (ctx) => {
       const d: Seed = await seed(ctx.c);

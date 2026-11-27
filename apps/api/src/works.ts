@@ -7,9 +7,12 @@
 // | POST     | /works/:id/regular | レギュラーの印を付け外しする（作業者・運営者。決定記録 0071）      |
 // | POST     | /works/:id/episodes | 回・号をまとめて作る（作業者・運営者。決定記録 0072）             |
 //
-// 作品の画面の素材は、次の 2 つを合わせて新しい順に並べる。
+// 作品の画面の素材は、次のものを合わせて新しい順に並べる。
 // - 作品の回・号（events.work_id）と、その中身（event_items）に紐付いた投稿の画像
 // - 作品に直接、役割 series で紐付けた素材（回・号の分からない素材。決定記録 0064）
+// - 作品を発信者（author）・主題（subject）として指す投稿・素材の画像、持ち主が作品の情報源の投稿の画像、
+//   作品に載っているシリーズ（serialized_in）を指す素材の画像（雑誌の Web 版の記事・公式アカウントの投稿など。
+//   決定記録 0078）
 // 作品を作るのは、これまでどおり POST /entities（events.ts）。
 // 楽曲・シングル・アルバム・MV は楽曲の画面で扱い、一覧に出さない（決定記録 0066）。
 
@@ -72,7 +75,10 @@ const PUBLICATION_SUBTYPES = new Set(["magazine", "series", "book", "photobook"]
 const todayJst = () =>
   new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(new Date());
 
-/** 作品の回・号（とその中身）に紐付いた投稿、または作品に直接 series で紐付いた素材の画像 */
+/**
+ * 作品の回・号（とその中身）に紐付いた投稿、作品（または作品に載っているシリーズ）を発信者・主題・シリーズとして
+ * 指す投稿・素材、持ち主が作品の情報源の投稿の画像
+ */
 function imagesOf(workId: string, subjectId: string | null) {
   const subject = subjectId ?? "00000000-0000-0000-0000-000000000000";
   return sql<{
@@ -105,17 +111,37 @@ function imagesOf(workId: string, subjectId: string | null) {
       join public.assets a on a.post_id = p.id and a.media_type = 'image'
       where l.to_type in ('event', 'event_item') and l.review_state = 'accepted'
     ),
-    -- 作品に直接 series で紐付けた素材
-    via_series as (
-      select l.from_id as asset_id, null::uuid as event_id
+    -- 作品と、作品に載っているシリーズ（決定記録 0064・0078）
+    work_targets as (
+      select ${workId}::uuid as id
+      union
+      select r.subject_id from public.entity_relations r
+      where r.object_id = ${workId} and r.relation = 'serialized_in' and r.review_state <> 'rejected'
+    ),
+    -- 作品・シリーズを発信者・主題・シリーズとして指す投稿（投稿の画像すべて）と素材（その画像）
+    via_link as (
+      select distinct a.id as asset_id, null::uuid as event_id
       from public.links l
-      join public.assets a on a.id = l.from_id and a.media_type = 'image'
-      where l.from_type = 'asset' and l.to_type = 'entity' and l.to_id = ${workId}
-        and l.role = 'series' and l.review_state = 'accepted'
+      join public.assets a on a.media_type = 'image' and (
+        (l.from_type = 'asset' and a.id = l.from_id)
+        or (l.from_type = 'post' and a.post_id = l.from_id)
+      )
+      where l.to_type = 'entity' and l.to_id in (select id from work_targets)
+        and l.role in ('author', 'subject', 'series') and l.review_state = 'accepted'
+    ),
+    -- 持ち主が作品の情報源（作品の Web 版のサイトなど）の投稿の画像
+    via_channel as (
+      select a.id as asset_id, null::uuid as event_id
+      from public.channels ch
+      join public.posts p on p.channel_id = ch.id
+      join public.assets a on a.post_id = p.id and a.media_type = 'image'
+      where ch.owner_entity_id = ${workId}
     ),
     picked as (
       select distinct on (asset_id) asset_id, event_id
-      from (select * from via_event union all select * from via_series) u
+      from (
+        select * from via_event union all select * from via_link union all select * from via_channel
+      ) u
       order by asset_id, event_id nulls last
     )
     select
@@ -169,8 +195,17 @@ export function registerWorkRoutes(app: Hono<AuthEnv>, db: Database): void {
         (select count(*) from public.events e where e.work_id = w.id) as events,
         (select max(e.starts_on)::text from public.events e where e.work_id = w.id) as latest,
         (select count(distinct l.from_id) from public.links l
-          where l.from_type = 'asset' and l.to_type = 'entity' and l.to_id = w.id
-            and l.role = 'series' and l.review_state = 'accepted')
+          where l.to_type = 'entity' and l.role in ('author', 'subject', 'series')
+            and l.review_state = 'accepted'
+            and l.to_id in (
+              select w.id
+              union
+              select r.subject_id from public.entity_relations r
+              where r.object_id = w.id and r.relation = 'serialized_in' and r.review_state <> 'rejected'
+            ))
+        + (select count(*) from public.posts p
+          join public.channels ch on ch.id = p.channel_id
+          where ch.owner_entity_id = w.id)
         + (select count(distinct l.from_id) from public.links l
           join public.events e on e.id = l.to_id and e.work_id = w.id
           where l.to_type = 'event' and l.review_state = 'accepted') as assets

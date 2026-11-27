@@ -130,6 +130,78 @@ describe("作品の画面", () => {
       expect(v.more_images).toBe(false);
     }));
 
+  it("作品が発信した投稿・作品が主題の投稿・作品に載っているシリーズの素材の画像も返す（決定記録 0078）", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const magazine = await id(
+        ctx,
+        `insert into public.entities (type, subtype, canonical_name, classification)
+         values ('work', 'magazine', '架空の月刊誌', 'public') returning id`,
+      );
+      // 持ち主が作品の情報源（Web 版のサイト）の投稿
+      const site = await id(
+        ctx,
+        `insert into public.channels (key, name, kind, owner_entity_id, availability, item_unit, classification)
+         values ('web:kakuu-monthly', '架空の月刊誌 Web', 'web', $1, 'free', 'post', 'public') returning id`,
+        [magazine],
+      );
+      const post = async (channel: string, ext: string, date: string) =>
+        id(
+          ctx,
+          `insert into public.posts (channel_id, external_id, title, published_date, published_date_precision, classification)
+           values ($1, $2, $3, $4, 'day', 'public') returning id`,
+          [channel, ext, `架空の記事 ${ext}`, date],
+        );
+      const image = async (postId: string, n: number) =>
+        id(
+          ctx,
+          `insert into public.assets (post_id, position, media_type, sha256, classification)
+           values ($1, 1, 'image', $2, 'public') returning id`,
+          [postId, String(n).repeat(64).slice(0, 64)],
+        );
+      const fromSite = await image(await post(site, "100", "2026-11-03"), 5);
+      // 投稿したアカウントの持ち主として、作品を発信者に付けた X の投稿
+      const sent = await post(d.mixedChannel, "x-1", "2026-11-02");
+      const fromAccount = await image(sent, 6);
+      // 他社の記事が作品を主題として扱っている
+      const about = await post(d.mixedChannel, "x-2", "2026-11-01");
+      const subjectImage = await image(about, 7);
+      // 作品に載っている連載の 1 枚
+      const series = await id(
+        ctx,
+        `insert into public.entities (type, subtype, canonical_name, classification)
+         values ('work', 'series', '架空の連載', 'public') returning id`,
+      );
+      await ctx.c.query(
+        `insert into public.entity_relations (subject_id, object_id, relation, classification)
+         values ($1, $2, 'serialized_in', 'public')`,
+        [series, magazine],
+      );
+      const serial = await image(await post(d.mixedChannel, "x-3", "2026-10-31"), 8);
+      // 却下した紐付けは数えない
+      const rejected = await image(await post(d.mixedChannel, "x-4", "2026-10-30"), 9);
+      await ctx.c.query(
+        `insert into public.links (from_type, from_id, to_type, to_id, role, origin, review_state, classification)
+         values ('post', $1, 'entity', $2, 'author', 'rule', 'accepted', 'public'),
+                ('post', $3, 'entity', $2, 'subject', 'human', 'accepted', 'public'),
+                ('asset', $4, 'entity', $5, 'series', 'human', 'accepted', 'public'),
+                ('asset', $6, 'entity', $2, 'subject', 'human', 'rejected', 'public')`,
+        [sent, magazine, about, serial, series, rejected],
+      );
+
+      const v = (await (await ctx.call("GET", `/works/${magazine}`)).json()) as WorkView;
+      expect(v.images.map((i) => i.asset_id)).toEqual([
+        fromSite,
+        fromAccount,
+        subjectImage,
+        serial,
+      ]);
+      const list = (await (await ctx.call("GET", "/works?q=架空の月刊誌")).json()) as {
+        items: { id: string; materials: number }[];
+      };
+      expect(list.items).toEqual([expect.objectContaining({ id: magazine, materials: 4 })]);
+    }));
+
   it("一覧は種類と名前で絞り、回の数と素材の数を返す", () =>
     withApi(async (ctx) => {
       const s = await setup(ctx);

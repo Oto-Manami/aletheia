@@ -52,6 +52,8 @@ import {
   reopenRejected,
   restoreDiscarded,
   canUndoApproval,
+  normalizeAccount,
+  postedAccounts,
   undoApproval,
   type Subject,
   usesChosenImagesOnly,
@@ -598,6 +600,44 @@ export function createApp(
     return rows.map((r) => ({ id: r.id, name: r.canonical_name, aliases: r.aliases }));
   }
 
+  /**
+   * アカウントの持ち主（エンティティの属性 accounts。決定記録 0078）の一覧。キーは「サービス:アカウント」（小文字）。
+   * 同じアカウントを 2 つのエンティティが持っているときは、どちらにも決めない
+   */
+  async function accountOwners(): Promise<Map<string, string>> {
+    const rows = await db
+      .selectFrom("entities")
+      .select(["id", sql<unknown>`attributes -> 'accounts'`.as("accounts")])
+      .where("merged_into", "is", null)
+      .where(sql<boolean>`jsonb_typeof(attributes -> 'accounts') = 'array'`)
+      .execute();
+    const owners = new Map<string, string | null>();
+    for (const row of rows) {
+      for (const value of Array.isArray(row.accounts) ? row.accounts : []) {
+        const key = typeof value === "string" ? normalizeAccount(value) : null;
+        if (!key) continue;
+        owners.set(key, owners.has(key) && owners.get(key) !== row.id ? null : row.id);
+      }
+    }
+    return new Map([...owners].flatMap(([k, v]) => (v ? [[k, v] as const] : [])));
+  }
+
+  /**
+   * 下書きの発信者を決める。情報源の持ち主がいればそれ、いなければ投稿したアカウントの持ち主（決定記録 0078）
+   */
+  function senderOf(
+    channelOwner: string | null,
+    draft: DraftInput,
+    owners: Map<string, string>,
+  ): { ownerId: string | null; ownerEvidence?: Record<string, unknown> } {
+    if (channelOwner) return { ownerId: channelOwner };
+    for (const account of postedAccounts(draft)) {
+      const owner = owners.get(account);
+      if (owner) return { ownerId: owner, ownerEvidence: { rule: "account_owner", account } };
+    }
+    return { ownerId: null };
+  }
+
   /** 発信者が属するグループ（member_of） */
   async function groupsOf(entityId: string | null): Promise<string[]> {
     if (!entityId) return [];
@@ -662,13 +702,15 @@ export function createApp(
       .where("i.state", "in", ["triage", "pending"])
       .execute();
     const groups = new Map<string, string[]>();
+    const owners = await accountOwners();
     let updated = 0;
     for (const item of items) {
-      const owner = item.owner_entity_id;
-      if (owner && !groups.has(owner)) groups.set(owner, await groupsOf(owner));
       const before = item.draft as DraftInput;
+      const sender = senderOf(item.owner_entity_id, before, owners);
+      const owner = sender.ownerId;
+      if (owner && !groups.has(owner)) groups.set(owner, await groupsOf(owner));
       const { draft } = applyCollectionRules(withoutAliasMatches(before), {
-        ownerId: owner,
+        ...sender,
         subjects,
         ownerGroups: owner ? (groups.get(owner) ?? []) : [],
         tagCandidates: candidates,
@@ -729,10 +771,15 @@ export function createApp(
     let draft: unknown = body.draft;
     let state = body.state;
     if (body.state === "triage" || body.apply_rules) {
+      const sender = senderOf(
+        channel.owner_entity_id,
+        body.draft as DraftInput,
+        channel.owner_entity_id ? new Map<string, string>() : await accountOwners(),
+      );
       const ruled = applyCollectionRules(body.draft as DraftInput, {
-        ownerId: channel.owner_entity_id,
+        ...sender,
         subjects: await archiveSubjects(),
-        ownerGroups: await groupsOf(channel.owner_entity_id),
+        ownerGroups: await groupsOf(sender.ownerId),
         tagCandidates: await tagCandidates(),
       });
       draft = ruled.draft;
