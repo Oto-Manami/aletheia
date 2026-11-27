@@ -5,15 +5,18 @@
 import { versionWatcher } from "../version.ts";
 import { clearLoadCache } from "../load-cache.ts";
 import type { DraftInput } from "@aletheia/intake/draft";
+import type { WorkGroup } from "@aletheia/intake/titles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
 import { triageItemOf } from "./triage.ts";
 import type { EpisodeRow } from "./regular.ts";
 import {
   type Dashboard,
+  type WorkGrouping,
   type WorkSummary,
   type WorkView,
   type MentionSnippet,
+  type GroupingWorkOption,
   type ParticipationCheck,
   type ParticipationCheckEvent,
   type PersonEvent,
@@ -74,6 +77,7 @@ import {
   type Viewer,
 } from "./types.ts";
 import { INVITE_ERRORS } from "../invite.ts";
+import { groupingGroupOf } from "./work-grouping.ts";
 
 interface Result {
   data: unknown;
@@ -684,6 +688,7 @@ export class LiveSource implements ArchiveSource {
         setlist_missing: { count: number; events: Ev[] } | null;
         overdue: { count: number; events: Ev[] };
         participation_missing?: { count: number; events: Ev[] } | null;
+        episodes_without_work?: { count: number; events: Ev[] };
         similar_images?: { count: number; unhashed: number };
       };
       data: {
@@ -736,6 +741,10 @@ export class LiveSource implements ArchiveSource {
               events: t.participation_missing.events.map(ev),
             }
           : null,
+        episodesWithoutWork: {
+          count: t.episodes_without_work?.count ?? 0,
+          events: (t.episodes_without_work?.events ?? []).map(ev),
+        },
         similarImages: t.similar_images ?? { count: 0, unhashed: 0 },
       },
       data: {
@@ -865,6 +874,26 @@ export class LiveSource implements ArchiveSource {
       status,
       ...(role ? { role } : {}),
     });
+  }
+
+  async getWorkGrouping(): Promise<WorkGrouping> {
+    const r = await this.api<{
+      groups: WorkGroup[];
+      works: GroupingWorkOption[];
+      counts: { episodes: number };
+    }>("GET", "/work-grouping");
+    return { groups: r.groups.map(groupingGroupOf), works: r.works, counts: r.counts };
+  }
+
+  async attachToWork(
+    workId: string,
+    eventIds: string[],
+  ): Promise<{ attached: number; skipped: number }> {
+    return this.api<{ attached: number; skipped: number }>(
+      "POST",
+      `/works/${encodeURIComponent(workId)}/attach`,
+      { event_ids: eventIds },
+    );
   }
 
   async listPeople(query?: string): Promise<PersonSummary[]> {

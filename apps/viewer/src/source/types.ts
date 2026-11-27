@@ -599,6 +599,45 @@ export interface EventSetlistsView {
   setlists: EventSetlist[];
 }
 
+/** 作品にまとめる候補の出来事（設計書 決定記録 0080） */
+export interface WorkGroupingEvent {
+  id: string;
+  title: string | null;
+  kind: string;
+  startsOn: string | null;
+  datePrecision: string | null;
+  episodeNumber: number | null;
+  /** 題名から読んだ回・号の番号（付けるとき、番号が空なら入れる） */
+  number: number | null;
+  /** stem: 名前が同じ（初めから選ぶ）。title: 題名に作品の名前を含む（初めは選ばない） */
+  match: "stem" | "title";
+}
+
+export interface GroupingWorkOption {
+  id: string;
+  name: string;
+  subtype: string | null;
+  regular: boolean;
+}
+
+/** まとめる候補（既にある作品か、題名から読んだ名前ごと） */
+export interface WorkGroupingGroup {
+  key: string;
+  name: string;
+  work: GroupingWorkOption | null;
+  /** 作品を作るときの種類の初めの値 */
+  subtype: string | null;
+  events: WorkGroupingEvent[];
+}
+
+export interface WorkGrouping {
+  groups: WorkGroupingGroup[];
+  /** 付け先に選べる作品（楽曲・シングルなどを除く） */
+  works: GroupingWorkOption[];
+  /** 作品を指していない番組の回・掲載の数 */
+  counts: { episodes: number };
+}
+
 /** 本人の出演の確認の 1 行（設計書 決定記録 0080） */
 export interface ParticipationCheckEvent {
   id: string;
@@ -839,6 +878,8 @@ export interface Dashboard {
     overdue: { count: number; events: DashboardEvent[] };
     /** 本人の出演が付いていない出来事（日程は除く。決定記録 0080）。蓄積対象の人物がいなければ null */
     participationMissing: { count: number; events: DashboardEvent[] } | null;
+    /** 作品を指していない番組の回・掲載（号）（決定記録 0080） */
+    episodesWithoutWork: { count: number; events: DashboardEvent[] };
     /** 似た画像の「重複の疑い」の組の数と、見た目のハッシュをまだ計算していない保存済みの画像の数（決定記録 0069） */
     similarImages: { count: number; unhashed: number };
   } | null;
@@ -971,6 +1012,10 @@ export interface ArchiveSource {
   getParticipationCheck(): Promise<ParticipationCheck>;
   /** 本人の出演の状態を付ける（付いていれば状態を直し、無ければ役割を付けて足す） */
   setSubjectParticipation(eventId: string, status: ParticipantStatus, role?: string): Promise<void>;
+  /** 作品にまとめる候補（作品を指していない出来事。決定記録 0080） */
+  getWorkGrouping(): Promise<WorkGrouping>;
+  /** 選んだ出来事を作品に付ける（作品を指していないものだけ。作業者・運営者） */
+  attachToWork(workId: string, eventIds: string[]): Promise<{ attached: number; skipped: number }>;
   /** 人物の一覧（蓄積対象の人物が先。設計書 決定記録 0079） */
   listPeople(query?: string): Promise<PersonSummary[]>;
   /** 人物の画面の見出し（所属・言明・件数・言及した人ごとの件数） */

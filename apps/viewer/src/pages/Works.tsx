@@ -192,6 +192,10 @@ function WorkList() {
         <p className="page-sub">
           番組・雑誌・連載などの作品ごとに、回・号と素材をまとめて見られます。
         </p>
+        <p className="field-hint">
+          作品を指していない回・号は、<Link to="/works/grouping">作品にまとめる</Link>
+          で番組・雑誌ごとにまとめて付けられます。
+        </p>
       </div>
       <div className="triage-toolbar">
         <div className="triage-views">

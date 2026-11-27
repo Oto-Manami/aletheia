@@ -115,6 +115,17 @@ function Tasks({ tasks }: { tasks: NonNullable<Dashboard["tasks"]> }) {
             more={tasks.overdue.count - tasks.overdue.events.length}
           />
         </Task>
+        <Task
+          title="作品にまとまっていない回・号"
+          count={tasks.episodesWithoutWork.count}
+          to="/works/grouping"
+          note="作品にまとめる画面で、番組・雑誌ごとにまとめて付けられます"
+        >
+          <EventExamples
+            events={tasks.episodesWithoutWork.events}
+            more={tasks.episodesWithoutWork.count - tasks.episodesWithoutWork.events.length}
+          />
+        </Task>
         {tasks.participationMissing && (
           <Task
             title="本人の出演が付いていない出来事"

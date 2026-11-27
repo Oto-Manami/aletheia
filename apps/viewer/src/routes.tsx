@@ -21,6 +21,7 @@ const pages = {
   members: () => import("./pages/Members.tsx"),
   people: () => import("./pages/People.tsx"),
   participation: () => import("./pages/Participation.tsx"),
+  workGrouping: () => import("./pages/WorkGrouping.tsx"),
   settings: () => import("./pages/Settings.tsx"),
   post: () => import("./pages/Post.tsx"),
   postEdit: () => import("./pages/PostEdit.tsx"),
@@ -41,6 +42,7 @@ const IntakeDetailPage = page(pages.intakeDetail, "IntakeDetailPage");
 const MembersPage = page(pages.members, "MembersPage");
 const PeoplePage = page(pages.people, "PeoplePage");
 const ParticipationPage = page(pages.participation, "ParticipationPage");
+const WorkGroupingPage = page(pages.workGrouping, "WorkGroupingPage");
 const SettingsPage = page(pages.settings, "SettingsPage");
 const DisplaySettings = page(pages.settings, "DisplaySettings");
 const PostPage = page(pages.post, "PostPage");
@@ -123,6 +125,7 @@ export const routes: RouteObject[] = [
       { path: "people", element: <PeoplePage /> },
       { path: "people/:id", element: <PeoplePage /> },
       { path: "works", element: <WorksPage /> },
+      { path: "works/grouping", element: <WorkGroupingPage /> },
       { path: "works/:id", element: <WorksPage /> },
       { path: "search", element: <SearchPage /> },
       { path: "posts/:id", element: <PostPage /> },

@@ -682,4 +682,39 @@ describe("その場で作る出来事に本人の出演を付ける（決定記�
       }),
     );
   });
+
+  it("番組の回を作るとき、番組の作品をその場で作って付け、題名の回の番号を入れる", async () => {
+    const user = userEvent.setup();
+    const source = new DemoSource(0);
+    const createEntity = vi.spyOn(source, "createEntity");
+    const saveEvent = vi.spyOn(source, "saveEvent");
+    const router = createMemoryRouter(routes, {
+      initialEntries: ["/intake/d2000000-0000-4000-8000-000000000001"],
+    });
+    render(
+      <Ctx.Provider value={{ source, viewer: admin }}>
+        <RouterProvider router={router} />
+      </Ctx.Provider>,
+    );
+    const events = await screen.findByRole("region", { name: /出来事/ });
+    await user.click(within(events).getByRole("button", { name: /合う出来事が無ければ/ }));
+    const create = within(events).getByRole("group", { name: "出来事をその場で作る" });
+    await user.type(within(create).getByLabelText("題名"), "架空の歌番組 #12");
+    await user.selectOptions(within(create).getByLabelText("種類"), "episode");
+    await user.selectOptions(await within(create).findByLabelText("番組（任意）"), "__new__");
+    // 名前は題名から回の印を外したもの
+    expect(within(create).getByLabelText<HTMLInputElement>("作品の名前").value).toBe(
+      "架空の歌番組",
+    );
+    await user.selectOptions(within(create).getByLabelText("作品の種類"), "tv_program");
+    await user.click(within(create).getByRole("button", { name: "作って紐付ける" }));
+    await within(events).findByRole("button", { name: "架空の歌番組 #12 の紐付けを外す" });
+    expect(createEntity).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "work", subtype: "tv_program", name: "架空の歌番組" }),
+    );
+    const workId = ((await createEntity.mock.results[0]!.value) as { id: string }).id;
+    expect(saveEvent.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({ kind: "episode", workId, episodeNumber: 12 }),
+    );
+  });
 });
