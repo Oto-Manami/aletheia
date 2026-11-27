@@ -875,6 +875,11 @@ export interface ArchiveSource {
   /** 却下を取り消し、承認待ちに戻す（却下した直近 10 件だけ。決定記録 0043） */
   reopenIntake(id: string): Promise<void>;
   /**
+   * 振り分け待ち・承認待ちの下書きの、規則の紐付け（言及・発信者）を今の別名・情報源で付け直す（運営者だけ）。
+   * checked は見た件数、updated は書き換えた件数
+   */
+  redetectIntake(): Promise<{ checked: number; updated: number }>;
+  /**
    * 承認を取り消し、承認待ちに戻す（運営者だけ。直近に承認した 10 件だけ。決定記録 0075）。
    * 承認で足した投稿・素材・紐付けを外し、ファイルを仮置きの場所へ戻す
    */

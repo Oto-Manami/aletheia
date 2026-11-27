@@ -481,6 +481,15 @@ export class DemoSource implements ArchiveSource {
     this.intakes = this.intakes.filter((i) => !old.includes(i.id));
   }
 
+  /** デモ版の下書きは規則の紐付けが付いたままなので、見ただけで書き換えない */
+  async redetectIntake(): Promise<{ checked: number; updated: number }> {
+    await this.delay();
+    const checked = this.intakes.filter(
+      (i) => i.state === "pending" || i.state === "triage",
+    ).length;
+    return { checked, updated: 0 };
+  }
+
   async reopenIntake(id: string): Promise<void> {
     await this.delay();
     const item = this.intakes.find((i) => i.id === id);

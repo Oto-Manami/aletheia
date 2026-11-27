@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { Link, NavLink, Outlet, useMatch, useOutletContext, useSearchParams } from "react-router";
 import { Tags } from "../components/Tags.tsx";
 import { useApp } from "../context.tsx";
@@ -69,6 +69,56 @@ const DECIDED_LABELS: Partial<Record<IntakeState, string>> = {
   rejected: "却下",
   on_hold: "保留",
 };
+
+/**
+ * 規則の紐付け（言及・発信者）を付け直す（運営者だけ）。別名・タグ付けの候補・情報源の持ち主を足した後や、
+ * 規則を当てずに入った下書きに使う。人が選んだ紐付けは変えない
+ */
+function Redetect({ onDone }: { onDone: () => void }) {
+  const { source } = useApp();
+  const [state, setState] = useState<
+    | { kind: "idle" }
+    | { kind: "busy" }
+    | { kind: "done"; text: string }
+    | { kind: "error"; text: string }
+  >({ kind: "idle" });
+  const run = async () => {
+    setState({ kind: "busy" });
+    try {
+      const r = await source.redetectIntake();
+      setState({
+        kind: "done",
+        text: `${r.checked} 件を見て、${r.updated} 件の人物の候補を付け直しました`,
+      });
+      if (r.updated > 0) onDone();
+    } catch (e) {
+      setState({ kind: "error", text: e instanceof Error ? e.message : String(e) });
+    }
+  };
+  return (
+    <div className="intake-redetect">
+      <button
+        type="button"
+        className="button"
+        disabled={state.kind === "busy"}
+        onClick={() => void run()}
+        title="別名・タグ付けの候補・情報源の持ち主を足した後に押すと、振り分け待ち・承認待ちの下書きの人物の候補（言及・発信者）を付け直します。人が選んだものは変えません"
+      >
+        {state.kind === "busy" ? "付け直しています" : "人物の候補を付け直す"}
+      </button>
+      {state.kind === "done" && (
+        <span className="quiet" role="status">
+          {state.text}
+        </span>
+      )}
+      {state.kind === "error" && (
+        <span className="error" role="alert">
+          {state.text}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export function IntakePage() {
   const { source, viewer } = useApp();
@@ -165,6 +215,7 @@ export function IntakePage() {
             ))}
           </select>
         </label>
+        {viewer.isAdmin && <Redetect onDone={() => layout.changed()} />}
         <label className="intake-sort">
           並べ方
           <select value={sort} onChange={(e) => choose({ sort: e.target.value as IntakeSort })}>

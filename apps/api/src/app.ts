@@ -8,7 +8,7 @@
 // | GET      | /intake/:id               | 下書き 1 件                        |
 // | POST     | /intake                   | 下書きを作る                       |
 // | POST     | /intake/known             | 取り込み済み・確認済みの投稿を返す |
-// | POST     | /intake/redetect          | 振り分け待ちの言及の印を付け直す   |
+// | POST     | /intake/redetect          | 振り分け待ち・承認待ちの人物の候補（言及・発信者）を付け直す |
 // | POST     | /intake/:id/approve       | 承認して事実の層に反映する         |
 // | POST     | /intake/:id/reject        | 却下する（直近 10 件まで置いておく） |
 // | POST     | /intake/:id/reopen        | 却下を取り消して承認待ちへ         |
@@ -648,8 +648,9 @@ export function createApp(
     return c.json({ known: ids.filter((id) => known.has(id)) });
   });
 
-  // 全件を取り込む経路の、振り分け待ち・承認待ちの下書きの言及の印を、今の別名で付け直す（別名や
-  // タグ付けの候補を足したとき）。言及の規則が付けた紐付けだけを外して付け直し、人が選んだもの・発信者は変えない
+  // 振り分け待ち・承認待ちの下書きの言及の印を、今の別名で付け直す（別名やタグ付けの候補を足したとき・
+  // 規則を当てずに入った下書き）。経路は問わない。言及の規則が付けた紐付けだけを外して付け直し、人が選んだもの・
+  // 付いている発信者は変えない（情報源の持ち主が発信者に無ければ足す）
   app.post("/intake/redetect", async (c) => {
     assertAdmin(c.get("actor"));
     const subjects = await archiveSubjects();
@@ -659,7 +660,6 @@ export function createApp(
       .innerJoin("channels as ch", "ch.id", "i.channel_id")
       .select(["i.id", "i.state", "i.draft", "ch.owner_entity_id"])
       .where("i.state", "in", ["triage", "pending"])
-      .where("i.route", "=", "fetch")
       .execute();
     const groups = new Map<string, string[]>();
     let updated = 0;
@@ -673,9 +673,13 @@ export function createApp(
         ownerGroups: owner ? (groups.get(owner) ?? []) : [],
         tagCandidates: candidates,
       });
-      // 言及の規則の紐付けが変わらなければ書き換えない
+      // 規則の紐付け（言及・発信者）が変わらなければ書き換えない
       const matches = (d: DraftInput) =>
-        stableJson((d.links ?? []).filter((l) => l.evidence?.["rule"] === "alias_match"));
+        (d.links ?? [])
+          .filter((l) => l.origin === "rule")
+          .map(stableJson)
+          .sort()
+          .join("\n");
       if (matches(draft) === matches(before)) continue;
       await db
         .updateTable("intake_items")

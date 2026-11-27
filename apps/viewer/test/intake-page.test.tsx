@@ -41,6 +41,19 @@ async function sentAll() {
 }
 
 describe("承認の画面", () => {
+  it("運営者は人物の候補を付け直せる。作業者にはボタンを出さない", async () => {
+    const user = userEvent.setup();
+    open("/intake");
+    await user.click(await screen.findByRole("button", { name: "人物の候補を付け直す" }));
+    expect((await screen.findByRole("status")).textContent).toMatch(
+      /件を見て、0 件の人物の候補を付け直しました/,
+    );
+    cleanup();
+    open("/intake", { ...admin, isAdmin: false });
+    await screen.findByRole("heading", { name: "承認" });
+    expect(screen.queryByRole("button", { name: "人物の候補を付け直す" })).toBeNull();
+  });
+
   it("確信度の低い提案に答えると承認でき、答えが記録されて次の下書きへ進む", async () => {
     const user = userEvent.setup();
     const { source, router } = open("/intake");

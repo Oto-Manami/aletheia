@@ -178,6 +178,28 @@ describe("期への言及と、言及の印の付け直し", () => {
       });
     }));
 
+  it("規則を当てずに入った Discord の経路の下書きにも、言及の印を付け直す", () =>
+    withApi(async (ctx) => {
+      const d: Seed = await seed(ctx.c);
+      await markSubject(ctx, d.otherMember, ["じろう"]);
+      // 貼られた Web 記事など（規則を当てずに承認待ちで入ったもの）
+      const pasted = {
+        ...collected("704", "記事の中でじろうさんが話した"),
+        route: "discord",
+        state: "pending",
+      };
+      const created = (await (await ctx.call("POST", "/intake", pasted)).json()) as Created;
+      expect(await links(ctx, created.id)).toEqual([]);
+
+      expect(await (await ctx.call("POST", "/intake/redetect", {})).json()).toEqual({
+        checked: 1,
+        updated: 1,
+      });
+      expect(await links(ctx, created.id)).toContainEqual(["mentioned", d.otherMember, true]);
+      // 情報源の持ち主は発信者として足す
+      expect(await links(ctx, created.id)).toContainEqual(["author", d.person, true]);
+    }));
+
   it("タグ付けの候補のメンバーは、承認待ちの本人の記事にも登場の候補として付け直す", () =>
     withApi(async (ctx) => {
       const d: Seed = await seed(ctx.c);
