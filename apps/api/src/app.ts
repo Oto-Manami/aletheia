@@ -8,7 +8,7 @@
 // | GET      | /intake/:id               | 下書き 1 件                        |
 // | POST     | /intake                   | 下書きを作る                       |
 // | POST     | /intake/known             | 取り込み済み・確認済みの投稿を返す |
-// | POST     | /intake/redetect          | 振り分け待ちの言及の印を付け直す   |
+// | POST     | /intake/redetect          | 振り分け待ち・承認待ちの人物の候補（言及・発信者）を付け直す |
 // | POST     | /intake/:id/approve       | 承認して事実の層に反映する         |
 // | POST     | /intake/:id/reject        | 却下する（直近 10 件まで置いておく） |
 // | POST     | /intake/:id/reopen        | 却下を取り消して承認待ちへ         |
