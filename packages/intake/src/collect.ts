@@ -1,6 +1,7 @@
 // 全件を取り込む経路（振り分けを通る経路）の下書きに、規則で決まる紐付けを足す（設計書 決定記録 0021・0022）
 //
-// - 発信者: 情報源の持ち主（channels.owner_entity_id）を、投稿の発信者（author）として紐付ける
+// - 発信者: 情報源の持ち主（channels.owner_entity_id）を、投稿の発信者（author）として紐付ける。持ち主の無い
+//   情報源（X などのサービスごと）では、投稿したアカウントの持ち主（属性 accounts。決定記録 0078）を使う
 // - 言及: 蓄積対象（entities.attributes.archive_subject。人物と、その人の期）ごとに、別名の一致で
 //   言及の候補を作る。期の「同期」のような呼び方は、書き手がその期に属するときだけ使う
 // - 発信者が蓄積対象の人物なら、振り分けを通さず承認待ちから始める（本人のブログはすべて残す）
@@ -12,8 +13,13 @@ import type { DraftInput } from "./draft.ts";
 import { proposeSubjectLinks, type Subject } from "./mentions.ts";
 
 export interface CollectionContext {
-  /** 情報源の持ち主（発信者）の人物 ID。持ち主の無い情報源は null */
+  /**
+   * 発信者の ID。情報源の持ち主（人物・グループ・作品）か、持ち主の無い情報源では投稿したアカウントの持ち主
+   * （決定記録 0078）。分からなければ null
+   */
   ownerId: string | null;
+  /** 発信者を付けた根拠（既定は情報源の持ち主 { rule: "channel_owner" }） */
+  ownerEvidence?: Record<string, unknown>;
   /** 蓄積対象（人物・グループ） */
   subjects: readonly Subject[];
   /** 発信者が属するグループ（member_of）の ID */
@@ -50,7 +56,7 @@ export function applyCollectionRules(draft: DraftInput, ctx: CollectionContext):
           origin: "rule",
           confidence: 1,
           accepted: true,
-          evidence: { rule: "channel_owner" },
+          evidence: ctx.ownerEvidence ?? { rule: "channel_owner" },
         },
       ];
     }

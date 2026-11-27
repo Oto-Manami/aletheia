@@ -27,6 +27,7 @@ export {
   type CollectionResult,
   withoutAliasMatches,
 } from "./collect.ts";
+export { normalizeAccount, postedAccounts } from "./accounts.ts";
 export { type Draft, type DraftInput, draftSchema } from "./draft.ts";
 export { chosenImagesOnlyConfig, onlyChosenImages, usesChosenImagesOnly } from "./images.ts";
 export {
