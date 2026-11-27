@@ -373,6 +373,8 @@ export interface EventSummary {
   workName: string | null;
   /** 番組の回などの番号（「#368」と出す） */
   episodeNumber: number | null;
+  /** レギュラーの印の作品の回・号か（日付だけでは「関連が高そうな出来事」に出さない。決定記録 0071） */
+  regular?: boolean;
   /** 出典の URL が付いているか */
   hasSources: boolean;
   /** 蓄積対象の人物の出演の状態 */

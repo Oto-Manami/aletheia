@@ -96,13 +96,34 @@ export function dateScore(
   return 0;
 }
 
-/** 関連の高さ（0〜1）。文字の重なりを重く見る */
+/**
+ * 関連の高さ（0〜1）。文字の重なりを重く見る。
+ * レギュラーの印の作品の回・号は、ほぼ毎週あって日付だけならどの投稿にも近くなるので、投稿の文に作品名が
+ * 出てくるとき、または回の題名の言葉の半分以上が出てくるときだけ数える（日付だけでは候補に出さない。設計書
+ * 決定記録 0071）
+ */
 export function relevance(
-  event: Pick<EventSummary, "title" | "workName" | "startsOn" | "endsOn">,
+  event: Pick<EventSummary, "title" | "workName" | "startsOn" | "endsOn" | "regular">,
   context: { text: string; dates: readonly string[] },
 ): number {
+  if (
+    event.regular &&
+    !mentionsWork(event.workName, context.text) &&
+    textScore(event.title, context.text) < REGULAR_TITLE_MIN
+  ) {
+    return 0;
+  }
   const text = textScore(`${event.title} ${event.workName ?? ""}`, context.text);
   return 0.7 * text + 0.3 * dateScore(event, context.dates);
+}
+
+/** レギュラーの回を、作品名が無くても数える回の題名の重なり */
+const REGULAR_TITLE_MIN = 0.5;
+
+/** 投稿の文に作品名（そろえた形）が出てくるか */
+function mentionsWork(workName: string | null | undefined, text: string): boolean {
+  const name = normalizeForMatch(workName ?? "");
+  return name !== "" && normalizeForMatch(text).includes(name);
 }
 
 /** 関連の高い順に並べる（同じなら日付の新しい順） */

@@ -194,6 +194,14 @@ describe("作品の画面", () => {
       expect(hidden).not.toContain(s.ep1);
       expect(hidden).not.toContain(s.ep2);
       expect(await listed("")).toEqual(expect.arrayContaining([single, s.ep1, s.ep2]));
+      // 一覧の各行に、レギュラーの回かどうかが付く（承認の画面で、日付だけでは候補に出さないため）
+      const rows = (
+        (await (await ctx.call("GET", "/events")).json()) as {
+          items: { id: string; regular: boolean }[];
+        }
+      ).items;
+      expect(rows.find((e) => e.id === s.ep1)?.regular).toBe(true);
+      expect(rows.find((e) => e.id === single)?.regular).toBe(false);
 
       // 外すと戻る
       expect(
