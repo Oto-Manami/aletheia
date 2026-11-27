@@ -94,6 +94,7 @@ export function EventsPage() {
             </p>
             <p className="field-hint">
               レギュラーの番組・連載の回は、<Link to="/works">作品の画面</Link>にまとめています。
+              本人の出演は<Link to="/participation">出演の確認</Link>で、押すだけで付けられます。
             </p>
           </div>
           {viewer.canWork && (

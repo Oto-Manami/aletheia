@@ -105,12 +105,29 @@ function Tasks({ tasks }: { tasks: NonNullable<Dashboard["tasks"]> }) {
             <EventExamples events={tasks.unknownParticipation.events} more={0} />
           </Task>
         )}
-        <Task title="出演が予定のまま日付を過ぎた出来事" count={tasks.overdue.count}>
+        <Task
+          title="出演が予定のまま日付を過ぎた出来事"
+          count={tasks.overdue.count}
+          to="/participation"
+        >
           <EventExamples
             events={tasks.overdue.events}
             more={tasks.overdue.count - tasks.overdue.events.length}
           />
         </Task>
+        {tasks.participationMissing && (
+          <Task
+            title="本人の出演が付いていない出来事"
+            count={tasks.participationMissing.count}
+            to="/participation"
+            note="出演の確認の画面で、押すだけで付けられます"
+          >
+            <EventExamples
+              events={tasks.participationMissing.events}
+              more={tasks.participationMissing.count - tasks.participationMissing.events.length}
+            />
+          </Task>
+        )}
         <Task
           title="似た画像の確認"
           count={tasks.similarImages.count}

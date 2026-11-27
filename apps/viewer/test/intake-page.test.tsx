@@ -648,3 +648,38 @@ describe("情報源の種類（決定記録 0068）", () => {
     expect(screen.getByRole("alert").textContent).toContain("持ち主");
   });
 });
+
+describe("その場で作る出来事に本人の出演を付ける（決定記録 0080）", () => {
+  it("出演を選ぶと、種類ごとの役割の初めの値で本人の出演を付けて作る", async () => {
+    const user = userEvent.setup();
+    const source = new DemoSource(0);
+    vi.spyOn(source, "listArchiveSubjects").mockResolvedValue([
+      { id: "m1", type: "entity", label: "試験 花子" },
+    ]);
+    const saveEvent = vi.spyOn(source, "saveEvent");
+    const router = createMemoryRouter(routes, {
+      initialEntries: ["/intake/d2000000-0000-4000-8000-000000000001"],
+    });
+    render(
+      <Ctx.Provider value={{ source, viewer: admin }}>
+        <RouterProvider router={router} />
+      </Ctx.Provider>,
+    );
+    const events = await screen.findByRole("region", { name: /出来事/ });
+    await user.click(within(events).getByRole("button", { name: /合う出来事が無ければ/ }));
+    const create = within(events).getByRole("group", { name: "出来事をその場で作る" });
+    await user.type(within(create).getByLabelText("題名"), "架空の握手会");
+    await user.selectOptions(within(create).getByLabelText("種類"), "meet_greet");
+    await user.selectOptions(await within(create).findByLabelText("試験 花子の出演"), "scheduled");
+    // ミーグリなどの役割の初めの値は「主体」
+    expect(within(create).getByLabelText<HTMLSelectElement>("役割").value).toBe("host");
+    await user.click(within(create).getByRole("button", { name: "作って紐付ける" }));
+    await within(events).findByRole("button", { name: "架空の握手会 の紐付けを外す" });
+    expect(saveEvent.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({
+        kind: "meet_greet",
+        participants: [{ entityId: "m1", role: "host", status: "scheduled", characterName: null }],
+      }),
+    );
+  });
+});

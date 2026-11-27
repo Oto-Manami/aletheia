@@ -10,6 +10,9 @@ import {
   type EventInput,
   type EventSummary,
   type NewEntity,
+  type ParticipantStatus,
+  type ParticipationCheck,
+  type ParticipationCheckEvent,
   type PersonEvent,
   type RefLabel,
   SourceError,
@@ -17,6 +20,7 @@ import {
   type WorkView,
 } from "./types.ts";
 import { matchesEventQuery } from "./event-relevance.ts";
+import { defaultSubjectRole } from "./participation.ts";
 import { type EpisodeRow, episodeKindOf, regularRoleOf, regularStatusOf } from "./regular.ts";
 
 const WORKS = {
@@ -190,6 +194,14 @@ function demoEvents(): EventDetail[] {
       datePrecision: "month",
       sources: [{ url: "https://example.com/news/music-fes" }],
       participants: [hanako("not_appearing")],
+    }),
+    event({
+      id: EVENTS.announcement,
+      kind: "announcement",
+      title: "見本グループ 冬のツアーの発表",
+      startsOn: "2026-10-30",
+      datePrecision: "day",
+      sources: [{ url: "https://example.com/news/winter-tour" }],
     }),
   ];
 }
@@ -565,6 +577,69 @@ export class DemoEvents {
       created.push({ index, id: eventId, title });
     }
     return { created, skipped };
+  }
+
+  /** 本人の出演の確認（決定記録 0080） */
+  participationCheck(today: string): ParticipationCheck {
+    const subject = this.entities.find((x) => x.archiveSubject);
+    if (!subject)
+      return { subject: null, overdue: [], missing: [], counts: { overdue: 0, missing: 0 } };
+    const row = (e: EventDetail): ParticipationCheckEvent => {
+      const p = e.participants.find((x) => x.entityId === subject.id);
+      const parent = e.parentId ? this.events.find((x) => x.id === e.parentId) : undefined;
+      const work = e.workId ? this.entities.find((x) => x.id === e.workId) : undefined;
+      return {
+        id: e.id,
+        title: e.title,
+        kind: e.kind,
+        startsOn: e.startsOn,
+        endsOn: e.endsOn,
+        datePrecision: e.datePrecision,
+        parentTitle: parent?.title ?? null,
+        workName: work?.label ?? null,
+        regular: work?.regular === true,
+        role: p?.role ?? defaultSubjectRole(e.kind),
+        status: p?.status ?? null,
+      };
+    };
+    const byDate = (a: EventDetail, b: EventDetail) =>
+      (b.startsOn ?? "").localeCompare(a.startsOn ?? "");
+    const overdue = this.events
+      .filter((e) =>
+        e.participants.some((p) => p.entityId === subject.id && p.status === "scheduled"),
+      )
+      .filter((e) => (e.endsOn ?? e.startsOn ?? "9999") < today)
+      .sort(byDate)
+      .map(row);
+    const missing = this.events
+      .filter((e) => !this.isSchedule(e) && !e.participants.some((p) => p.entityId === subject.id))
+      .sort(byDate)
+      .map(row);
+    return {
+      subject: { id: subject.id, name: subject.label },
+      overdue,
+      missing,
+      counts: { overdue: overdue.length, missing: missing.length },
+    };
+  }
+
+  /** 本人の出演の状態を付ける（決定記録 0080） */
+  setSubjectParticipation(eventId: string, status: ParticipantStatus, role?: string): void {
+    const subject = this.entities.find((x) => x.archiveSubject);
+    const event = this.events.find((e) => e.id === eventId);
+    if (!subject || !event) throw new Error("出来事が見つかりません");
+    const rows = event.participants.filter((p) => p.entityId === subject.id);
+    if (rows.length > 0) {
+      for (const p of rows) p.status = status;
+      return;
+    }
+    event.participants.push({
+      entityId: subject.id,
+      entityName: subject.label,
+      role: role ?? defaultSubjectRole(event.kind),
+      status,
+      characterName: null,
+    });
   }
 
   /** 人物の出演（人物の画面。決定記録 0079） */

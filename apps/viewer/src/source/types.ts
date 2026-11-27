@@ -599,6 +599,33 @@ export interface EventSetlistsView {
   setlists: EventSetlist[];
 }
 
+/** 本人の出演の確認の 1 行（設計書 決定記録 0080） */
+export interface ParticipationCheckEvent {
+  id: string;
+  title: string | null;
+  kind: string;
+  startsOn: string | null;
+  endsOn: string | null;
+  datePrecision: string | null;
+  parentTitle: string | null;
+  workName: string | null;
+  regular: boolean;
+  /** 付いている役割（付いていなければ、種類ごとの初めの値） */
+  role: string;
+  /** 付いている状態（付いていなければ null） */
+  status: ParticipantStatus | null;
+}
+
+/** 本人の出演の確認（設計書 決定記録 0080） */
+export interface ParticipationCheck {
+  subject: { id: string; name: string } | null;
+  /** 予定のまま日付を過ぎた出来事 */
+  overdue: ParticipationCheckEvent[];
+  /** 本人の出演が付いていない出来事（日程は除く） */
+  missing: ParticipationCheckEvent[];
+  counts: { overdue: number; missing: number };
+}
+
 /** 人物の一覧の 1 行（設計書 決定記録 0079） */
 export interface PersonSummary {
   id: string;
@@ -810,6 +837,8 @@ export interface Dashboard {
     unknownParticipation: { count: number; events: DashboardEvent[] } | null;
     setlistMissing: { count: number; events: DashboardEvent[] } | null;
     overdue: { count: number; events: DashboardEvent[] };
+    /** 本人の出演が付いていない出来事（日程は除く。決定記録 0080）。蓄積対象の人物がいなければ null */
+    participationMissing: { count: number; events: DashboardEvent[] } | null;
     /** 似た画像の「重複の疑い」の組の数と、見た目のハッシュをまだ計算していない保存済みの画像の数（決定記録 0069） */
     similarImages: { count: number; unhashed: number };
   } | null;
@@ -938,6 +967,10 @@ export interface ArchiveSource {
   listSeries?(): Promise<RefLabel[]>;
   /** 作品の一覧と作品の画面（決定記録 0065） */
   listWorks?(filter: { subtype?: string; query?: string }): Promise<WorkSummary[]>;
+  /** 本人の出演の確認（予定のまま日付を過ぎたもの・付いていないもの。決定記録 0080） */
+  getParticipationCheck(): Promise<ParticipationCheck>;
+  /** 本人の出演の状態を付ける（付いていれば状態を直し、無ければ役割を付けて足す） */
+  setSubjectParticipation(eventId: string, status: ParticipantStatus, role?: string): Promise<void>;
   /** 人物の一覧（蓄積対象の人物が先。設計書 決定記録 0079） */
   listPeople(query?: string): Promise<PersonSummary[]>;
   /** 人物の画面の見出し（所属・言明・件数・言及した人ごとの件数） */
@@ -1132,6 +1165,11 @@ export interface ArchiveSource {
   createEntity(entity: NewEntity): Promise<EntityOption & { created: boolean }>;
   /** 蓄積対象の人物（出来事を作るとき、出演の行を最初から置く） */
   listArchiveSubjects(): Promise<RefLabel[]>;
+  /**
+   * 蓄積対象のグループ（期など）。投稿がその名前に触れていれば、その場で作る出来事の本人の出演を
+   * 「予定」にする（決定記録 0080）。無い情報源では使わない
+   */
+  listArchiveSubjectGroups?(): Promise<RefLabel[]>;
 }
 
 /** API・データベースから返った失敗を、画面にそのまま出せる文にしたもの */
