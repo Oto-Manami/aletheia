@@ -590,6 +590,8 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
         "e.classification",
         "e.episode_number",
         "w.canonical_name as work_name",
+        // レギュラーの印の作品の回・号か（承認の画面で、日付だけでは候補に出さない。決定記録 0071）
+        isRegularEpisode.as("regular"),
         // 出典は、手で入れた URL か、紐付いた素材（ニュースなど）のどちらか
         sql<boolean>`(e.attributes ? 'sources' or exists (
           select 1 from public.links l

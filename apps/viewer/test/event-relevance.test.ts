@@ -5,6 +5,8 @@ import {
   matchesEventQuery,
   normalizeForMatch,
   rankEvents,
+  relevance,
+  SUGGEST_MIN,
   textScore,
 } from "../src/source/event-relevance.ts";
 import type { EventSummary } from "../src/source/types.ts";
@@ -79,5 +81,26 @@ describe("出来事の関連の高さ", () => {
       { text: "「試験の番組」に試験花子が出演！", dates: ["2026-11-08"] },
     );
     expect(ranked.map((r) => r.event.id)).toEqual(["same", "far", "other"]);
+  });
+
+  it("レギュラーの回は、日付が同じでも作品名・回の題名が文に無ければ数えない（決定記録 0071）", () => {
+    const regular = {
+      ...event("ep", "架空の企画 前半戦", "2026-11-08", "試験の番組"),
+      regular: true,
+    };
+    const unrelated = { text: "見本雑誌のコーデ企画。試験花子が登場", dates: ["2026-11-08"] };
+    expect(relevance(regular, unrelated)).toBe(0);
+    // 作品名が出てくれば、これまでどおり数える
+    expect(
+      relevance(regular, { text: "今夜の試験の番組に出演", dates: ["2026-11-08"] }),
+    ).toBeGreaterThanOrEqual(SUGGEST_MIN);
+    // 回の題名の言葉が出てくれば、作品名が無くても数える
+    expect(
+      relevance(regular, { text: "架空の企画 前半戦の感想", dates: ["2026-11-08"] }),
+    ).toBeGreaterThanOrEqual(SUGGEST_MIN);
+    // レギュラーでない出来事は、日付だけでも候補に出る
+    expect(relevance(event("one", "見本音楽祭", "2026-11-08"), unrelated)).toBeGreaterThanOrEqual(
+      SUGGEST_MIN,
+    );
   });
 });
