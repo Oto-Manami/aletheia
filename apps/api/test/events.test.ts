@@ -437,6 +437,63 @@ describe("出来事を作る・直す", () => {
       ).toBe(403);
     }));
 
+  it("紐付けた投稿を、出来事の本体（part_of）と告知・記録（about）で切り替えられる（決定記録 0083）", () =>
+    withApi(async (ctx) => {
+      const worker = await participant(ctx);
+      const viewer = await tokenFor(
+        await discordUser(ctx.c, "66666666-6666-4666-8666-666666666666", "viewer"),
+      );
+      const event = (await json<{ id: string }>(ctx.call("POST", "/events", base, worker))).id;
+      const { rows } = await ctx.c.query<{ id: string }>(
+        `with ch as (
+           insert into public.channels (key, name, kind, availability, item_unit, classification)
+           values ('test_video', '試験の動画', 'video', 'free', 'post', 'public') returning id
+         )
+         insert into public.posts (channel_id, external_id, classification)
+         select id, 'V0001', 'public' from ch returning id`,
+      );
+      const post = rows[0]!.id;
+      await ctx.c.query(
+        `insert into public.links (from_type, from_id, to_type, to_id, role, classification)
+         values ('post', $1, 'event', $2, 'about', 'public')`,
+        [post, event],
+      );
+      const roleOf = async () =>
+        (
+          await json<{ materials: { post_id: string; role: string }[] }>(
+            ctx.call("GET", `/events/${event}`, undefined, worker),
+          )
+        ).materials.map((m) => [m.post_id, m.role]);
+      const set = (role: string, token = worker) =>
+        ctx.call("POST", `/events/${event}/materials/role`, { post_id: post, role }, token);
+
+      expect((await set("part_of")).status).toBe(200);
+      expect(await roleOf()).toEqual([[post, "part_of"]]);
+      // 両方の役割で紐付いていても、1 つにまとめる
+      await ctx.c.query(
+        `insert into public.links (from_type, from_id, to_type, to_id, role, classification)
+         values ('post', $1, 'event', $2, 'about', 'public')`,
+        [post, event],
+      );
+      expect((await set("about")).status).toBe(200);
+      const { rows: links } = await ctx.c.query<{ role: string }>(
+        `select role from public.links where from_id = $1 and to_id = $2`,
+        [post, event],
+      );
+      expect(links.map((l) => l.role)).toEqual(["about"]);
+      expect((await set("part_of", viewer)).status).toBe(403);
+      expect(
+        (
+          await ctx.call(
+            "POST",
+            `/events/${event}/materials/role`,
+            { post_id: "00000000-0000-4000-8000-000000000000", role: "part_of" },
+            worker,
+          )
+        ).status,
+      ).toBe(404);
+    }));
+
   it("ライブの公演は日程として扱い、一覧では隠してまとまりに件数を出す。部も残せる", () =>
     withApi(async (ctx) => {
       const hanako = await subject(ctx);

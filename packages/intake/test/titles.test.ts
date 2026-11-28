@@ -174,3 +174,34 @@ describe("groupForWorks: 紐付いた素材の文字（決定記録 0082）", ()
     expect(of("v3")?.work).toBeNull();
   });
 });
+
+describe("groupForWorks: 本体の発信者（決定記録 0083）", () => {
+  const channel = {
+    id: "00000000-0000-4000-8000-00000000d001",
+    name: "見本ちゃんねる",
+    subtype: "web_program",
+    aliases: [],
+    regular: false,
+  };
+  const show = {
+    id: "00000000-0000-4000-8000-00000000d002",
+    name: "見本になりましょう",
+    subtype: "web_program",
+    aliases: [],
+    regular: true,
+  };
+
+  it("本体の発信者の作品を、題名・告知より先に、初めから選ぶ候補にする", () => {
+    const groups = groupForWorks(
+      [
+        {
+          ...ev("v1", "episode", "【見本になりましょう】会見に潜入"),
+          material_text: "見本になりましょうの会見",
+          content_work_ids: [channel.id],
+        },
+      ],
+      [channel, show],
+    );
+    expect(groups.map((g) => [g.work?.id, g.events[0]!.match])).toEqual([[channel.id, "content"]]);
+  });
+});

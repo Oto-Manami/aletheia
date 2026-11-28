@@ -423,3 +423,21 @@ describe("出来事の表示の画面", () => {
     expect(screen.queryByRole("textbox", { name: "題名" })).toBeNull();
   });
 });
+
+describe("出来事の素材の本体（決定記録 0083）", () => {
+  it("紐付けた投稿を本体にすると印が付き、戻せる", async () => {
+    const user = userEvent.setup();
+    const source = new DemoSource(0);
+    const episode = (await source.listEvents({ query: "仮の時間" })).items.find(
+      (e) => e.kind === "episode",
+    )!;
+    await source.linkEventMaterial(episode.id, "b1000000-0000-4000-8000-000000000001");
+    open(`/events/${episode.id}/edit`, member, source);
+    await user.click(await screen.findByRole("button", { name: "本体にする" }));
+    await user.click(await screen.findByRole("button", { name: "本体から外す" }));
+    expect((await source.getEvent(episode.id)).materials.find((m) => m.postId !== null)?.role).toBe(
+      "about",
+    );
+    expect(await screen.findByRole("button", { name: "本体にする" })).toBeTruthy();
+  });
+});

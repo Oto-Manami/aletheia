@@ -1041,7 +1041,7 @@ export class DemoSource implements ArchiveSource {
         publishedDate: post.publishedDate,
         channelName: post.channelName,
         channelKind: "web",
-        role: "about",
+        role: this.eventPostRoles.get(`${id}:${post.id}`) ?? "about",
         images: [],
       });
     }
@@ -1050,12 +1050,26 @@ export class DemoSource implements ArchiveSource {
 
   /** 出来事に後から紐付けた保存済みの投稿（デモ版だけ） */
   private eventPosts = new Map<string, Set<string>>();
+  /** 後から紐付けた投稿の役割（本体は part_of。決定記録 0083）。鍵は「出来事の ID:投稿の ID」 */
+  private eventPostRoles = new Map<string, "about" | "part_of">();
 
   async linkEventMaterial(eventId: string, postId: string): Promise<void> {
     await this.delay();
     if (!this.posts.some((p) => p.id === postId))
       throw new SourceError("投稿が見つかりません", 404);
     this.eventPosts.set(eventId, new Set([...(this.eventPosts.get(eventId) ?? []), postId]));
+  }
+
+  async setEventMaterialRole(
+    eventId: string,
+    postId: string,
+    role: "about" | "part_of",
+  ): Promise<void> {
+    await this.delay();
+    if (!this.eventPosts.get(eventId)?.has(postId)) {
+      throw new SourceError("この出来事には、その投稿が紐付いていません", 404);
+    }
+    this.eventPostRoles.set(`${eventId}:${postId}`, role);
   }
 
   async unlinkEventMaterial(eventId: string, postId: string): Promise<void> {

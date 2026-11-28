@@ -3498,11 +3498,43 @@ details.more[open] > summary {
   text-align: center;
 }
 
-/* 素材を外す・紐付ける（設計書 決定記録 0044） */
+/* 素材を外す・紐付ける（設計書 決定記録 0044）。本体にする（決定記録 0083） */
+.event-material-role {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.event-material-role + .event-material-remove {
+  margin-left: 8px;
+}
+
 .event-material-remove {
   flex: none;
   margin-left: auto;
   font-size: 12px;
+}
+
+.event-linked {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.event-content-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tag.event-material-content {
+  flex: none;
+  border-color: var(--info-border);
+  background: var(--info-bg);
+  color: var(--info-ink);
 }
 
 .event-material-confirm {

@@ -632,7 +632,7 @@ export interface WorkGroupingEvent {
    * stem: 名前が同じ（初めから選ぶ）。material: 紐付いた告知などに作品の名前がある（初めは選ばない。
    * 決定記録 0082）。title: 題名に作品の名前を含む（初めは選ばない）
    */
-  match: "stem" | "material" | "title";
+  match: "content" | "stem" | "material" | "title";
 }
 
 export interface GroupingWorkOption {
@@ -1234,6 +1234,8 @@ export interface ArchiveSource {
   linkEventMaterial(eventId: string, postId: string): Promise<void>;
   /** 投稿をこの出来事の素材から外す（投稿・素材そのものは消さない） */
   unlinkEventMaterial(eventId: string, postId: string): Promise<void>;
+  /** 紐付けた投稿を、出来事の本体（part_of）か告知・記録（about）にする（決定記録 0083） */
+  setEventMaterialRole(eventId: string, postId: string, role: "about" | "part_of"): Promise<void>;
   /** 出典の URL の見出し（取り込み済みの素材だけから探す。無ければ null） */
   previewSource(url: string): Promise<SourcePreview | null>;
   /** 作品・相手を名前で探す */

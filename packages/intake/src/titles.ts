@@ -122,16 +122,22 @@ export interface GroupingSource {
   episode_number: number | null;
   /** 出来事に紐付いた素材（告知のニュースなど）の文字。作品の名前を探す（決定記録 0082） */
   material_text?: string | null;
+  /**
+   * 出来事の本体（part_of で紐付いた動画・誌面など）の発信者の作品。配信の動画なら、配信したチャンネル
+   * （決定記録 0083）
+   */
+  content_work_ids?: readonly string[] | null;
 }
 
-export interface GroupedEvent extends Omit<GroupingSource, "material_text"> {
+export interface GroupedEvent extends Omit<GroupingSource, "material_text" | "content_work_ids"> {
   /** 題名から読んだ回・号の番号（付けるとき、番号が空なら入れる） */
   number: number | null;
   /**
-   * stem: 名前が同じ（初めから選ぶ）。material: 紐付いた素材の文字に作品の名前がある（初めは選ばない。
-   * 決定記録 0082）。title: 題名に作品の名前を含む（初めは選ばない）
+   * content: 本体の動画・誌面の発信者がその作品（初めから選ぶ。決定記録 0083）。stem: 名前が同じ（初めから選ぶ）。
+   * material: 紐付いた素材の文字に作品の名前がある（初めは選ばない。決定記録 0082）。title: 題名に作品の名前を
+   * 含む（初めは選ばない）
    */
-  match: "stem" | "material" | "title";
+  match: "content" | "stem" | "material" | "title";
 }
 
 export interface WorkGroup {
@@ -154,6 +160,7 @@ export function fitsWork(kind: string, subtype: string | null): boolean {
 
 /**
  * 出来事を、まとめる候補ごとに分ける。
+ * - 本体（part_of で紐付いた動画・誌面）の発信者が作品なら、その作品（初めから選ぶ。決定記録 0083）
  * - 番組の回・掲載: 題名から読んだ名前が作品の名前・別名と同じなら、その作品（初めから選ぶ）。違えば同じ名前どうし
  * - 紐付いた素材の文字に作品の名前・別名があれば、その作品の候補（初めは選ばない。決定記録 0082）
  * - どの種類でも、題名に作品の名前・別名を含むものは、その作品の候補（初めは選ばない。いちばん長い名前で合うもの）
@@ -189,9 +196,12 @@ export function groupForWorks(
       number,
     };
     const candidates = keyed.filter(({ work }) => fitsWork(e.kind, work.subtype));
-    const exact = EPISODE_KINDS.has(e.kind)
-      ? candidates.find(({ keys }) => keys.includes(stemK))
-      : undefined;
+    // 本体の発信者の作品がいちばん確か（配信の動画を、配信したチャンネルに。決定記録 0083）
+    const byContent = candidates.filter(({ work }) => (e.content_work_ids ?? []).includes(work.id));
+    const content = byContent.length === 1 ? byContent[0] : undefined;
+    const exact =
+      content ??
+      (EPISODE_KINDS.has(e.kind) ? candidates.find(({ keys }) => keys.includes(stemK)) : undefined);
     const inTitle = candidates.filter(({ keys }) => keys.some((k) => titleK.includes(k)));
     const contained = exact
       ? undefined
@@ -224,7 +234,10 @@ export function groupForWorks(
           work: { id: work.id, name: work.name, subtype: work.subtype, regular: work.regular },
           subtype: work.subtype,
         }),
-        { ...base, match: exact ? "stem" : fromMaterial ? "material" : "title" },
+        {
+          ...base,
+          match: content ? "content" : exact ? "stem" : fromMaterial ? "material" : "title",
+        },
       );
     } else if (EPISODE_KINDS.has(e.kind) && stemK) {
       add(

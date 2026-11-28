@@ -2085,6 +2085,17 @@ export class LiveSource implements ArchiveSource {
     });
   }
 
+  async setEventMaterialRole(
+    eventId: string,
+    postId: string,
+    role: "about" | "part_of",
+  ): Promise<void> {
+    await this.api("POST", `/events/${encodeURIComponent(eventId)}/materials/role`, {
+      post_id: postId,
+      role,
+    });
+  }
+
   async unlinkEventMaterial(eventId: string, postId: string): Promise<void> {
     await this.api("POST", `/events/${encodeURIComponent(eventId)}/materials/remove`, {
       post_id: postId,

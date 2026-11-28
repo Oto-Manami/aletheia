@@ -32,7 +32,7 @@ import {
   regularTitleOf,
 } from "../source/regular.ts";
 import { defaultSubjectRole, subjectStatusDefault } from "../source/participation.ts";
-import { eventsOf, setEventLink } from "../source/tags.ts";
+import { eventsOf, isEventContent, setEventLink } from "../source/tags.ts";
 import type {
   Classification,
   EventSummary,
@@ -236,19 +236,33 @@ export function EventLinks({
       </h3>
       {linked.length > 0 && (
         <div className="record-people" role="group" aria-label="紐付けた出来事">
-          {linked.map((e) => (
-            <button
-              key={e}
-              type="button"
-              className="person-chip is-on"
-              disabled={readOnly}
-              aria-label={`${name(e)} の紐付けを外す`}
-              onClick={() => onChange(setEventLink(draft, e, false))}
-            >
-              {name(e)}
-              <X size={12} aria-hidden="true" />
-            </button>
-          ))}
+          {linked.map((e) => {
+            const content = isEventContent(draft, e);
+            return (
+              <span key={e} className="event-linked">
+                <button
+                  type="button"
+                  className="person-chip is-on"
+                  disabled={readOnly}
+                  aria-label={`${name(e)} の紐付けを外す`}
+                  onClick={() => onChange(setEventLink(draft, e, false))}
+                >
+                  {name(e)}
+                  <X size={12} aria-hidden="true" />
+                </button>
+                {/* その回の映像・誌面そのものなら「本体」（決定記録 0083） */}
+                <label className="event-content-toggle">
+                  <input
+                    type="checkbox"
+                    checked={content}
+                    disabled={readOnly}
+                    onChange={(ev) => onChange(setEventLink(draft, e, true, ev.target.checked))}
+                  />
+                  この投稿が「{name(e)}」の本体（映像・誌面など）
+                </label>
+              </span>
+            );
+          })}
         </div>
       )}
       {created && (

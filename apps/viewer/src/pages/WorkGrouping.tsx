@@ -238,6 +238,9 @@ function EventRow({
           <span className="quiet">#{event.number} を入れます</span>
         )}
         {event.match === "title" && <span className="quiet">題名に作品の名前があります</span>}
+        {event.match === "content" && (
+          <span className="quiet">本体の動画・誌面の発信者がこの作品です</span>
+        )}
         {event.match === "material" && (
           <span className="quiet">紐付いた告知に作品の名前があります</span>
         )}
@@ -274,7 +277,7 @@ function GroupCard({
   const { viewer } = useApp();
   const id = useId();
   const [checked, toggle] = useChecked(() =>
-    group.events.filter((e) => e.match === "stem").map((e) => e.id),
+    group.events.filter((e) => e.match === "stem" || e.match === "content").map((e) => e.id),
   );
   const [name, setName] = useState(group.name);
   const selected = group.events.filter((e) => checked.has(e.id)).map((e) => e.id);

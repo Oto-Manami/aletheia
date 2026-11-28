@@ -69,7 +69,20 @@ export function registerWorkGroupingRoutes(app: Hono<AuthEnv>, db: Database): vo
                else (select x.post_id from public.assets x where x.id = l.from_id) end
              join public.asset_texts t on t.asset_id = a.id and t.text_type in ('body', 'caption')
             where l.to_type = 'event' and l.to_id = e.id and l.review_state = 'accepted'
-              and l.from_type in ('post', 'asset')) as material_text
+              and l.from_type in ('post', 'asset')) as material_text,
+          -- 本体（part_of で紐付いた動画・誌面）の発信者の作品。発信者が無ければ情報源の持ち主（決定記録 0083）
+          (select array_agg(distinct w.id)
+             from public.links l
+             join public.posts p on p.id = l.from_id
+             join public.channels ch on ch.id = p.channel_id
+             left join lateral (
+               select au.to_id from public.links au
+                where au.from_type = 'post' and au.from_id = p.id and au.role = 'author'
+                  and au.to_type = 'entity' and au.review_state = 'accepted'
+             ) au on true
+             join public.entities w on w.id = coalesce(au.to_id, ch.owner_entity_id) and w.type = 'work'
+            where l.to_type = 'event' and l.to_id = e.id and l.role = 'part_of'
+              and l.from_type = 'post' and l.review_state = 'accepted') as content_work_ids
         from public.events e
         left join public.events pe on pe.id = e.parent_id
         where e.work_id is null and not ${NO_WORK}

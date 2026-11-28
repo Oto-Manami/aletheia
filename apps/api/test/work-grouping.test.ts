@@ -120,6 +120,28 @@ describe("作品にまとめない印と、素材の文字からの候補（決�
       expect(group?.events.map((e) => [e.id, e.match])).toEqual([[video.rows[0]!.id, "material"]]);
     }));
 
+  it("本体（part_of）の動画の発信者の作品を、初めから選ぶ候補にする（決定記録 0083）", () =>
+    withApi(async (ctx) => {
+      const d = await seed(ctx.c);
+      const channel = await ctx.c.query<{ id: string }>(
+        `insert into public.entities (type, subtype, canonical_name, classification)
+         values ('work', 'web_program', '架空ちゃんねる', 'public') returning id`,
+      );
+      const video = await ctx.c.query<{ id: string }>(
+        `insert into public.events (kind, title, starts_on, date_precision, classification)
+         values ('episode', '【架空の番組】会見に潜入', '2026-01-10', 'day', 'public') returning id`,
+      );
+      await ctx.c.query(
+        `insert into public.links (from_type, from_id, to_type, to_id, role, origin, confidence, review_state, classification)
+         values ('post', $1, 'event', $2, 'part_of', 'human', 1, 'accepted', 'public'),
+                ('post', $1, 'entity', $3, 'author', 'human', 1, 'accepted', 'public')`,
+        [d.mixedFreePost.post, video.rows[0]!.id, channel.rows[0]!.id],
+      );
+      const r = (await (await ctx.call("GET", "/work-grouping")).json()) as Grouping;
+      const group = r.groups.find((g) => g.work?.id === channel.rows[0]!.id);
+      expect(group?.events.map((e) => [e.id, e.match])).toEqual([[video.rows[0]!.id, "content"]]);
+    }));
+
   it("印を付けると候補と件数から外れ、外すと戻る。作品に付けると印は外れる", () =>
     withApi(async (ctx) => {
       const s = await setup(ctx);

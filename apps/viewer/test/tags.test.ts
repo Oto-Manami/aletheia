@@ -104,3 +104,19 @@ describe("トークの書いた人（決定記録 0068）", () => {
     expect(mentionsOf(fixed)).toEqual(mentionsOf(both));
   });
 });
+
+describe("出来事への紐付けの本体（決定記録 0083）", () => {
+  it("本体にすると part_of、戻すと about にし、どちらでも出来事は 1 つ", async () => {
+    const { eventsOf, isEventContent, setEventLink } = await import("../src/source/tags.ts");
+    const base = { post: { title: "見本" }, links: [] } as unknown as DraftInput;
+    const E = "00000000-0000-4000-8000-0000000000e1";
+    const content = setEventLink(base, E, true, true);
+    expect(isEventContent(content, E)).toBe(true);
+    expect((content.links ?? []).map((l) => l.role)).toEqual(["part_of"]);
+    const record = setEventLink(content, E, true, false);
+    expect(isEventContent(record, E)).toBe(false);
+    expect((record.links ?? []).map((l) => l.role)).toEqual(["about"]);
+    expect(eventsOf(record)).toEqual([E]);
+    expect(eventsOf(setEventLink(record, E, false))).toEqual([]);
+  });
+});
