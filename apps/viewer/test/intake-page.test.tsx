@@ -724,3 +724,31 @@ describe("その場で作る出来事に本人の出演を付ける（決定記�
     );
   });
 });
+
+describe("確認なしの下書きをまとめて承認（決定記録 0081）", () => {
+  it("運営者は題名を見て、外したもの以外をまとめて承認できる", async () => {
+    const user = userEvent.setup();
+    const { source } = open("/intake");
+    await user.click(
+      await screen.findByRole("button", { name: /確認なしの下書きをまとめて承認する（2 件）/ }),
+    );
+    const panel = screen.getByRole("region", { name: "確認なしの下書きをまとめて承認" });
+    const boxes = within(panel).getAllByRole("checkbox");
+    expect(boxes).toHaveLength(2);
+    // 写っている人を確かめていない画像のある下書きは出さない
+    expect(within(panel).queryByText("ツアーの思い出")).toBeNull();
+    await user.click(within(panel).getByRole("checkbox", { name: /同期とおでかけ/ }));
+    await user.click(within(panel).getByRole("button", { name: "選んだ 1 件を承認する" }));
+    await sentAll();
+    const approved = (await source.listIntake("approved")).map((i) => i.title);
+    expect(approved.some((t) => t?.startsWith("今日は自主練のあと"))).toBe(true);
+    expect((await source.listIntake("pending")).map((i) => i.title)).toContain("同期とおでかけ");
+  });
+
+  it("作業者にはまとめて承認を出さない", async () => {
+    open("/intake", { ...admin, isAdmin: false });
+    await screen.findByRole("heading", { name: "承認" });
+    await screen.findAllByRole("link", { name: /同期とおでかけ/ });
+    expect(screen.queryByRole("button", { name: /まとめて承認する/ })).toBeNull();
+  });
+});

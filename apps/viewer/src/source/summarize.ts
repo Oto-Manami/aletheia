@@ -162,6 +162,24 @@ export function reviewReasons(draft: DraftInput): string[] {
   return reasons;
 }
 
+/**
+ * 写っている人を確かめていない画像の数（まとめて承認の対象から外す。設計書 決定記録 0081）。
+ * 人が選んだ（accepted が true か、人が付けた）写っている人の紐付けがある画像は数えない
+ */
+export function untaggedImages(draft: DraftInput): number {
+  const tagged = new Set(
+    (draft.links ?? [])
+      .filter(
+        (l) =>
+          l.role === "appears" &&
+          typeof l.from === "object" &&
+          (l.accepted === true || l.origin === "human"),
+      )
+      .map((l) => (l.from as { asset: string }).asset),
+  );
+  return (draft.assets ?? []).filter((a) => a.media_type === "image" && !tagged.has(a.ref)).length;
+}
+
 export function draftTitle(draft: DraftInput): string | null {
   if (draft.post.title) return draft.post.title;
   const body = (draft.assets ?? [])

@@ -49,6 +49,8 @@ export interface IntakeSummary {
   warningCount: number;
   /** 確かめることの短い名前（日付・人物・提案 2 件） */
   reviewReasons: string[];
+  /** 写っている人を確かめていない画像の数（決定記録 0081） */
+  untaggedImages: number;
   /** 承認・却下・保留した日時と人（履歴） */
   reviewedAt: string | null;
   reviewedByName: string | null;

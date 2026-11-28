@@ -7,7 +7,7 @@ import { clearLoadCache } from "../load-cache.ts";
 import type { DraftInput } from "@aletheia/intake/draft";
 import type { WorkGroup } from "@aletheia/intake/titles";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
+import { draftTitle, draftWarnings, reviewReasons, untaggedImages } from "./summarize.ts";
 import { triageItemOf } from "./triage.ts";
 import type { EpisodeRow } from "./regular.ts";
 import {
@@ -265,6 +265,7 @@ function summarize(row: IntakeRow): IntakeSummary {
     assetCount: (row.draft.assets ?? []).length,
     warningCount: draftWarnings(row.draft).length,
     reviewReasons: reviewReasons(row.draft),
+    untaggedImages: untaggedImages(row.draft),
     reviewedAt: row.reviewed_at ?? null,
     reviewedByName: row.reviewed_by_name ?? null,
   };

@@ -19,7 +19,7 @@ import {
 import { onlyChosenImages } from "@aletheia/intake/images";
 import { proposeSubjectLinks } from "@aletheia/intake/mentions";
 import { hasOnlyAuthor } from "./tags.ts";
-import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
+import { draftTitle, draftWarnings, reviewReasons, untaggedImages } from "./summarize.ts";
 import { DemoEvents } from "./demo-events.ts";
 import type { EpisodeRow } from "./regular.ts";
 import {
@@ -226,6 +226,7 @@ export class DemoSource implements ArchiveSource {
       assetCount: (item.draft.assets ?? []).length,
       warningCount: draftWarnings(item.draft).length,
       reviewReasons: reviewReasons(item.draft),
+      untaggedImages: untaggedImages(item.draft),
       reviewedAt: item.reviewedAt ?? null,
       reviewedByName: item.reviewedAt ? "デモの運営者" : null,
     };
