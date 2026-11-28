@@ -15,6 +15,7 @@ import { ENTITY_SUBTYPE_LABELS, EVENT_KIND_SHORT, eventDateLabel } from "../form
 import type {
   Classification,
   GroupingWorkOption,
+  WorkGrouping,
   WorkGroupingEvent,
   WorkGroupingGroup,
 } from "../source/types.ts";
@@ -116,6 +117,22 @@ function AttachControls({
     })();
   };
 
+  // どの作品の回・号でもないもの（ほかの番組の話をしている動画など）に印を付ける（決定記録 0082）
+  const skip = () => {
+    setBusy(true);
+    setError(null);
+    source
+      .setNoWork(selectedIds, true)
+      .then((r) => {
+        setBusy(false);
+        onDone(`${nf.format(r.changed)} 件を「作品にまとめない」にしました`);
+      })
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : String(e));
+        setBusy(false);
+      });
+  };
+
   return (
     <div className="grouping-actions" role="group" aria-label={label}>
       <div className="field">
@@ -171,6 +188,14 @@ function AttachControls({
       <button type="button" className="button primary" disabled={!ready || busy} onClick={attach}>
         {creating ? "作品を作って" : ""}選んだ {nf.format(selectedIds.length)} 件を付ける
       </button>
+      <button
+        type="button"
+        className="button"
+        disabled={selectedIds.length === 0 || busy}
+        onClick={skip}
+      >
+        選んだ {nf.format(selectedIds.length)} 件を作品にまとめない
+      </button>
       {error && (
         <p className="error" role="alert">
           {error}
@@ -213,6 +238,12 @@ function EventRow({
           <span className="quiet">#{event.number} を入れます</span>
         )}
         {event.match === "title" && <span className="quiet">題名に作品の名前があります</span>}
+        {event.match === "content" && (
+          <span className="quiet">本体の動画・誌面の発信者がこの作品です</span>
+        )}
+        {event.match === "material" && (
+          <span className="quiet">紐付いた告知に作品の名前があります</span>
+        )}
       </label>
       <Link to={`/events/${event.id}`} className="quiet grouping-open">
         開く
@@ -246,10 +277,11 @@ function GroupCard({
   const { viewer } = useApp();
   const id = useId();
   const [checked, toggle] = useChecked(() =>
-    group.events.filter((e) => e.match === "stem").map((e) => e.id),
+    group.events.filter((e) => e.match === "stem" || e.match === "content").map((e) => e.id),
   );
   const [name, setName] = useState(group.name);
   const selected = group.events.filter((e) => checked.has(e.id)).map((e) => e.id);
+  const all = selected.length === group.events.length;
   const headingId = `${id}-name`;
   return (
     <section className="grouping-card" aria-labelledby={headingId}>
@@ -260,6 +292,17 @@ function GroupCard({
         <span className="quiet">
           {group.work ? "既にある作品" : "新しい作品の候補"}・{nf.format(group.events.length)} 件
         </span>
+        {viewer.canWork && group.events.length > 1 && (
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              for (const e of group.events) toggle(e.id, !all);
+            }}
+          >
+            {all ? "すべて外す" : "すべて選ぶ"}
+          </button>
+        )}
       </div>
       <ul className="grouping-events">
         {group.events.map((e) => (
@@ -378,6 +421,70 @@ function GroupList({
   );
 }
 
+/** 「作品にまとめない」にしたもの。戻すと候補に戻る（決定記録 0082） */
+function SkippedList({
+  events,
+  onDone,
+}: {
+  events: WorkGrouping["skipped"];
+  onDone: (message: string) => void;
+}) {
+  const { source, viewer } = useApp();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const restore = (eventId: string) => {
+    setBusy(eventId);
+    setError(null);
+    source
+      .setNoWork([eventId], false)
+      .then(() => {
+        setBusy(null);
+        onDone("作品にまとめる候補に戻しました");
+      })
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : String(e));
+        setBusy(null);
+      });
+  };
+  return (
+    <details className="grouping-section grouping-skipped">
+      <summary className="column-title">
+        作品にまとめないもの <span className="work-count">{nf.format(events.length)} 件</span>
+      </summary>
+      <ul className="grouping-events">
+        {events.map((e) => (
+          <li key={e.id}>
+            <span className="grouping-event">
+              <span className="check-date">
+                {eventDateLabel(e.startsOn, null, e.datePrecision)}
+              </span>
+              <span className="tag">{EVENT_KIND_SHORT[e.kind] ?? e.kind}</span>
+              <Link to={`/events/${e.id}`} className="grouping-title">
+                {e.title ?? "（題名なし）"}
+              </Link>
+            </span>
+            {viewer.canWork && (
+              <button
+                type="button"
+                className="link-button"
+                disabled={busy !== null}
+                onClick={() => restore(e.id)}
+              >
+                候補に戻す
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </details>
+  );
+}
+
 export function WorkGroupingPage() {
   const { source } = useApp();
   const layout = useLayout();
@@ -402,6 +509,9 @@ export function WorkGroupingPage() {
         </p>
         <p className="field-hint">
           題名から号・回の印（2026年11月号・vol.・No.・#・第〇回）を外した名前でまとめています。番号が読めれば回・号の番号も入れます。別の作品への付け替えは、出来事の画面で行います。
+        </p>
+        <p className="field-hint">
+          どの作品の回・号でもないもの（ほかの番組の話をしている動画など）は「作品にまとめない」にすると、候補から外れます。外したものは、この画面のいちばん下から戻せます。
         </p>
       </div>
       {done && (
@@ -458,6 +568,9 @@ export function WorkGroupingPage() {
             onDone={onDone}
           />
         </section>
+      )}
+      {grouping.status === "ready" && grouping.data.skipped.length > 0 && (
+        <SkippedList events={grouping.data.skipped} onDone={onDone} />
       )}
     </section>
   );

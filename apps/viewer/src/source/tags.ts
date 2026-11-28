@@ -224,40 +224,85 @@ export function confirmPeopleTags(draft: DraftInput): DraftInput {
   };
 }
 
-/** 投稿を紐付けた出来事（about）。外したものは含めない */
+/** 出来事への紐付けの役割。about は告知・記録、part_of はその回の本体（映像・誌面など。決定記録 0083） */
+const EVENT_ROLES = new Set(["about", "part_of"]);
+
+/** 投稿を紐付けた出来事（告知・記録と本体）。外したものは含めない */
 export function eventsOf(draft: DraftInput): string[] {
-  return (draft.links ?? [])
-    .filter(
-      (l) => isPostLink(l) && l.to_type === "event" && l.role === "about" && l.accepted !== false,
-    )
-    .map((l) => l.to_id);
+  return [
+    ...new Set(
+      (draft.links ?? [])
+        .filter(
+          (l) =>
+            isPostLink(l) &&
+            l.to_type === "event" &&
+            EVENT_ROLES.has(l.role) &&
+            l.accepted !== false,
+        )
+        .map((l) => l.to_id),
+    ),
+  ];
 }
 
-/** 投稿を出来事に紐付ける（about）・外す。人が足したものを外すときは取り除き、規則の候補は外したと記録する */
-export function setEventLink(draft: DraftInput, eventId: string, on: boolean): DraftInput {
-  const links = [...(draft.links ?? [])];
-  const index = links.findIndex(
-    (l) => isPostLink(l) && l.to_type === "event" && l.to_id === eventId && l.role === "about",
+/** その出来事への紐付けが本体（part_of）か（決定記録 0083） */
+export function isEventContent(draft: DraftInput, eventId: string): boolean {
+  return (draft.links ?? []).some(
+    (l) =>
+      isPostLink(l) &&
+      l.to_type === "event" &&
+      l.to_id === eventId &&
+      l.role === "part_of" &&
+      l.accepted !== false,
   );
+}
+
+/**
+ * 投稿を出来事に紐付ける・外す。content が true なら本体（part_of）、false なら告知・記録（about）として
+ * 紐付ける（決定記録 0083）。人が足したものを外すときは取り除き、規則の候補は外したと記録する
+ */
+export function setEventLink(
+  draft: DraftInput,
+  eventId: string,
+  on: boolean,
+  content = false,
+): DraftInput {
+  const role = content ? "part_of" : "about";
+  let links = [...(draft.links ?? [])];
+  const isTo = (l: (typeof links)[number], r: string) =>
+    isPostLink(l) && l.to_type === "event" && l.to_id === eventId && l.role === r;
+  // 外すとき・役割を変えるときは、もう一方の役割の紐付けを外す
+  const decline = (r: string) => {
+    links = links.flatMap((l) =>
+      !isTo(l, r)
+        ? [l]
+        : l.origin === "human"
+          ? []
+          : [{ ...l, accepted: false, evidence: { ...l.evidence, reviewed: true } }],
+    );
+  };
+  if (!on) {
+    decline("about");
+    decline("part_of");
+    return { ...draft, links };
+  }
+  decline(content ? "about" : "part_of");
+  const index = links.findIndex((l) => isTo(l, role));
   const existing = index >= 0 ? links[index] : undefined;
   if (!existing) {
-    if (on) {
-      links.push({
-        from: "post",
-        to_type: "event",
-        to_id: eventId,
-        role: "about",
-        origin: "human",
-        confidence: 1,
-      });
-    }
-  } else if (existing.origin === "human" && !on) {
-    links.splice(index, 1);
+    links.push({
+      from: "post",
+      to_type: "event",
+      to_id: eventId,
+      role,
+      origin: "human",
+      confidence: 1,
+    });
   } else {
     links[index] = {
       ...existing,
-      accepted: on,
-      ...(on ? { origin: "human" as const, confidence: 1 } : {}),
+      accepted: true,
+      origin: "human" as const,
+      confidence: 1,
       evidence: { ...existing.evidence, reviewed: true },
     };
   }

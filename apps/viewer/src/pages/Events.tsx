@@ -962,6 +962,14 @@ function EventForm({
                       onMaterialsChanged();
                     }
               }
+              onRole={
+                readOnly
+                  ? null
+                  : async (postId, role) => {
+                      await source.setEventMaterialRole(detail.id, postId, role);
+                      onMaterialsChanged();
+                    }
+              }
             />
           )}
           <p className="field-hint">
@@ -1323,11 +1331,14 @@ function EventMaterials({
   id,
   detail,
   onRemove,
+  onRole,
 }: {
   id: string;
   detail: EventDetail;
   /** 素材から外す（作業者・運営者）。投稿と素材そのものは消さない */
   onRemove: ((postId: string) => Promise<void>) | null;
+  /** 本体（その回の映像・誌面など）か、告知・記録かを切り替える（作業者・運営者。決定記録 0083） */
+  onRole: ((postId: string, role: "about" | "part_of") => Promise<void>) | null;
 }) {
   const { materials } = detail;
   const [asking, setAsking] = useState<string | null>(null);
@@ -1353,6 +1364,11 @@ function EventMaterials({
             const date = formatPublished(m);
             return (
               <li key={m.postId ?? `${m.url ?? ""}-${i}`}>
+                {m.role === "part_of" && (
+                  <span className="tag event-material-content" title="その回の映像・誌面など">
+                    本体
+                  </span>
+                )}
                 <span className="event-material-channel">{m.channelName}</span>
                 {m.postId ? (
                   <Link to={`/posts/${m.postId}`} className="event-material-title">
@@ -1377,6 +1393,22 @@ function EventMaterials({
                   >
                     <ExternalLink size={14} aria-hidden="true" />
                   </a>
+                )}
+                {onRole && m.postId && asking !== m.postId && (
+                  <button
+                    type="button"
+                    className="link-button event-material-role"
+                    disabled={busy}
+                    onClick={() => {
+                      setBusy(true);
+                      setError(null);
+                      onRole(m.postId!, m.role === "part_of" ? "about" : "part_of")
+                        .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+                        .finally(() => setBusy(false));
+                    }}
+                  >
+                    {m.role === "part_of" ? "本体から外す" : "本体にする"}
+                  </button>
                 )}
                 {onRemove && m.postId && asking !== m.postId && (
                   <button

@@ -9,6 +9,7 @@
 // | POST     | /events/:id/delete | 出来事を消す（運営者と作った本人。素材が紐付いていないときだけ） |
 // | POST     | /events/:id/materials | 保存済みの投稿を、後から素材として紐付ける（決定記録 0044） |
 // | POST     | /events/:id/materials/remove | 投稿を素材から外す（投稿・素材そのものは消さない） |
+// | POST     | /events/:id/materials/role | 素材を本体（part_of）か告知・記録（about）にする（決定記録 0083） |
 // | POST     | /entities     | 作品・相手を作る（同じ種類・細かい種類・同じ名前があればそれを返す） |
 //
 // 作業者・運営者が作り・直せる（閲覧者は見るだけ。決定記録 0032）。消せるのは運営者と作った本人で、
@@ -496,6 +497,12 @@ async function syncParticipants(
 /** 素材として紐付ける・外す投稿 */
 const materialInput = z.object({ post_id: z.uuid() });
 
+/** 素材の役割（本体か、告知・記録か。決定記録 0083） */
+const materialRoleInput = z.object({
+  post_id: z.uuid(),
+  role: z.enum(["about", "part_of"]),
+});
+
 const previewQuery = z.object({
   url: z.url({ protocol: /^https?$/ }).max(2000),
 });
@@ -729,7 +736,8 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
         or (l.from_type = 'asset' and p.id = (select a.post_id from public.assets a where a.id = l.from_id))
       join public.channels ch on ch.id = p.channel_id
       where l.to_type = 'event' and l.to_id = ${id.data} and l.review_state = 'accepted'
-      order by p.id
+      -- 同じ投稿が本体（part_of）と告知・記録の両方で紐付いていれば、本体として見せる（決定記録 0083）
+      order by p.id, (l.role = 'part_of') desc
     `.execute(db);
     materials.sort((a, b) =>
       String(a.published_at ?? a.published_date ?? "").localeCompare(
@@ -907,6 +915,45 @@ export function registerEventRoutes(app: Hono<AuthEnv>, db: Database): void {
    * 投稿をこの出来事の素材から外す。投稿からの紐付けと、投稿の中の素材（画像など）からの紐付けをまとめて
    * 消す（変更履歴には残る。設計書 決定記録 0044）。投稿と素材そのものは消さない
    */
+  /**
+   * 紐付けた投稿を、出来事の本体（その回の映像・誌面など。part_of）か、告知・記録（about）にする
+   * （設計書 決定記録 0083）。投稿からの紐付けの役割だけを変える
+   */
+  app.post("/events/:id/materials/role", async (c) => {
+    const id = z.uuid().safeParse(c.req.param("id"));
+    if (!id.success) throw new HTTPException(404, { message: "見つかりません" });
+    const body = await parse(c.req.raw, materialRoleInput);
+    const userId = userIdOf(c.get("actor"));
+    const changed = await inTransaction(db, userId, async (trx) => {
+      const other = body.role === "part_of" ? "about" : "part_of";
+      const { rows } = await sql<{ role: string }>`
+        select role from public.links
+        where from_type = 'post' and from_id = ${body.post_id}
+          and to_type = 'event' and to_id = ${id.data} and role in ('about', 'part_of')
+        for update`.execute(trx);
+      if (rows.length === 0) {
+        throw new HTTPException(404, { message: "この出来事には、その投稿が紐付いていません" });
+      }
+      if (rows.some((r) => r.role === body.role)) {
+        // 求める役割の紐付けがあれば、もう一方を外す
+        await sql`delete from public.links
+          where from_type = 'post' and from_id = ${body.post_id}
+            and to_type = 'event' and to_id = ${id.data} and role = ${other}`.execute(trx);
+        await sql`update public.links set review_state = 'accepted', origin = 'human', confidence = 1,
+            reviewed_by = ${userId}, reviewed_at = now()
+          where from_type = 'post' and from_id = ${body.post_id}
+            and to_type = 'event' and to_id = ${id.data} and role = ${body.role}`.execute(trx);
+      } else {
+        await sql`update public.links set role = ${body.role}, review_state = 'accepted',
+            origin = 'human', confidence = 1, reviewed_by = ${userId}, reviewed_at = now()
+          where from_type = 'post' and from_id = ${body.post_id}
+            and to_type = 'event' and to_id = ${id.data} and role = ${other}`.execute(trx);
+      }
+      return true;
+    });
+    return c.json({ ok: changed });
+  });
+
   app.post("/events/:id/materials/remove", async (c) => {
     const id = z.uuid().safeParse(c.req.param("id"));
     if (!id.success) throw new HTTPException(404, { message: "見つかりません" });
