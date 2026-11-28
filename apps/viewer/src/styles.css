@@ -5863,3 +5863,39 @@ button.participation {
   background: var(--danger-bg);
   color: var(--danger);
 }
+
+/* 確認なしの下書きをまとめて承認（決定記録 0081） */
+.bulk-approve-open {
+  margin: 4px 0 8px;
+}
+
+.bulk-approve {
+  margin: 8px 0 12px;
+  padding: 12px 14px;
+}
+
+.bulk-approve-head {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.bulk-approve-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+
+.bulk-approve-list label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 4px 0;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.bulk-approve-title {
+  flex: 1 1 14em;
+  overflow-wrap: anywhere;
+}
