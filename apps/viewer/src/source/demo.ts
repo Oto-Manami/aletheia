@@ -657,7 +657,18 @@ export class DemoSource implements ArchiveSource {
     await this.delay();
     const post = this.posts.find((p) => p.id === id);
     if (!post) throw new SourceError("投稿が見つかりません", 404);
-    return structuredClone(post);
+    const view = structuredClone(post);
+    view.links = view.links.map((l) => {
+      // 架空の期はグループ（人物の画面で開ける。決定記録 0079）
+      const kind =
+        l.target.type !== "entity"
+          ? null
+          : l.target.id === PEOPLE.gen5
+            ? { type: "group", subtype: "generation" }
+            : this.events.entityKind(l.target.id);
+      return { ...l, entityType: kind?.type ?? null, entitySubtype: kind?.subtype ?? null };
+    });
+    return view;
   }
 
   /** デモ版の投稿は、紐付けを投稿と素材で分けていないので、すべて投稿のものとして返す */
