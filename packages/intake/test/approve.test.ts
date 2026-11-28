@@ -245,6 +245,40 @@ describe("承認", () => {
       expect(s).toEqual([{ stated_on: "2026-10-12" }]);
     }));
 
+  it("言及の根拠が下書きの ref で指す素材は、素材の ID にして残す（決定記録 0079）", () =>
+    withTrx(async (trx, c) => {
+      const d = await seed(c);
+      const draft = blogDraft(d);
+      draft.links = [
+        {
+          from: "post",
+          to_type: "entity",
+          to_id: d.otherMember,
+          role: "mentioned",
+          origin: "rule",
+          confidence: 0.9,
+          evidence: {
+            rule: "alias_match",
+            matches: [{ asset: "body", text_type: "body", spans: [[3, 8]] }],
+            excerpts: [
+              { asset: "body", text_type: "body", start: 0, end: 10, text: "今日は試験 次郎さん" },
+            ],
+          },
+        },
+      ];
+      const id = await intake(c, d, draft);
+      const result = await approveIntakeIn(trx, id);
+      const { rows } = await c.query<{ evidence: Record<string, unknown> }>(
+        "select evidence from public.links where from_id = $1 and role = 'mentioned'",
+        [result.postId],
+      );
+      expect(rows[0]!.evidence).toMatchObject({
+        rule: "alias_match",
+        matches: [{ asset: result.assetIds["body"], text_type: "body", spans: [[3, 8]] }],
+        excerpts: [{ asset: result.assetIds["body"], start: 0, end: 10 }],
+      });
+    }));
+
   it("人が修正した下書きで承認でき、修正後の内容が下書きにも残る", () =>
     withTrx(async (trx, c) => {
       const d = await seed(c);

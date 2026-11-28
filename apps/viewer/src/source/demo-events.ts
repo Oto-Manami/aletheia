@@ -10,6 +10,7 @@ import {
   type EventInput,
   type EventSummary,
   type NewEntity,
+  type PersonEvent,
   type RefLabel,
   SourceError,
   type WorkSummary,
@@ -564,6 +565,31 @@ export class DemoEvents {
       created.push({ index, id: eventId, title });
     }
     return { created, skipped };
+  }
+
+  /** 人物の出演（人物の画面。決定記録 0079） */
+  participationOf(entityId: string): PersonEvent[] {
+    return this.events.flatMap((e) =>
+      e.participants
+        .filter((p) => p.entityId === entityId)
+        .map((p) => {
+          const work = e.workId ? this.entities.find((x) => x.id === e.workId) : undefined;
+          return {
+            id: e.id,
+            title: e.title,
+            kind: e.kind,
+            startsOn: e.startsOn,
+            endsOn: e.endsOn,
+            datePrecision: e.datePrecision,
+            episodeNumber: e.episodeNumber,
+            parentId: e.parentId,
+            work: work ? { id: work.id, name: work.label, regular: work.regular === true } : null,
+            role: p.role,
+            status: p.status,
+            characterName: p.characterName,
+          };
+        }),
+    );
   }
 
   subjects(): RefLabel[] {

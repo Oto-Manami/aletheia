@@ -4,6 +4,7 @@ export {
   approveIntake,
   APPROVAL_LOCK,
   approveIntakeIn,
+  evidenceWithAssetIds,
   lockApprovals,
   holdIntake,
   holdIntakeIn,

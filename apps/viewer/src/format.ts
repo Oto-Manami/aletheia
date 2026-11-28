@@ -202,6 +202,75 @@ export const PARTICIPANT_STATUS_LABELS: Record<string, string> = {
   cancelled: "中止",
 };
 
+/** エンティティ同士の関係（設計書 語彙 3 章）。主語から見た言い方と、目的語から見た言い方 */
+export const RELATION_LABELS: Record<string, { out: string; in: string }> = {
+  member_of: { out: "所属", in: "メンバー" },
+  part_of: { out: "一部", in: "含むもの" },
+  regular_of: { out: "レギュラー", in: "レギュラー出演者" },
+  exclusive_model_of: { out: "専属モデル", in: "専属モデル" },
+  ambassador_of: { out: "アンバサダー", in: "アンバサダー" },
+  performed_by: { out: "歌唱", in: "歌唱曲" },
+  serialized_in: { out: "連載先", in: "連載・企画" },
+  credited: { out: "クレジット", in: "クレジット" },
+};
+
+/** 言明の項目（設計書 語彙 7 章）。ここに無いものはキーのまま出す */
+export const STATEMENT_PROPERTY_LABELS: Record<string, string> = {
+  birth_date: "生年月日",
+  birthplace: "出生地",
+  hometown: "出身地",
+  height: "身長",
+  blood_type: "血液型",
+  nickname: "愛称",
+  catchphrase: "キャッチフレーズ",
+  member_color: "メンバーカラー",
+  self_introduction: "自己紹介",
+  lesson_history: "習い事・部活",
+  audition_motivation: "オーディションを受けたきっかけ",
+  childhood_episode: "子どもの頃のエピソード",
+  dream_as_child: "子どもの頃の夢",
+  skill: "特技",
+  hobby: "趣味",
+  strength: "得意なこと",
+  weakness: "苦手なこと",
+  favorite_food: "好きな食べ物",
+  disliked_food: "苦手な食べ物",
+  favorite_drink: "好きな飲み物",
+  favorite_sweets: "好きなお菓子・スイーツ",
+  favorite_work: "好きな作品",
+  favorite_artist: "好きなアーティスト",
+  favorite_own_song: "好きな自グループの楽曲",
+  favorite_character: "好きなキャラクター",
+  favorite_animal: "好きな動物",
+  favorite_color: "好きな色",
+  favorite_season: "好きな季節",
+  favorite_word: "好きな言葉",
+  favorite_fashion: "好きなファッション",
+  owns: "持っている物",
+  pet: "飼っている動物",
+  routine: "習慣",
+  habit: "癖",
+  personality: "性格",
+  type_indicator: "性格診断",
+  goal: "目標",
+  dream: "夢",
+  thought: "考え・想い",
+  calls: "相手の呼び方",
+  called_by: "呼ばれ方",
+  close_with: "仲が良い相手",
+  admires: "憧れの人",
+  started_activity: "始めたこと",
+};
+
+/** 言明を言った人の種類（設計書 語彙 7 章） */
+export const SPEAKER_TYPE_LABELS: Record<string, string> = {
+  self: "本人",
+  official: "公式",
+  member: "メンバー",
+  media: "報道・番組",
+  third_party: "ほかの人",
+};
+
 /** 作品・相手の細かい種類（設計書 語彙 2 章） */
 export const ENTITY_SUBTYPE_LABELS: Record<string, Record<string, string>> = {
   work: {

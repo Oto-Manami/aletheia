@@ -58,6 +58,11 @@ import {
   type SourcePreview,
   type PostTitleHit,
   type PostEdit,
+  type PersonEvent,
+  type PersonMention,
+  type PersonPost,
+  type PersonSummary,
+  type PersonView,
   type PostView,
   type RefLabel,
   type Role,
@@ -1110,6 +1115,206 @@ export class DemoSource implements ArchiveSource {
   async createEntity(entity: NewEntity) {
     await this.delay();
     return this.events.create(entity);
+  }
+
+  /** デモ版の人物（決定記録 0079）。所属は架空の期だけ */
+  private demoPeople() {
+    return [PEOPLE.hanako, PEOPLE.sakura, PEOPLE.yui].map((id) => ({
+      id,
+      name: REFS.find((r) => r.id === id)?.label ?? "",
+      archiveSubject: id === PEOPLE.hanako,
+    }));
+  }
+
+  private authorOf(post: PostView): string | null {
+    return post.links.find((l) => l.role === "author")?.target.id ?? null;
+  }
+
+  async listPeople(query?: string): Promise<PersonSummary[]> {
+    await this.delay();
+    const q = query?.trim() ?? "";
+    const gen = REFS.find((r) => r.id === PEOPLE.gen5)!;
+    return this.demoPeople()
+      .filter((p) => !q || p.name.includes(q))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        reading: null,
+        subtype: "member",
+        archiveSubject: p.archiveSubject,
+        groups: [{ id: gen.id, name: gen.label, subtype: "generation" }],
+        counts: {
+          posts: this.posts.filter((x) => this.authorOf(x) === p.id).length,
+          mentioned: this.posts.filter(
+            (x) =>
+              this.authorOf(x) !== p.id &&
+              x.links.some((l) => l.role === "mentioned" && l.target.id === p.id),
+          ).length,
+          mentionsSubject: p.archiveSubject
+            ? 0
+            : this.posts.filter(
+                (x) =>
+                  this.authorOf(x) === p.id &&
+                  x.links.some((l) => l.role === "mentioned" && l.target.id === PEOPLE.hanako),
+              ).length,
+          appears: this.posts.filter((x) =>
+            x.links.some((l) => l.role === "appears" && l.target.id === p.id),
+          ).length,
+          events: this.events.participationOf(p.id).length,
+        },
+      }));
+  }
+
+  async getPerson(id: string): Promise<PersonView> {
+    await this.delay();
+    const person = this.demoPeople().find((p) => p.id === id);
+    if (!person) throw new SourceError("人物が見つかりません", 404);
+    const gen = REFS.find((r) => r.id === PEOPLE.gen5)!;
+    const mentions = this.posts.filter(
+      (x) =>
+        this.authorOf(x) !== id &&
+        x.links.some((l) => l.role === "mentioned" && l.target.id === id),
+    );
+    const speakers = new Map<string | null, number>();
+    for (const m of mentions) {
+      const speaker = this.authorOf(m);
+      speakers.set(speaker, (speakers.get(speaker) ?? 0) + 1);
+    }
+    const events = this.events.participationOf(id);
+    const count = (status: string) => events.filter((e) => e.status === status).length;
+    const own = this.posts.filter((x) => this.authorOf(x) === id);
+    return {
+      person: {
+        id,
+        name: person.name,
+        reading: null,
+        aliases: [],
+        subtype: "member",
+        archiveSubject: person.archiveSubject,
+      },
+      subject: { id: PEOPLE.hanako, name: REFS[0]!.label },
+      relations: [
+        {
+          id: `rel-${id}`,
+          relation: "member_of",
+          direction: "out",
+          other: { id: gen.id, name: gen.label, type: "group", subtype: "generation" },
+          validFrom: null,
+          validTo: null,
+        },
+      ],
+      statements: [],
+      counts: {
+        posts: own.length,
+        mentioned: mentions.length,
+        appears: this.posts.filter((x) =>
+          x.links.some((l) => l.role === "appears" && l.target.id === id),
+        ).length,
+        events: {
+          appeared: count("appeared"),
+          scheduled: count("scheduled"),
+          notAppearing: count("not_appearing"),
+          cancelled: count("cancelled"),
+        },
+      },
+      postKinds: own.length > 0 ? [{ kind: "blog", count: own.length }] : [],
+      speakers: [...speakers].map(([speaker, n]) => ({
+        id: speaker,
+        name: speaker ? (REFS.find((r) => r.id === speaker)?.label ?? null) : null,
+        type: speaker ? "person" : null,
+        count: n,
+      })),
+      mentionsOfSubject: person.archiveSubject
+        ? null
+        : own.filter((x) =>
+            x.links.some((l) => l.role === "mentioned" && l.target.id === PEOPLE.hanako),
+          ).length,
+    };
+  }
+
+  async listPersonPosts(
+    id: string,
+    filter: { kind?: string },
+    page: { offset: number; limit: number },
+  ): Promise<{ items: PersonPost[]; hasMore: boolean }> {
+    await this.delay();
+    const all = this.posts
+      .filter((x) => this.authorOf(x) === id && (!filter.kind || filter.kind === "blog"))
+      .map((x) => {
+        const body = x.assets.flatMap((a) => a.texts).find((t) => t.textType === "body");
+        return {
+          postId: x.id,
+          title: x.title,
+          date: x.publishedAt ?? x.publishedDate,
+          precision: x.publishedAt ? null : x.publishedDatePrecision,
+          channelName: x.channelName,
+          channelKind: "blog",
+          availability: x.availability,
+          images: x.assets.filter((a) => a.mediaType === "image").length,
+          head: body ? body.content.slice(0, 140) : null,
+        };
+      });
+    return {
+      items: all.slice(page.offset, page.offset + page.limit),
+      hasMore: all.length > page.offset + page.limit,
+    };
+  }
+
+  async listPersonMentions(
+    id: string,
+    filter: { speaker?: string },
+    page: { offset: number; limit: number },
+  ): Promise<{ items: PersonMention[]; hasMore: boolean }> {
+    await this.delay();
+    const name = REFS.find((r) => r.id === id)?.label ?? "";
+    // 名の部分（「見本 さくら」なら「さくら」）が本文に出てくる前後を抜き出す
+    const given = name.split(/\s+/).pop() ?? name;
+    const all = this.posts
+      .filter(
+        (x) =>
+          this.authorOf(x) !== id &&
+          x.links.some((l) => l.role === "mentioned" && l.target.id === id),
+      )
+      .filter((x) => {
+        const speaker = this.authorOf(x);
+        if (!filter.speaker) return true;
+        return filter.speaker === "none" ? speaker === null : speaker === filter.speaker;
+      })
+      .map((x): PersonMention => {
+        const speaker = this.authorOf(x);
+        const body = x.assets.flatMap((a) => a.texts).find((t) => t.textType === "body");
+        const at = body ? body.content.indexOf(given) : -1;
+        const snippet =
+          body && at >= 0
+            ? {
+                before: body.content.slice(Math.max(0, at - 40), at),
+                match: given,
+                after: body.content.slice(at + given.length, at + given.length + 60),
+              }
+            : { before: body?.content.slice(0, 140) ?? "", match: "", after: "" };
+        return {
+          postId: x.id,
+          title: x.title,
+          date: x.publishedAt ?? x.publishedDate,
+          precision: x.publishedAt ? null : x.publishedDatePrecision,
+          channelName: x.channelName,
+          channelKind: "blog",
+          speaker: speaker
+            ? { id: speaker, name: REFS.find((r) => r.id === speaker)?.label ?? "", type: "person" }
+            : null,
+          marked: false,
+          snippets: [snippet],
+        };
+      });
+    return {
+      items: all.slice(page.offset, page.offset + page.limit),
+      hasMore: all.length > page.offset + page.limit,
+    };
+  }
+
+  async listPersonEvents(id: string): Promise<PersonEvent[]> {
+    await this.delay();
+    return this.events.participationOf(id);
   }
 
   async listArchiveSubjects(): Promise<RefLabel[]> {

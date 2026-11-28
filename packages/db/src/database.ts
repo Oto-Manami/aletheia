@@ -83,6 +83,21 @@ export interface AppInvites {
   used_by: string | null;
 }
 
+export interface AppMentions {
+  channel_id: string | null;
+  classification: Classification | null;
+  created_at: Timestamp | null;
+  evidence: Json | null;
+  link_id: string | null;
+  origin: Origin | null;
+  person_id: string | null;
+  post_id: string | null;
+  published_at: Timestamp | null;
+  published_on: string | null;
+  speaker_id: string | null;
+  speaker_type: EntityType | null;
+}
+
 export interface AppQualityFindings {
   check_key: string | null;
   detail: Json | null;
@@ -769,6 +784,7 @@ export interface Vocabularies {
 export interface DB {
   "app.history": AppHistory;
   "app.invites": AppInvites;
+  "app.mentions": AppMentions;
   "app.quality_findings": AppQualityFindings;
   "app.stale_jobs": AppStaleJobs;
   "app.user_profiles": AppUserProfiles;

@@ -19,6 +19,7 @@ const pages = {
   intake: () => import("./pages/IntakeList.tsx"),
   intakeDetail: () => import("./pages/IntakeDetail.tsx"),
   members: () => import("./pages/Members.tsx"),
+  people: () => import("./pages/People.tsx"),
   settings: () => import("./pages/Settings.tsx"),
   post: () => import("./pages/Post.tsx"),
   postEdit: () => import("./pages/PostEdit.tsx"),
@@ -37,6 +38,7 @@ const EventViewPage = page(pages.eventView, "EventViewPage");
 const IntakePage = page(pages.intake, "IntakePage");
 const IntakeDetailPage = page(pages.intakeDetail, "IntakeDetailPage");
 const MembersPage = page(pages.members, "MembersPage");
+const PeoplePage = page(pages.people, "PeoplePage");
 const SettingsPage = page(pages.settings, "SettingsPage");
 const DisplaySettings = page(pages.settings, "DisplaySettings");
 const PostPage = page(pages.post, "PostPage");
@@ -115,6 +117,8 @@ export const routes: RouteObject[] = [
       { path: "assets", element: <AssetsPage /> },
       { path: "songs", element: <SongsPage /> },
       { path: "songs/:id", element: <SongsPage /> },
+      { path: "people", element: <PeoplePage /> },
+      { path: "people/:id", element: <PeoplePage /> },
       { path: "works", element: <WorksPage /> },
       { path: "works/:id", element: <WorksPage /> },
       { path: "search", element: <SearchPage /> },

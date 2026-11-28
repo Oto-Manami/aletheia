@@ -599,6 +599,132 @@ export interface EventSetlistsView {
   setlists: EventSetlist[];
 }
 
+/** 人物の一覧の 1 行（設計書 決定記録 0079） */
+export interface PersonSummary {
+  id: string;
+  name: string;
+  reading: string | null;
+  subtype: string | null;
+  /** 蓄積対象の人物か */
+  archiveSubject: boolean;
+  /** 所属（グループ・期） */
+  groups: { id: string; name: string; subtype: string | null }[];
+  counts: {
+    /** 発信した投稿 */
+    posts: number;
+    /** ほかの人・公式・媒体の投稿で触れられた投稿 */
+    mentioned: number;
+    /** この人が蓄積対象の人物に触れた投稿 */
+    mentionsSubject: number;
+    /** 写っている素材 */
+    appears: number;
+    /** 出演の記録 */
+    events: number;
+  };
+}
+
+/** 人物の画面の見出し（設計書 決定記録 0079） */
+export interface PersonView {
+  person: {
+    id: string;
+    name: string;
+    reading: string | null;
+    aliases: string[];
+    subtype: string | null;
+    archiveSubject: boolean;
+  };
+  /** 蓄積対象の人物（メンバーの画面から、その人への言及を開くため） */
+  subject: { id: string; name: string } | null;
+  relations: {
+    id: string;
+    relation: string;
+    /** out はこの人が主語（〇〇の一員）、in はこの人が目的語 */
+    direction: "out" | "in";
+    other: { id: string; name: string; type: string; subtype: string | null };
+    validFrom: string | null;
+    validTo: string | null;
+  }[];
+  statements: {
+    id: string;
+    property: string;
+    value: string;
+    valueEntityId: string | null;
+    statedOn: string | null;
+    validFrom: string | null;
+    validTo: string | null;
+    speakerType: string;
+    speaker: { id: string; name: string } | null;
+    post: { id: string; title: string | null } | null;
+    classification: Classification;
+  }[];
+  counts: {
+    posts: number;
+    mentioned: number;
+    appears: number;
+    events: { appeared: number; scheduled: number; notAppearing: number; cancelled: number };
+  };
+  /** 発言の情報源の種類ごとの件数 */
+  postKinds: { kind: string; count: number }[];
+  /** 言及した人ごとの件数（発信者の分からないものは id が null） */
+  speakers: { id: string | null; name: string | null; type: string | null; count: number }[];
+  /** この人が蓄積対象の人物に触れた投稿の数（蓄積対象の人物の画面では null） */
+  mentionsOfSubject: number | null;
+}
+
+/** 人物の発言（発信した投稿）の 1 行 */
+export interface PersonPost {
+  postId: string;
+  title: string | null;
+  /** 投稿の日時（無ければ日付） */
+  date: string | null;
+  /** 日付だけのときの細かさ */
+  precision: string | null;
+  channelName: string;
+  channelKind: string;
+  availability: string | null;
+  images: number;
+  /** 本文の冒頭 */
+  head: string | null;
+}
+
+/** 抜き出し。match は名前が一致した部分（無ければ空） */
+export interface MentionSnippet {
+  before: string;
+  match: string;
+  after: string;
+}
+
+/** 人物への言及（ほかの人・公式・媒体の投稿で触れたもの）の 1 行 */
+export interface PersonMention {
+  postId: string;
+  title: string | null;
+  date: string | null;
+  precision: string | null;
+  channelName: string;
+  channelKind: string;
+  /** 言及した人（投稿の発信者）。分からなければ null */
+  speaker: { id: string; name: string; type: string | null } | null;
+  /** 人が「関係あり」の印を付けた段落から抜き出したか（決定記録 0056） */
+  marked: boolean;
+  snippets: MentionSnippet[];
+}
+
+/** 人物の出演の 1 行 */
+export interface PersonEvent {
+  id: string;
+  title: string | null;
+  kind: string;
+  startsOn: string | null;
+  endsOn: string | null;
+  datePrecision: string | null;
+  episodeNumber: number | null;
+  parentId: string | null;
+  work: { id: string; name: string; regular: boolean } | null;
+  role: string;
+  status: ParticipantStatus;
+  characterName: string | null;
+}
+
 /** 作品の一覧の 1 行（設計書 決定記録 0065） */
 export interface WorkSummary {
   id: string;
@@ -812,6 +938,24 @@ export interface ArchiveSource {
   listSeries?(): Promise<RefLabel[]>;
   /** 作品の一覧と作品の画面（決定記録 0065） */
   listWorks?(filter: { subtype?: string; query?: string }): Promise<WorkSummary[]>;
+  /** 人物の一覧（蓄積対象の人物が先。設計書 決定記録 0079） */
+  listPeople(query?: string): Promise<PersonSummary[]>;
+  /** 人物の画面の見出し（所属・言明・件数・言及した人ごとの件数） */
+  getPerson(id: string): Promise<PersonView>;
+  /** 人物の発言（発信した投稿）。新しい順 */
+  listPersonPosts(
+    id: string,
+    filter: { kind?: string },
+    page: { offset: number; limit: number },
+  ): Promise<{ items: PersonPost[]; hasMore: boolean }>;
+  /** 人物への言及。新しい順。speaker で言及した人を絞る（"none" は発信者の分からないもの） */
+  listPersonMentions(
+    id: string,
+    filter: { speaker?: string },
+    page: { offset: number; limit: number },
+  ): Promise<{ items: PersonMention[]; hasMore: boolean }>;
+  /** 人物の出演 */
+  listPersonEvents(id: string): Promise<PersonEvent[]>;
   getWork?(id: string): Promise<WorkView>;
   /** 作品のレギュラーの印を付け外しする（作業者・運営者。決定記録 0071） */
   setWorkRegular?(id: string, regular: boolean): Promise<void>;
