@@ -309,6 +309,10 @@ export interface TriageImage {
 export interface TriageSnippet {
   text: string;
   marks: [number, number][];
+  /** 同じ抜粋が記事の中に何か所あるか（2 以上のときだけ。決定記録 0080） */
+  repeat?: number;
+  /** 本人の名前と同じ文に、欠席・休演などの言葉がある（決定記録 0080） */
+  absence?: boolean;
 }
 
 /** 振り分け待ちの記事 1 本（設計書 決定記録 0021） */
@@ -337,6 +341,10 @@ export interface TriageItem {
   /** 情報源の種類（blog・web など）。web（公式サイトのニュース）は振り分けの画面で既にある出来事に紐付ける */
   channelKind: string | null;
   snippets: TriageSnippet[];
+  /** 多いために出していない抜粋の数（決定記録 0080） */
+  moreSnippets: number;
+  /** 本人の欠席・休演の記載（最初の文）。無ければ null（決定記録 0080） */
+  absence: string | null;
   images: TriageImage[];
   draft: DraftInput;
 }

@@ -5841,3 +5841,25 @@ button.participation {
 .post-link.is-plain {
   cursor: default;
 }
+
+/* 振り分けの抜粋: 欠席・休演の記載と、同じ文の繰り返し（決定記録 0080） */
+.triage-snippet.is-absence {
+  border-left: 3px solid var(--danger-border);
+  padding-left: 8px;
+}
+
+.triage-repeat,
+.triage-more {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.triage-more {
+  margin: 2px 0 0;
+}
+
+.tag.triage-absence {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
