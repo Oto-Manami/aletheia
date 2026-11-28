@@ -58,6 +58,8 @@ import {
   type SourcePreview,
   type PostTitleHit,
   type PostEdit,
+  type ParticipantStatus,
+  type ParticipationCheck,
   type PersonEvent,
   type PersonMention,
   type PersonPost,
@@ -348,6 +350,19 @@ export class DemoSource implements ArchiveSource {
         unknownParticipation: { count: 0, events: [] },
         setlistMissing: { count: 0, events: [] },
         overdue: { count: 0, events: [] },
+        participationMissing: (() => {
+          const check = this.events.participationCheck(new Date().toISOString().slice(0, 10));
+          return {
+            count: check.counts.missing,
+            events: check.missing.slice(0, 5).map((e) => ({
+              id: e.id,
+              title: e.title,
+              parentId: null,
+              parentTitle: e.parentTitle,
+              startsOn: e.startsOn,
+            })),
+          };
+        })(),
         similarImages: { count: this.duplicates.length, unhashed: 0 },
       },
       data: {
@@ -1115,6 +1130,20 @@ export class DemoSource implements ArchiveSource {
   async createEntity(entity: NewEntity) {
     await this.delay();
     return this.events.create(entity);
+  }
+
+  async getParticipationCheck(): Promise<ParticipationCheck> {
+    await this.delay();
+    return this.events.participationCheck(new Date().toISOString().slice(0, 10));
+  }
+
+  async setSubjectParticipation(
+    eventId: string,
+    status: ParticipantStatus,
+    role?: string,
+  ): Promise<void> {
+    await this.delay();
+    this.events.setSubjectParticipation(eventId, status, role);
   }
 
   /** デモ版の人物（決定記録 0079）。所属は架空の期だけ */

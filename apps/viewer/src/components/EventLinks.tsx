@@ -5,12 +5,18 @@
 // 合う出来事が無ければ、題名・種類・日付だけでその場で作れる（詳細は出来事の画面で入れる）。
 // ニュースの振り分けと承認の画面で使う（決定記録 0033・0051）。
 // レギュラーの作品を選べば、その作品の回・号として作る（決定記録 0071）。
+// その場で作るときは、本人の出演も付ける。初めの値は規則で決める（決定記録 0080）。
 
 import type { DraftInput } from "@aletheia/intake/draft";
 import { CalendarPlus, ExternalLink, Plus, X } from "lucide-react";
 import { type KeyboardEvent, useEffect, useId, useMemo, useState } from "react";
 import { useApp } from "../context.tsx";
-import { EVENT_KIND_LABELS, EVENT_KIND_SHORT, eventDateLabel } from "../format.ts";
+import {
+  EVENT_KIND_LABELS,
+  EVENT_KIND_SHORT,
+  eventDateLabel,
+  PARTICIPANT_ROLE_LABELS,
+} from "../format.ts";
 import {
   matchesEventQuery,
   normalizeForMatch,
@@ -23,8 +29,9 @@ import {
   regularEpisodeInput,
   regularTitleOf,
 } from "../source/regular.ts";
+import { defaultSubjectRole, subjectStatusDefault } from "../source/participation.ts";
 import { eventsOf, setEventLink } from "../source/tags.ts";
-import type { EventSummary, RefLabel, WorkSummary } from "../source/types.ts";
+import type { EventSummary, ParticipantStatus, RefLabel, WorkSummary } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 import { useSearch } from "./EntityPicker.tsx";
 
@@ -117,6 +124,24 @@ export function EventLinks({
   const to = days.length > 0 ? shift(days[days.length - 1]!, AROUND_DAYS) : null;
   const text = useMemo(() => postText(draft), [draft]);
   const linked = eventsOf(draft);
+  // 本人（蓄積対象の人物）。その場で作るときの出演の初めの値に使う（決定記録 0080）
+  const [subjects] = useLoad(() => source.listArchiveSubjects(), [source], [], "archive-subjects");
+  const [groups] = useLoad(
+    () => source.listArchiveSubjectGroups?.() ?? Promise.resolve([]),
+    [source],
+    [],
+    "archive-subject-groups",
+  );
+  const subjectList = useMemo(() => (subjects.status === "ready" ? subjects.data : []), [subjects]);
+  const participation = useMemo(
+    () =>
+      subjectStatusDefault(
+        draft,
+        new Set(subjectList.map((s) => s.id)),
+        new Set(groups.status === "ready" ? groups.data.map((g) => g.id) : []),
+      ),
+    [draft, subjectList, groups],
+  );
   // 出来事の画面を別に開いて作って戻ってきたとき・その場で作ったとき、候補を読み直す
   const [version, setVersion] = useState(0);
   useEffect(() => {
@@ -333,6 +358,8 @@ export function EventLinks({
           initialTitle={creating}
           subject={subject}
           dates={days}
+          person={subjectList[0] ?? null}
+          participation={participation}
           onCancel={() => setCreating(null)}
           onCreated={(e) => {
             setCreating(null);
@@ -354,12 +381,18 @@ function QuickEvent({
   initialTitle,
   subject,
   dates,
+  person,
+  participation,
   onCancel,
   onCreated,
 }: {
   initialTitle: string;
   subject: string;
   dates: readonly string[];
+  /** 本人（蓄積対象の人物）。いなければ出演の欄を出さない */
+  person: RefLabel | null;
+  /** 本人の出演の初めの値と、その理由（決定記録 0080） */
+  participation: { status: ParticipantStatus | null; reason: string | null };
   onCancel: () => void;
   onCreated: (e: { id: string; title: string }) => void;
 }) {
@@ -372,6 +405,11 @@ function QuickEvent({
   const [number, setNumber] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 本人の出演（"" は付けない。選ぶまでは規則の初めの値）。役割は種類が変わったら初めの値に戻す
+  const [chosen, setStatus] = useState<ParticipantStatus | "" | null>(null);
+  const status = chosen ?? participation.status ?? "";
+  const [role, setRole] = useState<string | null>(null);
+  const subjectRole = role ?? defaultSubjectRole(kind);
   // レギュラーの作品（選ぶと、その作品の回・号として作る。決定記録 0071）
   const [works] = useLoad(
     async () =>
@@ -428,7 +466,10 @@ function QuickEvent({
         endsAt: null,
         sources: [],
         classification: "public",
-        participants: [],
+        participants:
+          person && status
+            ? [{ entityId: person.id, role: subjectRole, status, characterName: null }]
+            : [],
       })
       .then((eventId) => onCreated({ id: eventId, title: title.trim() }))
       .catch((e: unknown) => {
@@ -485,7 +526,14 @@ function QuickEvent({
         ) : (
           <div className="field">
             <label htmlFor={`${id}-kind`}>種類</label>
-            <select id={`${id}-kind`} value={kind} onChange={(e) => setKind(e.target.value)}>
+            <select
+              id={`${id}-kind`}
+              value={kind}
+              onChange={(e) => {
+                setKind(e.target.value);
+                setRole(null);
+              }}
+            >
               {Object.entries(EVENT_KIND_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>
                   {v}
@@ -520,10 +568,50 @@ function QuickEvent({
           ))}
         </div>
       )}
+      {!work && person && (
+        <div className="field-row quick-participation">
+          <div className="field">
+            <label htmlFor={`${id}-status`}>{person.label}の出演</label>
+            <select
+              id={`${id}-status`}
+              value={status}
+              onChange={(e) => setStatus(e.target.value as ParticipantStatus | "")}
+            >
+              <option value="">付けない</option>
+              <option value="scheduled">予定</option>
+              <option value="appeared">出演した</option>
+              <option value="not_appearing">出ていない</option>
+            </select>
+          </div>
+          {status && (
+            <div className="field">
+              <label htmlFor={`${id}-role`}>役割</label>
+              <select
+                id={`${id}-role`}
+                value={subjectRole}
+                onChange={(e) => setRole(e.target.value)}
+              >
+                {Object.entries(PARTICIPANT_ROLE_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+      {!work && person && participation.reason && (
+        <p
+          className={`field-hint ${participation.status === "not_appearing" ? "quick-absence" : ""}`}
+        >
+          {participation.reason}
+        </p>
+      )}
       <p className="field-hint">
         {work
           ? `「${work.name}」の${EVENT_KIND_LABELS[episodeKindOf(work.subtype)] ?? "回"}として作り、蓄積対象の人物の出演を付けて${subject}に紐付けます。`
-          : `公開の出来事として作り、${subject}に紐付けます。出演・作品・会場などの詳細は、出来事の画面で入れてください。`}
+          : `公開の出来事として作り、${subject}に紐付けます。会場などの詳細は、出来事の画面で入れてください。`}
       </p>
       {error && (
         <p className="error" role="alert">
