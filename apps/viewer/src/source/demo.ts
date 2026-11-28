@@ -1171,6 +1171,11 @@ export class DemoSource implements ArchiveSource {
     return this.events.workGrouping();
   }
 
+  async setNoWork(eventIds: string[], skip: boolean): Promise<{ changed: number }> {
+    await this.delay();
+    return this.events.setNoWork(eventIds, skip);
+  }
+
   async attachToWork(
     workId: string,
     eventIds: string[],

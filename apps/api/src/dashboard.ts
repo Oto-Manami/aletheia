@@ -148,7 +148,7 @@ async function tasksOf(db: Database, subjectId: string | null) {
                             where p.event_id = e.id and p.entity_id = ${subject})
           order by e.starts_on desc nulls last limit ${EXAMPLES}`,
     ),
-    // データ品質の検査 episode_without_work と同じ条件（決定記録 0080）
+    // データ品質の検査 episode_without_work と同じ条件（決定記録 0080。まとめない印は除く。0082）
     rows<EventExample & { total: string }>(
       db,
       sql`select e.id, e.title, e.parent_id, pe.title as parent_title, e.starts_on::text as starts_on,
@@ -156,6 +156,7 @@ async function tasksOf(db: Database, subjectId: string | null) {
           from public.events e
           left join public.events pe on pe.id = e.parent_id
           where e.kind in ('episode', 'publication') and e.work_id is null
+            and not coalesce(e.attributes @> '{"no_work": true}', false)
           order by e.starts_on desc nulls last limit ${EXAMPLES}`,
     ),
   ]);

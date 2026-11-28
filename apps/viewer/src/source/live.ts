@@ -882,8 +882,33 @@ export class LiveSource implements ArchiveSource {
       groups: WorkGroup[];
       works: GroupingWorkOption[];
       counts: { episodes: number };
+      skipped?: {
+        id: string;
+        title: string | null;
+        kind: string;
+        starts_on: string | null;
+        date_precision: string | null;
+      }[];
     }>("GET", "/work-grouping");
-    return { groups: r.groups.map(groupingGroupOf), works: r.works, counts: r.counts };
+    return {
+      groups: r.groups.map(groupingGroupOf),
+      works: r.works,
+      counts: r.counts,
+      skipped: (r.skipped ?? []).map((e) => ({
+        id: e.id,
+        title: e.title,
+        kind: e.kind,
+        startsOn: e.starts_on,
+        datePrecision: e.date_precision,
+      })),
+    };
+  }
+
+  async setNoWork(eventIds: string[], skip: boolean): Promise<{ changed: number }> {
+    return this.api<{ changed: number }>("POST", "/work-grouping/skip", {
+      event_ids: eventIds,
+      skip,
+    });
   }
 
   async attachToWork(

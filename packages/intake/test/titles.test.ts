@@ -121,3 +121,56 @@ describe("groupForWorks", () => {
     expect(byKey("stem:episode:架空の特番")?.subtype).toBeNull();
   });
 });
+
+describe("groupForWorks: 紐付いた素材の文字（決定記録 0082）", () => {
+  const channel = {
+    id: "00000000-0000-4000-8000-00000000c001",
+    name: "見本ちゃんねる",
+    subtype: "web_program",
+    aliases: [],
+    regular: false,
+  };
+  const show = {
+    id: "00000000-0000-4000-8000-00000000c002",
+    name: "見本になりましょう",
+    subtype: "web_program",
+    aliases: [],
+    regular: true,
+  };
+  const official = {
+    id: "00000000-0000-4000-8000-00000000c003",
+    name: "見本公式チャンネル",
+    subtype: "web_program",
+    aliases: [],
+    regular: false,
+  };
+  const video = (id: string, title: string, material: string) => ({
+    ...ev(id, "episode", title),
+    material_text: material,
+  });
+
+  it("告知の文字に名前のある作品が 1 つなら、その作品の候補にする（初めは選ばない）", () => {
+    const groups = groupForWorks(
+      [video("v1", "【見本】虫採りに行ってみた！", "見本ちゃんねるで動画を公開しました")],
+      [channel, show, official],
+    );
+    expect(groups.map((g) => [g.work?.id, g.events[0]!.match])).toEqual([[channel.id, "material"]]);
+  });
+
+  it("2 つ以上あれば、題名に名前の無いものが 1 つのときだけ使い、決まらなければ候補にしない", () => {
+    const groups = groupForWorks(
+      [
+        video(
+          "v2",
+          "【見本になりましょう】会見に潜入",
+          "見本ちゃんねるで公開。見本になりましょうの会見",
+        ),
+        video("v3", "おちゃのま特番", "見本ちゃんねると見本公式チャンネルで配信"),
+      ],
+      [channel, show, official],
+    );
+    const of = (id: string) => groups.find((g) => g.events.some((e) => e.id === id));
+    expect(of("v2")?.work?.id).toBe(channel.id);
+    expect(of("v3")?.work).toBeNull();
+  });
+});

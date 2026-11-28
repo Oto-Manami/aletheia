@@ -628,8 +628,11 @@ export interface WorkGroupingEvent {
   episodeNumber: number | null;
   /** 題名から読んだ回・号の番号（付けるとき、番号が空なら入れる） */
   number: number | null;
-  /** stem: 名前が同じ（初めから選ぶ）。title: 題名に作品の名前を含む（初めは選ばない） */
-  match: "stem" | "title";
+  /**
+   * stem: 名前が同じ（初めから選ぶ）。material: 紐付いた告知などに作品の名前がある（初めは選ばない。
+   * 決定記録 0082）。title: 題名に作品の名前を含む（初めは選ばない）
+   */
+  match: "stem" | "material" | "title";
 }
 
 export interface GroupingWorkOption {
@@ -653,8 +656,16 @@ export interface WorkGrouping {
   groups: WorkGroupingGroup[];
   /** 付け先に選べる作品（楽曲・シングルなどを除く） */
   works: GroupingWorkOption[];
-  /** 作品を指していない番組の回・掲載の数 */
+  /** 作品を指していない番組の回・掲載の数（作品にまとめない印のものは除く） */
   counts: { episodes: number };
+  /** 「作品にまとめない」の印を付けた出来事（戻せるように見せる。決定記録 0082） */
+  skipped: {
+    id: string;
+    title: string | null;
+    kind: string;
+    startsOn: string | null;
+    datePrecision: string | null;
+  }[];
 }
 
 /** 本人の出演の確認の 1 行（設計書 決定記録 0080） */
@@ -1035,6 +1046,8 @@ export interface ArchiveSource {
   getWorkGrouping(): Promise<WorkGrouping>;
   /** 選んだ出来事を作品に付ける（作品を指していないものだけ。作業者・運営者） */
   attachToWork(workId: string, eventIds: string[]): Promise<{ attached: number; skipped: number }>;
+  /** 「作品にまとめない」の印を付ける（skip が false なら外す）。作品を指しているものは変えない（決定記録 0082） */
+  setNoWork(eventIds: string[], skip: boolean): Promise<{ changed: number }>;
   /** 人物の一覧（蓄積対象の人物が先。設計書 決定記録 0079） */
   listPeople(query?: string): Promise<PersonSummary[]>;
   /** 人物の画面の見出し（所属・言明・件数・言及した人ごとの件数） */

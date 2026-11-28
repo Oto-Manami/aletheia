@@ -253,6 +253,8 @@ export class DemoEvents {
   private entities = demoEntities();
   private events = demoEvents();
   private seq = 0;
+  /** 「作品にまとめない」の印を付けた出来事（決定記録 0082） */
+  private noWork = new Set<string>();
 
   private nextId(prefix: string): string {
     this.seq += 1;
@@ -696,7 +698,7 @@ export class DemoEvents {
         regular: w.regular === true,
       }));
     const events = this.events
-      .filter((e) => e.workId === null && !this.isSchedule(e))
+      .filter((e) => e.workId === null && !this.isSchedule(e) && !this.noWork.has(e.id))
       .sort((a, b) => (b.startsOn ?? "").localeCompare(a.startsOn ?? ""))
       .map((e) => ({
         id: e.id,
@@ -711,10 +713,35 @@ export class DemoEvents {
       works: works.map((w) => ({ id: w.id, name: w.name, subtype: w.subtype, regular: w.regular })),
       counts: {
         episodes: this.events.filter(
-          (e) => (e.kind === "episode" || e.kind === "publication") && e.workId === null,
+          (e) =>
+            (e.kind === "episode" || e.kind === "publication") &&
+            e.workId === null &&
+            !this.noWork.has(e.id),
         ).length,
       },
+      skipped: this.events
+        .filter((e) => e.workId === null && this.noWork.has(e.id))
+        .map((e) => ({
+          id: e.id,
+          title: e.title,
+          kind: e.kind,
+          startsOn: e.startsOn,
+          datePrecision: e.datePrecision,
+        })),
     };
+  }
+
+  /** 「作品にまとめない」の印を付ける・外す（作品を指しているものは変えない） */
+  setNoWork(eventIds: readonly string[], skip: boolean): { changed: number } {
+    let changed = 0;
+    for (const id of new Set(eventIds)) {
+      const e = this.events.find((x) => x.id === id);
+      if (!e || e.workId !== null) continue;
+      if (skip) this.noWork.add(id);
+      else this.noWork.delete(id);
+      changed++;
+    }
+    return { changed };
   }
 
   /** 選んだ出来事を作品に付ける（作品を指していないものだけ。番号が空なら題名から読む） */
@@ -728,6 +755,7 @@ export class DemoEvents {
       if (!e || e.workId !== null) continue;
       e.workId = work.id;
       e.workName = work.label;
+      this.noWork.delete(e.id);
       e.episodeNumber ??= titleStem(e.title).number;
       attached++;
     }

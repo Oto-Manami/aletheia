@@ -112,7 +112,7 @@ export interface GroupingWork {
   regular: boolean;
 }
 
-/** 作品を指していない出来事（日程は除いて渡す） */
+/** 作品を指していない出来事（日程と、作品にまとめない印のものは除いて渡す） */
 export interface GroupingSource {
   id: string;
   title: string | null;
@@ -120,13 +120,18 @@ export interface GroupingSource {
   starts_on: string | null;
   date_precision: string | null;
   episode_number: number | null;
+  /** 出来事に紐付いた素材（告知のニュースなど）の文字。作品の名前を探す（決定記録 0082） */
+  material_text?: string | null;
 }
 
-export interface GroupedEvent extends GroupingSource {
+export interface GroupedEvent extends Omit<GroupingSource, "material_text"> {
   /** 題名から読んだ回・号の番号（付けるとき、番号が空なら入れる） */
   number: number | null;
-  /** stem: 名前が同じ（初めから選ぶ）。title: 題名に作品の名前を含む（初めは選ばない） */
-  match: "stem" | "title";
+  /**
+   * stem: 名前が同じ（初めから選ぶ）。material: 紐付いた素材の文字に作品の名前がある（初めは選ばない。
+   * 決定記録 0082）。title: 題名に作品の名前を含む（初めは選ばない）
+   */
+  match: "stem" | "material" | "title";
 }
 
 export interface WorkGroup {
@@ -150,6 +155,7 @@ export function fitsWork(kind: string, subtype: string | null): boolean {
 /**
  * 出来事を、まとめる候補ごとに分ける。
  * - 番組の回・掲載: 題名から読んだ名前が作品の名前・別名と同じなら、その作品（初めから選ぶ）。違えば同じ名前どうし
+ * - 紐付いた素材の文字に作品の名前・別名があれば、その作品の候補（初めは選ばない。決定記録 0082）
  * - どの種類でも、題名に作品の名前・別名を含むものは、その作品の候補（初めは選ばない。いちばん長い名前で合うもの）
  * 並びは、既にある作品 → 同じ名前が 2 件以上 → 1 件だけ。同じ段は件数の多い順・新しい順
  */
@@ -172,6 +178,7 @@ export function groupForWorks(
     const { stem, number } = titleStem(title);
     const stemK = nameKey(stem);
     const titleK = nameKey(title);
+    const materialK = nameKey(e.material_text ?? "");
     const base = {
       id: e.id,
       title: e.title,
@@ -185,16 +192,29 @@ export function groupForWorks(
     const exact = EPISODE_KINDS.has(e.kind)
       ? candidates.find(({ keys }) => keys.includes(stemK))
       : undefined;
+    const inTitle = candidates.filter(({ keys }) => keys.some((k) => titleK.includes(k)));
     const contained = exact
       ? undefined
-      : candidates
+      : inTitle
           .map(({ work, keys }) => ({
             work,
             length: Math.max(0, ...keys.filter((k) => titleK.includes(k)).map((k) => k.length)),
           }))
-          .filter((c) => c.length > 0)
           .sort((a, b) => b.length - a.length)[0];
-    const work = exact?.work ?? contained?.work;
+    // 紐付いた素材（告知のニュースなど）に名前のある作品。配信の動画は、告知に配信したチャンネルの名前が
+    // あることが多い。2 つ以上あれば、題名に名前の無いものが 1 つのときだけ使う（題名に名前のある作品は、
+    // その回の話題であることが多い。決定記録 0082）
+    const inMaterial = exact
+      ? []
+      : candidates.filter(({ keys }) => materialK && keys.some((k) => materialK.includes(k)));
+    const fromMaterial =
+      inMaterial.length === 1
+        ? inMaterial[0]
+        : (() => {
+            const notInTitle = inMaterial.filter((c) => !inTitle.includes(c));
+            return notInTitle.length === 1 ? notInTitle[0] : undefined;
+          })();
+    const work = exact?.work ?? fromMaterial?.work ?? contained?.work;
     if (work) {
       add(
         `work:${work.id}`,
@@ -204,7 +224,7 @@ export function groupForWorks(
           work: { id: work.id, name: work.name, subtype: work.subtype, regular: work.regular },
           subtype: work.subtype,
         }),
-        { ...base, match: exact ? "stem" : "title" },
+        { ...base, match: exact ? "stem" : fromMaterial ? "material" : "title" },
       );
     } else if (EPISODE_KINDS.has(e.kind) && stemK) {
       add(

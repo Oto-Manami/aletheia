@@ -5899,3 +5899,8 @@ button.participation {
   flex: 1 1 14em;
   overflow-wrap: anywhere;
 }
+
+/* 作品にまとめないもの（決定記録 0082） */
+.grouping-skipped summary {
+  cursor: pointer;
+}

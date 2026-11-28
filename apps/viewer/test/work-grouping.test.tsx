@@ -93,6 +93,23 @@ describe("作品にまとめる", () => {
     expect(screen.queryByRole("region", { name: "番組の回" })).toBeNull();
   });
 
+  it("どの作品の回でもないものは「作品にまとめない」にでき、いちばん下から候補に戻せる（決定記録 0082）", async () => {
+    const user = userEvent.setup();
+    const source = open();
+    const table = await screen.findByRole("region", { name: "番組の回" });
+    await user.click(within(table).getByRole("checkbox", { name: /【見本】冬の特別配信/ }));
+    await user.click(within(table).getByRole("button", { name: "選んだ 1 件を作品にまとめない" }));
+    await screen.findByText("1 件を「作品にまとめない」にしました");
+    expect(screen.queryByRole("region", { name: "番組の回" })).toBeNull();
+    expect((await source.getWorkGrouping()).skipped.map((e) => e.title)).toEqual([
+      "【見本】冬の特別配信",
+    ]);
+    await user.click(screen.getByText(/作品にまとめないもの/));
+    await user.click(screen.getByRole("button", { name: "候補に戻す" }));
+    await screen.findByText("作品にまとめる候補に戻しました");
+    expect(await screen.findByRole("region", { name: "番組の回" })).toBeTruthy();
+  });
+
   it("閲覧者には選ぶ欄・付けるボタンを出さない", async () => {
     open({ ...worker, canWork: false });
     const section = await screen.findByRole("region", { name: "同じ名前の回・号" });

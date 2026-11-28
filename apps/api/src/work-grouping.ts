@@ -4,6 +4,7 @@
 // |----------|-------------------|--------------------------------------------------------------------------|
 // | GET      | /work-grouping    | 作品を指していない出来事を、まとめる候補（既にある作品・同じ名前）ごとに返す |
 // | POST     | /works/:id/attach | 選んだ出来事を作品に付ける（作品を指していないものだけ。作業者・運営者）   |
+// | POST     | /work-grouping/skip | 選んだ出来事に「作品にまとめない」の印を付ける・外す（作業者・運営者。決定記録 0082） |
 //
 // 候補は規則で作る（AI は使わない）。
 // - 番組の回・掲載（号）: 題名から号・回の印を外した名前（@aletheia/intake/titles）が、既にある作品の名前・別名と
@@ -35,9 +36,21 @@ export const ATTACH_LIMIT = 500;
 
 const attachBody = z.object({ event_ids: z.array(z.uuid()).min(1).max(ATTACH_LIMIT) });
 
+const skipBody = z.object({
+  event_ids: z.array(z.uuid()).min(1).max(ATTACH_LIMIT),
+  /** true: 印を付ける。false: 外す（候補に戻す） */
+  skip: z.boolean(),
+});
+
+/** 「作品にまとめない」の印（どの作品の回・号でもない出来事。決定記録 0082） */
+const NO_WORK = sql<boolean>`coalesce(e.attributes @> '{"no_work": true}', false)`;
+
+/** 素材の文字を、1 つの出来事につき調べる長さ */
+const MATERIAL_CHARS = 20000;
+
 export function registerWorkGroupingRoutes(app: Hono<AuthEnv>, db: Database): void {
   app.get("/work-grouping", async (c) => {
-    const [works, events, count] = await Promise.all([
+    const [works, events, count, skipped] = await Promise.all([
       sql<GroupingWork & { aliases: string[] }>`
         select id, canonical_name as name, subtype, aliases,
           coalesce(attributes @> '{"regular": true}', false) as regular
@@ -48,10 +61,18 @@ export function registerWorkGroupingRoutes(app: Hono<AuthEnv>, db: Database): vo
       `.execute(db),
       sql<GroupingSource>`
         select e.id, e.title, e.kind, e.starts_on::text as starts_on, e.date_precision::text as date_precision,
-          e.episode_number
+          e.episode_number,
+          -- 紐付いた素材（告知のニュースなど）の本文・キャプション。作品の名前を探す（決定記録 0082）
+          (select left(string_agg(t.content, ' '), ${MATERIAL_CHARS})
+             from public.links l
+             join public.assets a on a.post_id = case when l.from_type = 'post' then l.from_id
+               else (select x.post_id from public.assets x where x.id = l.from_id) end
+             join public.asset_texts t on t.asset_id = a.id and t.text_type in ('body', 'caption')
+            where l.to_type = 'event' and l.to_id = e.id and l.review_state = 'accepted'
+              and l.from_type in ('post', 'asset')) as material_text
         from public.events e
         left join public.events pe on pe.id = e.parent_id
-        where e.work_id is null
+        where e.work_id is null and not ${NO_WORK}
           and not (e.parent_id is not null and e.kind <> 'episode'
                    and pe.kind in (${sql.join(SCHEDULE_PARENT_KINDS.map((k) => sql`${k}`))}))
         order by e.starts_on desc nulls last, e.id
@@ -60,7 +81,21 @@ export function registerWorkGroupingRoutes(app: Hono<AuthEnv>, db: Database): vo
       // データ品質の検査 episode_without_work と同じ条件
       sql<{ n: string }>`
         select count(*) as n from public.events e
-        where e.kind in ('episode', 'publication') and e.work_id is null
+        where e.kind in ('episode', 'publication') and e.work_id is null and not ${NO_WORK}
+      `.execute(db),
+      // 作品にまとめない印を付けたもの（戻せるように見せる）
+      sql<{
+        id: string;
+        title: string | null;
+        kind: string;
+        starts_on: string | null;
+        date_precision: string | null;
+      }>`
+        select e.id, e.title, e.kind, e.starts_on::text as starts_on, e.date_precision::text as date_precision
+        from public.events e
+        where e.work_id is null and ${NO_WORK}
+        order by e.starts_on desc nulls last, e.id
+        limit ${SCAN_LIMIT}
       `.execute(db),
     ]);
     return c.json({
@@ -72,7 +107,39 @@ export function registerWorkGroupingRoutes(app: Hono<AuthEnv>, db: Database): vo
         regular: w.regular,
       })),
       counts: { episodes: Number(count.rows[0]?.n ?? 0) },
+      skipped: skipped.rows,
     });
+  });
+
+  // 「作品にまとめない」の印を付ける・外す（決定記録 0082）。作品を指しているものは変えない
+  app.post("/work-grouping/skip", async (c) => {
+    let json: unknown;
+    try {
+      json = await c.req.json();
+    } catch {
+      json = {};
+    }
+    const body = skipBody.safeParse(json);
+    if (!body.success) {
+      throw new HTTPException(400, { message: `出来事を 1〜${ATTACH_LIMIT} 件選んでください` });
+    }
+    const userId = userIdOf(c.get("actor"));
+    const ids = [...new Set(body.data.event_ids)];
+    const changed = await inTransaction(db, userId, async (trx) => {
+      const r = await trx
+        .updateTable("events")
+        .set({
+          attributes: body.data.skip
+            ? sql`attributes || '{"no_work": true}'::jsonb`
+            : sql`attributes - 'no_work'`,
+          updated_by: userId,
+        })
+        .where("id", "in", ids)
+        .where("work_id", "is", null)
+        .executeTakeFirst();
+      return Number(r.numUpdatedRows);
+    });
+    return c.json({ ok: true, changed });
   });
 
   // 選んだ出来事を作品に付ける。作品を指していないものだけ付け、回・号の番号が空なら題名から読んだ番号を入れる
@@ -113,7 +180,13 @@ export function registerWorkGroupingRoutes(app: Hono<AuthEnv>, db: Database): vo
         const number = row.episode_number ?? titleStem(row.title ?? "").number;
         await trx
           .updateTable("events")
-          .set({ work_id: work.id, episode_number: number, updated_by: userId })
+          .set({
+            work_id: work.id,
+            episode_number: number,
+            // 作品に付けたら、作品にまとめない印は外す（決定記録 0082）
+            attributes: sql`attributes - 'no_work'`,
+            updated_by: userId,
+          })
           .where("id", "=", row.id)
           .execute();
       }
