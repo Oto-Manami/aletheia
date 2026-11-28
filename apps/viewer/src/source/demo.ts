@@ -19,7 +19,7 @@ import {
 import { onlyChosenImages } from "@aletheia/intake/images";
 import { proposeSubjectLinks } from "@aletheia/intake/mentions";
 import { hasOnlyAuthor } from "./tags.ts";
-import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
+import { draftTitle, draftWarnings, reviewReasons, untaggedImages } from "./summarize.ts";
 import { DemoEvents } from "./demo-events.ts";
 import type { EpisodeRow } from "./regular.ts";
 import {
@@ -58,6 +58,9 @@ import {
   type SourcePreview,
   type PostTitleHit,
   type PostEdit,
+  type ParticipantStatus,
+  type ParticipationCheck,
+  type WorkGrouping,
   type PersonEvent,
   type PersonMention,
   type PersonPost,
@@ -223,6 +226,7 @@ export class DemoSource implements ArchiveSource {
       assetCount: (item.draft.assets ?? []).length,
       warningCount: draftWarnings(item.draft).length,
       reviewReasons: reviewReasons(item.draft),
+      untaggedImages: untaggedImages(item.draft),
       reviewedAt: item.reviewedAt ?? null,
       reviewedByName: item.reviewedAt ? "デモの運営者" : null,
     };
@@ -348,6 +352,35 @@ export class DemoSource implements ArchiveSource {
         unknownParticipation: { count: 0, events: [] },
         setlistMissing: { count: 0, events: [] },
         overdue: { count: 0, events: [] },
+        participationMissing: (() => {
+          const check = this.events.participationCheck(new Date().toISOString().slice(0, 10));
+          return {
+            count: check.counts.missing,
+            events: check.missing.slice(0, 5).map((e) => ({
+              id: e.id,
+              title: e.title,
+              parentId: null,
+              parentTitle: e.parentTitle,
+              startsOn: e.startsOn,
+            })),
+          };
+        })(),
+        episodesWithoutWork: (() => {
+          const g = this.events.workGrouping();
+          const events = g.groups
+            .flatMap((x) => x.events)
+            .filter((e) => e.kind === "episode" || e.kind === "publication");
+          return {
+            count: g.counts.episodes,
+            events: events.slice(0, 5).map((e) => ({
+              id: e.id,
+              title: e.title,
+              parentId: null,
+              parentTitle: null,
+              startsOn: e.startsOn,
+            })),
+          };
+        })(),
         similarImages: { count: this.duplicates.length, unhashed: 0 },
       },
       data: {
@@ -625,7 +658,18 @@ export class DemoSource implements ArchiveSource {
     await this.delay();
     const post = this.posts.find((p) => p.id === id);
     if (!post) throw new SourceError("投稿が見つかりません", 404);
-    return structuredClone(post);
+    const view = structuredClone(post);
+    view.links = view.links.map((l) => {
+      // 架空の期はグループ（人物の画面で開ける。決定記録 0079）
+      const kind =
+        l.target.type !== "entity"
+          ? null
+          : l.target.id === PEOPLE.gen5
+            ? { type: "group", subtype: "generation" }
+            : this.events.entityKind(l.target.id);
+      return { ...l, entityType: kind?.type ?? null, entitySubtype: kind?.subtype ?? null };
+    });
+    return view;
   }
 
   /** デモ版の投稿は、紐付けを投稿と素材で分けていないので、すべて投稿のものとして返す */
@@ -1115,6 +1159,33 @@ export class DemoSource implements ArchiveSource {
   async createEntity(entity: NewEntity) {
     await this.delay();
     return this.events.create(entity);
+  }
+
+  async getParticipationCheck(): Promise<ParticipationCheck> {
+    await this.delay();
+    return this.events.participationCheck(new Date().toISOString().slice(0, 10));
+  }
+
+  async getWorkGrouping(): Promise<WorkGrouping> {
+    await this.delay();
+    return this.events.workGrouping();
+  }
+
+  async attachToWork(
+    workId: string,
+    eventIds: string[],
+  ): Promise<{ attached: number; skipped: number }> {
+    await this.delay();
+    return this.events.attachToWork(workId, eventIds);
+  }
+
+  async setSubjectParticipation(
+    eventId: string,
+    status: ParticipantStatus,
+    role?: string,
+  ): Promise<void> {
+    await this.delay();
+    this.events.setSubjectParticipation(eventId, status, role);
   }
 
   /** デモ版の人物（決定記録 0079）。所属は架空の期だけ */

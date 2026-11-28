@@ -15,7 +15,8 @@ import {
   ROLE_LABELS,
   TEXT_TYPE_LABELS,
 } from "../format.ts";
-import type { AssetView } from "../source/types.ts";
+import { refPath } from "../ref-path.ts";
+import type { AssetView, PostView } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 
 /**
@@ -228,6 +229,42 @@ function MissingOriginals({
   );
 }
 
+/** 紐付けの役割の並び（発信者・言及・写っている人・出来事の順に先に見せる） */
+const ROLE_ORDER = [
+  "author",
+  "mentioned",
+  "appears",
+  "voice",
+  "subject",
+  "about",
+  "part_of",
+  "series",
+];
+
+/**
+ * 紐付けを役割ごとにまとめ、同じ相手は 1 つにする（投稿と素材の両方に付いているときなど）。
+ * count は、同じ相手に付いている紐付けの数（写っている枚数など）
+ */
+export function linkGroups(links: PostView["links"]) {
+  type Grouped = PostView["links"][number] & { count: number };
+  const groups = new Map<string, Map<string, Grouped>>();
+  for (const l of links) {
+    const byTarget = groups.get(l.role) ?? new Map<string, Grouped>();
+    groups.set(l.role, byTarget);
+    const key = `${l.target.type}:${l.target.id}`;
+    const seen = byTarget.get(key);
+    if (seen) seen.count++;
+    else byTarget.set(key, { ...l, count: 1 });
+  }
+  const rank = (role: string) => {
+    const i = ROLE_ORDER.indexOf(role);
+    return i < 0 ? ROLE_ORDER.length : i;
+  };
+  return [...groups.entries()]
+    .sort(([a], [b]) => rank(a) - rank(b))
+    .map(([role, targets]) => ({ role, targets: [...targets.values()] }));
+}
+
 export function PostPage() {
   const { id = "" } = useParams();
   const { source, viewer } = useApp();
@@ -363,10 +400,25 @@ export function PostPage() {
             <>
               <h2 className="column-title">紐付け</h2>
               <dl className="facts">
-                {p.links.map((l, i) => (
-                  <div key={i}>
-                    <dt>{ROLE_LABELS[l.role] ?? l.role}</dt>
-                    <dd>{l.target.label}</dd>
+                {linkGroups(p.links).map(({ role, targets }) => (
+                  <div key={role}>
+                    <dt>{ROLE_LABELS[role] ?? role}</dt>
+                    <dd className="post-link-targets">
+                      {targets.map((t) => {
+                        const to = refPath(t.target, t.entityType, t.entitySubtype);
+                        const label =
+                          t.count > 1 ? `${t.target.label}（${t.count}）` : t.target.label;
+                        return to ? (
+                          <Link key={t.target.id} to={to} className="person-chip post-link">
+                            {label}
+                          </Link>
+                        ) : (
+                          <span key={t.target.id} className="person-chip post-link is-plain">
+                            {label}
+                          </span>
+                        );
+                      })}
+                    </dd>
                   </div>
                 ))}
               </dl>

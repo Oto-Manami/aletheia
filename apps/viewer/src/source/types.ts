@@ -49,6 +49,8 @@ export interface IntakeSummary {
   warningCount: number;
   /** 確かめることの短い名前（日付・人物・提案 2 件） */
   reviewReasons: string[];
+  /** 写っている人を確かめていない画像の数（決定記録 0081） */
+  untaggedImages: number;
   /** 承認・却下・保留した日時と人（履歴） */
   reviewedAt: string | null;
   reviewedByName: string | null;
@@ -232,7 +234,16 @@ export interface PostView {
   availability: string | null;
   classification: Classification;
   assets: AssetView[];
-  links: { role: string; target: RefLabel }[];
+  /**
+   * 投稿と素材の紐付け（承認済み）。entityType・entitySubtype は相手が人物・作品などのときの種類で、
+   * 紐付けから相手の画面を開くのに使う（無い情報源もある）
+   */
+  links: {
+    role: string;
+    target: RefLabel;
+    entityType?: string | null;
+    entitySubtype?: string | null;
+  }[];
 }
 
 /** 取り込んだ投稿を直すときの中身（承認の画面と同じ下書きの形。素材の ref は素材の ID。決定記録 0076） */
@@ -300,6 +311,10 @@ export interface TriageImage {
 export interface TriageSnippet {
   text: string;
   marks: [number, number][];
+  /** 同じ抜粋が記事の中に何か所あるか（2 以上のときだけ。決定記録 0080） */
+  repeat?: number;
+  /** 本人の名前と同じ文に、欠席・休演などの言葉がある（決定記録 0080） */
+  absence?: boolean;
 }
 
 /** 振り分け待ちの記事 1 本（設計書 決定記録 0021） */
@@ -328,6 +343,10 @@ export interface TriageItem {
   /** 情報源の種類（blog・web など）。web（公式サイトのニュース）は振り分けの画面で既にある出来事に紐付ける */
   channelKind: string | null;
   snippets: TriageSnippet[];
+  /** 多いために出していない抜粋の数（決定記録 0080） */
+  moreSnippets: number;
+  /** 本人の欠席・休演の記載（最初の文）。無ければ null（決定記録 0080） */
+  absence: string | null;
   images: TriageImage[];
   draft: DraftInput;
 }
@@ -599,6 +618,72 @@ export interface EventSetlistsView {
   setlists: EventSetlist[];
 }
 
+/** 作品にまとめる候補の出来事（設計書 決定記録 0080） */
+export interface WorkGroupingEvent {
+  id: string;
+  title: string | null;
+  kind: string;
+  startsOn: string | null;
+  datePrecision: string | null;
+  episodeNumber: number | null;
+  /** 題名から読んだ回・号の番号（付けるとき、番号が空なら入れる） */
+  number: number | null;
+  /** stem: 名前が同じ（初めから選ぶ）。title: 題名に作品の名前を含む（初めは選ばない） */
+  match: "stem" | "title";
+}
+
+export interface GroupingWorkOption {
+  id: string;
+  name: string;
+  subtype: string | null;
+  regular: boolean;
+}
+
+/** まとめる候補（既にある作品か、題名から読んだ名前ごと） */
+export interface WorkGroupingGroup {
+  key: string;
+  name: string;
+  work: GroupingWorkOption | null;
+  /** 作品を作るときの種類の初めの値 */
+  subtype: string | null;
+  events: WorkGroupingEvent[];
+}
+
+export interface WorkGrouping {
+  groups: WorkGroupingGroup[];
+  /** 付け先に選べる作品（楽曲・シングルなどを除く） */
+  works: GroupingWorkOption[];
+  /** 作品を指していない番組の回・掲載の数 */
+  counts: { episodes: number };
+}
+
+/** 本人の出演の確認の 1 行（設計書 決定記録 0080） */
+export interface ParticipationCheckEvent {
+  id: string;
+  title: string | null;
+  kind: string;
+  startsOn: string | null;
+  endsOn: string | null;
+  datePrecision: string | null;
+  parentTitle: string | null;
+  workName: string | null;
+  regular: boolean;
+  /** 付いている役割（付いていなければ、種類ごとの初めの値） */
+  role: string;
+  /** 付いている状態（付いていなければ null） */
+  status: ParticipantStatus | null;
+}
+
+/** 本人の出演の確認（設計書 決定記録 0080） */
+export interface ParticipationCheck {
+  subject: { id: string; name: string } | null;
+  /** 予定のまま日付を過ぎた出来事 */
+  overdue: ParticipationCheckEvent[];
+  /** 本人の出演が付いていない出来事（日程は除く） */
+  missing: ParticipationCheckEvent[];
+  counts: { overdue: number; missing: number };
+}
+
 /** 人物の一覧の 1 行（設計書 決定記録 0079） */
 export interface PersonSummary {
   id: string;
@@ -810,6 +895,10 @@ export interface Dashboard {
     unknownParticipation: { count: number; events: DashboardEvent[] } | null;
     setlistMissing: { count: number; events: DashboardEvent[] } | null;
     overdue: { count: number; events: DashboardEvent[] };
+    /** 本人の出演が付いていない出来事（日程は除く。決定記録 0080）。蓄積対象の人物がいなければ null */
+    participationMissing: { count: number; events: DashboardEvent[] } | null;
+    /** 作品を指していない番組の回・掲載（号）（決定記録 0080） */
+    episodesWithoutWork: { count: number; events: DashboardEvent[] };
     /** 似た画像の「重複の疑い」の組の数と、見た目のハッシュをまだ計算していない保存済みの画像の数（決定記録 0069） */
     similarImages: { count: number; unhashed: number };
   } | null;
@@ -938,6 +1027,14 @@ export interface ArchiveSource {
   listSeries?(): Promise<RefLabel[]>;
   /** 作品の一覧と作品の画面（決定記録 0065） */
   listWorks?(filter: { subtype?: string; query?: string }): Promise<WorkSummary[]>;
+  /** 本人の出演の確認（予定のまま日付を過ぎたもの・付いていないもの。決定記録 0080） */
+  getParticipationCheck(): Promise<ParticipationCheck>;
+  /** 本人の出演の状態を付ける（付いていれば状態を直し、無ければ役割を付けて足す） */
+  setSubjectParticipation(eventId: string, status: ParticipantStatus, role?: string): Promise<void>;
+  /** 作品にまとめる候補（作品を指していない出来事。決定記録 0080） */
+  getWorkGrouping(): Promise<WorkGrouping>;
+  /** 選んだ出来事を作品に付ける（作品を指していないものだけ。作業者・運営者） */
+  attachToWork(workId: string, eventIds: string[]): Promise<{ attached: number; skipped: number }>;
   /** 人物の一覧（蓄積対象の人物が先。設計書 決定記録 0079） */
   listPeople(query?: string): Promise<PersonSummary[]>;
   /** 人物の画面の見出し（所属・言明・件数・言及した人ごとの件数） */
@@ -1132,6 +1229,11 @@ export interface ArchiveSource {
   createEntity(entity: NewEntity): Promise<EntityOption & { created: boolean }>;
   /** 蓄積対象の人物（出来事を作るとき、出演の行を最初から置く） */
   listArchiveSubjects(): Promise<RefLabel[]>;
+  /**
+   * 蓄積対象のグループ（期など）。投稿がその名前に触れていれば、その場で作る出来事の本人の出演を
+   * 「予定」にする（決定記録 0080）。無い情報源では使わない
+   */
+  listArchiveSubjectGroups?(): Promise<RefLabel[]>;
 }
 
 /** API・データベースから返った失敗を、画面にそのまま出せる文にしたもの */

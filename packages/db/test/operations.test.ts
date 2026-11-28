@@ -248,7 +248,39 @@ describe("データ品質の検査", () => {
         role: "guest",
         status: "scheduled",
       });
-      expect(keysOf(await run(c), past)).toEqual(["overdue_announcement"]);
+      expect(keysOf(await run(c), past)).toContain("overdue_announcement");
+    }));
+
+  it("本人の出演が付いていない出来事と、作品を指していない回・号を見つける（決定記録 0080）", () =>
+    withRollback(async (c) => {
+      const d = await seed(c);
+      await c.query(
+        `update public.entities set attributes = attributes || '{"archive_subject": true}' where id = $1`,
+        [d.person],
+      );
+      const episode = await insert(c, "public.events", {
+        kind: "episode",
+        starts_on: "2026-01-01",
+        date_precision: "day",
+      });
+      expect(keysOf(await run(c), episode).sort()).toEqual([
+        "episode_without_work",
+        "subject_participation_missing",
+      ]);
+      // 出演を付け、作品を指せば直る
+      await insert(c, "public.event_participants", {
+        event_id: episode,
+        entity_id: d.person,
+        role: "guest",
+        status: "appeared",
+      });
+      const work = await insert(c, "public.entities", {
+        type: "work",
+        subtype: "tv_program",
+        canonical_name: "架空の番組",
+      });
+      await c.query(`update public.events set work_id = $1 where id = $2`, [work, episode]);
+      expect(keysOf(await run(c), episode)).toEqual([]);
     }));
 
   it("公開の言明が有料の原文を再現していれば、問題として知らせる", () =>

@@ -10,13 +10,20 @@ import {
   type EventInput,
   type EventSummary,
   type NewEntity,
+  type ParticipantStatus,
+  type ParticipationCheck,
+  type ParticipationCheckEvent,
   type PersonEvent,
   type RefLabel,
   SourceError,
+  type WorkGrouping,
   type WorkSummary,
   type WorkView,
 } from "./types.ts";
+import { groupForWorks, titleStem } from "@aletheia/intake/titles";
 import { matchesEventQuery } from "./event-relevance.ts";
+import { groupingGroupOf } from "./work-grouping.ts";
+import { defaultSubjectRole } from "./participation.ts";
 import { type EpisodeRow, episodeKindOf, regularRoleOf, regularStatusOf } from "./regular.ts";
 
 const WORKS = {
@@ -27,6 +34,13 @@ const WORKS = {
 } as const;
 
 const PERFORMANCE = "e1000000-0000-4000-8000-000000000011";
+/** 作品を指していない号・回（作品にまとめる画面の見本。決定記録 0080） */
+const UNGROUPED = {
+  magazine: "e1000000-0000-4000-8000-000000000021",
+  music5: "e1000000-0000-4000-8000-000000000022",
+  music6: "e1000000-0000-4000-8000-000000000023",
+  stream: "e1000000-0000-4000-8000-000000000024",
+} as const;
 
 /** 日程になる親の種類（設計書 決定記録 0034） */
 const SCHEDULE_PARENT_KINDS: readonly string[] = ["live", "meet_greet", "event"];
@@ -190,6 +204,46 @@ function demoEvents(): EventDetail[] {
       datePrecision: "month",
       sources: [{ url: "https://example.com/news/music-fes" }],
       participants: [hanako("not_appearing")],
+    }),
+    event({
+      id: UNGROUPED.magazine,
+      kind: "publication",
+      title: "「月刊ミホン」2027年1月号",
+      startsOn: "2026-11-20",
+      datePrecision: "day",
+      participants: [hanako("appeared", "model")],
+    }),
+    event({
+      id: UNGROUPED.music5,
+      kind: "episode",
+      title: "見本ミュージック #5",
+      startsOn: "2026-10-20",
+      datePrecision: "day",
+      participants: [hanako("appeared")],
+    }),
+    event({
+      id: UNGROUPED.music6,
+      kind: "episode",
+      title: "見本ミュージック #6",
+      startsOn: "2026-11-03",
+      datePrecision: "day",
+      participants: [hanako("appeared")],
+    }),
+    event({
+      id: UNGROUPED.stream,
+      kind: "episode",
+      title: "【見本】冬の特別配信",
+      startsOn: "2026-11-10",
+      datePrecision: "day",
+      participants: [hanako("appeared")],
+    }),
+    event({
+      id: EVENTS.announcement,
+      kind: "announcement",
+      title: "見本グループ 冬のツアーの発表",
+      startsOn: "2026-10-30",
+      datePrecision: "day",
+      sources: [{ url: "https://example.com/news/winter-tour" }],
     }),
   ];
 }
@@ -565,6 +619,125 @@ export class DemoEvents {
       created.push({ index, id: eventId, title });
     }
     return { created, skipped };
+  }
+
+  /** 本人の出演の確認（決定記録 0080） */
+  participationCheck(today: string): ParticipationCheck {
+    const subject = this.entities.find((x) => x.archiveSubject);
+    if (!subject)
+      return { subject: null, overdue: [], missing: [], counts: { overdue: 0, missing: 0 } };
+    const row = (e: EventDetail): ParticipationCheckEvent => {
+      const p = e.participants.find((x) => x.entityId === subject.id);
+      const parent = e.parentId ? this.events.find((x) => x.id === e.parentId) : undefined;
+      const work = e.workId ? this.entities.find((x) => x.id === e.workId) : undefined;
+      return {
+        id: e.id,
+        title: e.title,
+        kind: e.kind,
+        startsOn: e.startsOn,
+        endsOn: e.endsOn,
+        datePrecision: e.datePrecision,
+        parentTitle: parent?.title ?? null,
+        workName: work?.label ?? null,
+        regular: work?.regular === true,
+        role: p?.role ?? defaultSubjectRole(e.kind),
+        status: p?.status ?? null,
+      };
+    };
+    const byDate = (a: EventDetail, b: EventDetail) =>
+      (b.startsOn ?? "").localeCompare(a.startsOn ?? "");
+    const overdue = this.events
+      .filter((e) =>
+        e.participants.some((p) => p.entityId === subject.id && p.status === "scheduled"),
+      )
+      .filter((e) => (e.endsOn ?? e.startsOn ?? "9999") < today)
+      .sort(byDate)
+      .map(row);
+    const missing = this.events
+      .filter((e) => !this.isSchedule(e) && !e.participants.some((p) => p.entityId === subject.id))
+      .sort(byDate)
+      .map(row);
+    return {
+      subject: { id: subject.id, name: subject.label },
+      overdue,
+      missing,
+      counts: { overdue: overdue.length, missing: missing.length },
+    };
+  }
+
+  /** 本人の出演の状態を付ける（決定記録 0080） */
+  setSubjectParticipation(eventId: string, status: ParticipantStatus, role?: string): void {
+    const subject = this.entities.find((x) => x.archiveSubject);
+    const event = this.events.find((e) => e.id === eventId);
+    if (!subject || !event) throw new Error("出来事が見つかりません");
+    const rows = event.participants.filter((p) => p.entityId === subject.id);
+    if (rows.length > 0) {
+      for (const p of rows) p.status = status;
+      return;
+    }
+    event.participants.push({
+      entityId: subject.id,
+      entityName: subject.label,
+      role: role ?? defaultSubjectRole(event.kind),
+      status,
+      characterName: null,
+    });
+  }
+
+  /** 作品にまとめる候補（決定記録 0080） */
+  workGrouping(): WorkGrouping {
+    const works = this.entities
+      .filter((e) => e.type === "work" && !MUSIC_SUBTYPES.includes(e.subtype ?? ""))
+      .map((w) => ({
+        id: w.id,
+        name: w.label,
+        subtype: w.subtype ?? null,
+        aliases: [],
+        regular: w.regular === true,
+      }));
+    const events = this.events
+      .filter((e) => e.workId === null && !this.isSchedule(e))
+      .sort((a, b) => (b.startsOn ?? "").localeCompare(a.startsOn ?? ""))
+      .map((e) => ({
+        id: e.id,
+        title: e.title,
+        kind: e.kind,
+        starts_on: e.startsOn,
+        date_precision: e.datePrecision,
+        episode_number: e.episodeNumber,
+      }));
+    return {
+      groups: groupForWorks(events, works).map(groupingGroupOf),
+      works: works.map((w) => ({ id: w.id, name: w.name, subtype: w.subtype, regular: w.regular })),
+      counts: {
+        episodes: this.events.filter(
+          (e) => (e.kind === "episode" || e.kind === "publication") && e.workId === null,
+        ).length,
+      },
+    };
+  }
+
+  /** 選んだ出来事を作品に付ける（作品を指していないものだけ。番号が空なら題名から読む） */
+  attachToWork(workId: string, eventIds: readonly string[]): { attached: number; skipped: number } {
+    const work = this.entities.find((e) => e.id === workId && e.type === "work");
+    if (!work) throw new SourceError("作品が見つかりません");
+    const ids = [...new Set(eventIds)];
+    let attached = 0;
+    for (const id of ids) {
+      const e = this.events.find((x) => x.id === id);
+      if (!e || e.workId !== null) continue;
+      e.workId = work.id;
+      e.workName = work.label;
+      e.episodeNumber ??= titleStem(e.title).number;
+      attached++;
+    }
+    return { attached, skipped: ids.length - attached };
+  }
+
+  /** 人物・作品などの種類（投稿の紐付けから相手の画面を開くのに使う） */
+  entityKind(id: string): { type: string; subtype: string | null } | null {
+    const e = this.entities.find((x) => x.id === id);
+    return e ? { type: e.type, subtype: e.subtype ?? null } : null;
   }
 
   /** 人物の出演（人物の画面。決定記録 0079） */

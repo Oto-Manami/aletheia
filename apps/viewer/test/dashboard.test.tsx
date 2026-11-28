@@ -45,6 +45,8 @@ const DASHBOARD: Dashboard = {
       ],
     },
     overdue: { count: 0, events: [] },
+    participationMissing: { count: 0, events: [] },
+    episodesWithoutWork: { count: 0, events: [] },
     similarImages: { count: 3, unhashed: 12 },
   },
   data: {

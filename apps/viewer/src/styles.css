@@ -5665,3 +5665,237 @@ button.participation {
   margin: 0;
   color: var(--text);
 }
+
+/* 本人の出演の確認（決定記録 0080） */
+.check-section {
+  margin-bottom: 32px;
+  max-width: 1080px;
+}
+
+.check-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.check-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.check-date {
+  min-width: 8.5em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.check-title {
+  flex: 1 1 18em;
+  overflow-wrap: anywhere;
+}
+
+.check-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.check-actions select {
+  width: auto;
+}
+
+.check-actions .button {
+  height: 30px;
+  padding: 0 10px;
+}
+
+.check-actions .check-appeared {
+  border-color: var(--success-ink);
+  color: var(--success-ink);
+}
+
+.check-row .error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* その場で作る出来事の本人の出演（決定記録 0080） */
+.quick-participation {
+  margin-top: 4px;
+}
+
+.quick-absence {
+  color: var(--warn-ink);
+}
+
+/* 作品にまとめる（決定記録 0080） */
+.grouping-section {
+  margin-bottom: 32px;
+  max-width: 1080px;
+}
+
+.grouping-card {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.grouping-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.grouping-name {
+  margin: 0;
+  font-size: 16px;
+}
+
+.grouping-events {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.grouping-events li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 14px;
+}
+
+.grouping-event {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  cursor: pointer;
+}
+
+.grouping-title {
+  flex: 1 1 16em;
+  overflow-wrap: anywhere;
+}
+
+.grouping-open {
+  flex: none;
+}
+
+.grouping-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.grouping-actions .field {
+  margin: 0;
+}
+
+.grouping-actions select,
+.grouping-actions input {
+  width: auto;
+  min-width: 12em;
+}
+
+.grouping-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 1080px;
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--success-bg);
+  color: var(--success-ink);
+}
+
+/* 投稿の画面の紐付け（相手の画面へのリンク） */
+.post-link-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.post-link {
+  text-decoration: none;
+}
+
+.post-link:hover {
+  border-color: var(--focus);
+}
+
+.post-link.is-plain {
+  cursor: default;
+}
+
+/* 振り分けの抜粋: 欠席・休演の記載と、同じ文の繰り返し（決定記録 0080） */
+.triage-snippet.is-absence {
+  border-left: 3px solid var(--danger-border);
+  padding-left: 8px;
+}
+
+.triage-repeat,
+.triage-more {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.triage-more {
+  margin: 2px 0 0;
+}
+
+.tag.triage-absence {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+/* 確認なしの下書きをまとめて承認（決定記録 0081） */
+.bulk-approve-open {
+  margin: 4px 0 8px;
+}
+
+.bulk-approve {
+  margin: 8px 0 12px;
+  padding: 12px 14px;
+}
+
+.bulk-approve-head {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.bulk-approve-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+
+.bulk-approve-list label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 4px 0;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.bulk-approve-title {
+  flex: 1 1 14em;
+  overflow-wrap: anywhere;
+}

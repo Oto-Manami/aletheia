@@ -6,7 +6,8 @@
     ".": "./src/index.ts",
     "./draft": "./src/draft.ts",
     "./images": "./src/images.ts",
-    "./mentions": "./src/mentions.ts"
+    "./mentions": "./src/mentions.ts",
+    "./titles": "./src/titles.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",

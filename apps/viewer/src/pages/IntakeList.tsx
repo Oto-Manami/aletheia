@@ -10,7 +10,7 @@ import {
   routeLabel,
 } from "../format.ts";
 import type { QueuedDecision } from "../decision-queue.ts";
-import type { Decision, IntakeSort, IntakeState } from "../source/types.ts";
+import type { Decision, IntakeSort, IntakeState, IntakeSummary } from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 import { type LayoutOutlet, PageLoading, useLayout, useQueued } from "./Layout.tsx";
 
@@ -216,6 +216,26 @@ export function IntakePage() {
           </select>
         </label>
         {viewer.isAdmin && <Redetect onDone={() => layout.changed()} />}
+        {viewer.isAdmin && state === "pending" && list.status === "ready" && (
+          <BulkApprove
+            items={list.data}
+            isQueued={(id) => {
+              const e = entryOf(id);
+              return e !== undefined && e.status !== "failed";
+            }}
+            onApprove={(items) => {
+              for (const item of items) {
+                layout.decisions.enqueue({
+                  id: item.id,
+                  title: item.title,
+                  decision: "approve",
+                  // 貼り直しで置き換わっていたら、古い内容のまま承認しない（決定記録 0054）
+                  basedOn: item.capturedAt,
+                });
+              }
+            }}
+          />
+        )}
         <label className="intake-sort">
           並べ方
           <select value={sort} onChange={(e) => choose({ sort: e.target.value as IntakeSort })}>
@@ -317,6 +337,99 @@ export function IntakePage() {
         )}
       </section>
     </div>
+  );
+}
+
+/** まとめて承認する 1 回の数（承認を取り消せる直近の数と同じ。設計書 決定記録 0075・0081） */
+export const BULK_LIMIT = 10;
+
+/** まとめて承認できる下書き（確かめることが無く、写っている人を確かめていない画像も無い。決定記録 0081） */
+export function bulkApprovable(item: IntakeSummary): boolean {
+  return item.state === "pending" && item.reviewReasons.length === 0 && item.untaggedImages === 0;
+}
+
+/**
+ * 確かめることの無い下書きを、題名の一覧を見てまとめて承認する（運営者だけ。決定記録 0081）。
+ * 下書きのまま承認する（タグ付けの候補を確かめたことにはしない）。列に 1 件ずつ入れて順に送る
+ */
+function BulkApprove({
+  items,
+  isQueued,
+  onApprove,
+}: {
+  items: readonly IntakeSummary[];
+  isQueued: (id: string) => boolean;
+  onApprove: (items: IntakeSummary[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [skipped, setSkipped] = useState<Set<string>>(new Set());
+  const eligible = items.filter((i) => bulkApprovable(i) && !isQueued(i.id));
+  if (eligible.length === 0) return null;
+  const batch = eligible.slice(0, BULK_LIMIT);
+  const chosen = batch.filter((i) => !skipped.has(i.id));
+  if (!open) {
+    return (
+      <p className="bulk-approve-open">
+        <button type="button" className="link-button" onClick={() => setOpen(true)}>
+          確認なしの下書きをまとめて承認する（{eligible.length} 件）
+        </button>
+      </p>
+    );
+  }
+  return (
+    <section className="panel bulk-approve" aria-label="確認なしの下書きをまとめて承認">
+      <p className="bulk-approve-head">確認なしの下書きをまとめて承認</p>
+      <p className="field-hint">
+        日付・人物・公開区分・確信度の低い提案など確かめることが無く、写っている人を確かめていない画像も無い下書きです。題名を見て、承認しないものは外してください。承認を取り消せるのは直近に承認した
+        {BULK_LIMIT} 件までなので、1 回に {BULK_LIMIT} 件までにしています。
+      </p>
+      <ul className="bulk-approve-list">
+        {batch.map((i) => (
+          <li key={i.id}>
+            <label>
+              <input
+                type="checkbox"
+                checked={!skipped.has(i.id)}
+                onChange={(e) =>
+                  setSkipped((prev) => {
+                    const next = new Set(prev);
+                    if (e.target.checked) next.delete(i.id);
+                    else next.add(i.id);
+                    return next;
+                  })
+                }
+              />
+              <span className="bulk-approve-title">{i.title ?? "（題名なし）"}</span>
+              <span className="quiet">
+                {i.channelName}・{formatPublished(i) ?? formatInstant(i.capturedAt)}
+              </span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      {eligible.length > batch.length && (
+        <p className="quiet">
+          ほかに {eligible.length - batch.length} 件あります。承認の後に続きが出ます。
+        </p>
+      )}
+      <div className="actions">
+        <button type="button" className="button" onClick={() => setOpen(false)}>
+          やめる
+        </button>
+        <button
+          type="button"
+          className="button primary"
+          disabled={chosen.length === 0}
+          onClick={() => {
+            onApprove(chosen);
+            setSkipped(new Set());
+            setOpen(false);
+          }}
+        >
+          選んだ {chosen.length} 件を承認する
+        </button>
+      </div>
+    </section>
   );
 }
 

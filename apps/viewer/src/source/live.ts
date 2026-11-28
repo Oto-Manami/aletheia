@@ -5,15 +5,20 @@
 import { versionWatcher } from "../version.ts";
 import { clearLoadCache } from "../load-cache.ts";
 import type { DraftInput } from "@aletheia/intake/draft";
+import type { WorkGroup } from "@aletheia/intake/titles";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { draftTitle, draftWarnings, reviewReasons } from "./summarize.ts";
+import { draftTitle, draftWarnings, reviewReasons, untaggedImages } from "./summarize.ts";
 import { triageItemOf } from "./triage.ts";
 import type { EpisodeRow } from "./regular.ts";
 import {
   type Dashboard,
+  type WorkGrouping,
   type WorkSummary,
   type WorkView,
   type MentionSnippet,
+  type GroupingWorkOption,
+  type ParticipationCheck,
+  type ParticipationCheckEvent,
   type PersonEvent,
   type PersonMention,
   type PersonPost,
@@ -72,6 +77,7 @@ import {
   type Viewer,
 } from "./types.ts";
 import { INVITE_ERRORS } from "../invite.ts";
+import { groupingGroupOf } from "./work-grouping.ts";
 
 interface Result {
   data: unknown;
@@ -259,6 +265,7 @@ function summarize(row: IntakeRow): IntakeSummary {
     assetCount: (row.draft.assets ?? []).length,
     warningCount: draftWarnings(row.draft).length,
     reviewReasons: reviewReasons(row.draft),
+    untaggedImages: untaggedImages(row.draft),
     reviewedAt: row.reviewed_at ?? null,
     reviewedByName: row.reviewed_by_name ?? null,
   };
@@ -681,6 +688,8 @@ export class LiveSource implements ArchiveSource {
         unknown_participation: { count: number; events: Ev[] } | null;
         setlist_missing: { count: number; events: Ev[] } | null;
         overdue: { count: number; events: Ev[] };
+        participation_missing?: { count: number; events: Ev[] } | null;
+        episodes_without_work?: { count: number; events: Ev[] };
         similar_images?: { count: number; unhashed: number };
       };
       data: {
@@ -727,6 +736,16 @@ export class LiveSource implements ArchiveSource {
           events: t.setlist_missing.events.map(ev),
         },
         overdue: { count: t.overdue.count, events: t.overdue.events.map(ev) },
+        participationMissing: t.participation_missing
+          ? {
+              count: t.participation_missing.count,
+              events: t.participation_missing.events.map(ev),
+            }
+          : null,
+        episodesWithoutWork: {
+          count: t.episodes_without_work?.count ?? 0,
+          events: (t.episodes_without_work?.events ?? []).map(ev),
+        },
         similarImages: t.similar_images ?? { count: 0, unhashed: 0 },
       },
       data: {
@@ -804,6 +823,78 @@ export class LiveSource implements ArchiveSource {
         inRelease: s.in_release,
       })),
     };
+  }
+
+  async getParticipationCheck(): Promise<ParticipationCheck> {
+    type Row = {
+      id: string;
+      title: string | null;
+      kind: string;
+      starts_on: string | null;
+      ends_on: string | null;
+      date_precision: string | null;
+      parent_title: string | null;
+      work_name: string | null;
+      regular: boolean;
+      role: string;
+      status: ParticipantStatus | null;
+    };
+    const r = await this.api<{
+      subject: { id: string; name: string } | null;
+      overdue: Row[];
+      missing: Row[];
+      counts: { overdue: number; missing: number } | null;
+    }>("GET", "/participation");
+    const row = (e: Row): ParticipationCheckEvent => ({
+      id: e.id,
+      title: e.title,
+      kind: e.kind,
+      startsOn: e.starts_on,
+      endsOn: e.ends_on,
+      datePrecision: e.date_precision,
+      parentTitle: e.parent_title,
+      workName: e.work_name,
+      regular: e.regular,
+      role: e.role,
+      status: e.status,
+    });
+    return {
+      subject: r.subject,
+      overdue: r.overdue.map(row),
+      missing: r.missing.map(row),
+      counts: r.counts ?? { overdue: 0, missing: 0 },
+    };
+  }
+
+  async setSubjectParticipation(
+    eventId: string,
+    status: ParticipantStatus,
+    role?: string,
+  ): Promise<void> {
+    await this.api("POST", `/participation/${encodeURIComponent(eventId)}`, {
+      status,
+      ...(role ? { role } : {}),
+    });
+  }
+
+  async getWorkGrouping(): Promise<WorkGrouping> {
+    const r = await this.api<{
+      groups: WorkGroup[];
+      works: GroupingWorkOption[];
+      counts: { episodes: number };
+    }>("GET", "/work-grouping");
+    return { groups: r.groups.map(groupingGroupOf), works: r.works, counts: r.counts };
+  }
+
+  async attachToWork(
+    workId: string,
+    eventIds: string[],
+  ): Promise<{ attached: number; skipped: number }> {
+    return this.api<{ attached: number; skipped: number }>(
+      "POST",
+      `/works/${encodeURIComponent(workId)}/attach`,
+      { event_ids: eventIds },
+    );
   }
 
   async listPeople(query?: string): Promise<PersonSummary[]> {
@@ -1487,7 +1578,18 @@ export class LiveSource implements ArchiveSource {
           ].join(","),
         ),
     );
-    const labels = await this.labels(links.map((l) => ({ id: l.to_id, type: l.to_type })));
+    const entityIds = [...new Set(links.filter((l) => l.to_type === "entity").map((l) => l.to_id))];
+    const [labels, kinds] = await Promise.all([
+      this.labels(links.map((l) => ({ id: l.to_id, type: l.to_type }))),
+      entityIds.length > 0
+        ? this.supabase
+            .from("entities")
+            .select("id, type, subtype")
+            .in("id", entityIds)
+            .then((r) => rowsOf<{ id: string; type: string; subtype: string | null }>(r))
+        : Promise.resolve([]),
+    ]);
+    const kindOf = new Map(kinds.map((k) => [k.id, k]));
     const assetViews: AssetView[] = assets.map((a) => ({
       id: a.id,
       position: a.position,
@@ -1522,7 +1624,12 @@ export class LiveSource implements ArchiveSource {
       availability: post.availability ?? post.channels?.availability ?? null,
       classification: post.classification,
       assets: assetViews,
-      links: links.map((l, i) => ({ role: l.role, target: labels[i]! })),
+      links: links.map((l, i) => ({
+        role: l.role,
+        target: labels[i]!,
+        entityType: l.to_type === "entity" ? (kindOf.get(l.to_id)?.type ?? null) : null,
+        entitySubtype: l.to_type === "entity" ? (kindOf.get(l.to_id)?.subtype ?? null) : null,
+      })),
     };
   }
 
@@ -2039,6 +2146,19 @@ export class LiveSource implements ArchiveSource {
         .from("entities")
         .select("id, canonical_name")
         .eq("type", "person")
+        .is("merged_into", null)
+        .contains("attributes", { archive_subject: true })
+        .order("canonical_name"),
+    );
+    return rows.map((r) => ({ id: r.id, type: "entity" as const, label: r.canonical_name }));
+  }
+
+  async listArchiveSubjectGroups(): Promise<RefLabel[]> {
+    const rows = rowsOf<{ id: string; canonical_name: string }>(
+      await this.supabase
+        .from("entities")
+        .select("id, canonical_name")
+        .eq("type", "group")
         .is("merged_into", null)
         .contains("attributes", { archive_subject: true })
         .order("canonical_name"),
