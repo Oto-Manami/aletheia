@@ -33,9 +33,15 @@ import {
 } from "../source/regular.ts";
 import { defaultSubjectRole, subjectStatusDefault } from "../source/participation.ts";
 import { eventsOf, setEventLink } from "../source/tags.ts";
-import type { EventSummary, ParticipantStatus, RefLabel, WorkSummary } from "../source/types.ts";
+import type {
+  Classification,
+  EventSummary,
+  ParticipantStatus,
+  RefLabel,
+  WorkSummary,
+} from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
-import { useSearch } from "./EntityPicker.tsx";
+import { ClassificationChoice, useSearch } from "./EntityPicker.tsx";
 
 /** 候補を探す、日付の前後の日数 */
 const AROUND_DAYS = 45;
@@ -427,6 +433,8 @@ function QuickEvent({
   const [ofWork, setOfWork] = useState("");
   const [newWorkName, setNewWorkName] = useState("");
   const [newWorkSubtype, setNewWorkSubtype] = useState("");
+  // 作る作品の公開区分は、既定を置かずに選んでもらう
+  const [newWorkClassification, setNewWorkClassification] = useState<Classification | null>(null);
   const episodeLike = kind === "episode" || kind === "publication";
   const fittingWorks = allWorks.filter((w) => !w.regular && episodeKindOf(w.subtype) === kind);
   const work = regularWorks.find((w) => w.id === workId) ?? null;
@@ -459,23 +467,25 @@ function QuickEvent({
     if (work) return createEpisode(work);
     if (!title.trim()) return setError("題名を入れてください");
     const of = episodeLike ? ofWork : "";
-    if (of === NEW_WORK && (!newWorkName.trim() || !newWorkSubtype)) {
-      return setError("作品の名前と種類を入れてください");
+    if (of === NEW_WORK && (!newWorkName.trim() || !newWorkSubtype || !newWorkClassification)) {
+      return setError("作品の名前・種類・公開区分を入れてください");
     }
     setBusy(true);
     setError(null);
     void (async () => {
       const workId =
-        of === NEW_WORK
+        of === NEW_WORK && newWorkClassification
           ? (
               await source.createEntity({
                 type: "work",
                 subtype: newWorkSubtype,
                 name: newWorkName.trim(),
-                classification: "public",
+                classification: newWorkClassification,
               })
             ).id
-          : of || null;
+          : of && of !== NEW_WORK
+            ? of
+            : null;
       return source.saveEvent(null, {
         kind,
         eventType: null,
@@ -648,6 +658,11 @@ function QuickEvent({
                     ))}
                 </select>
               </div>
+              <ClassificationChoice
+                name={`${id}-of-classification`}
+                value={newWorkClassification}
+                onChange={setNewWorkClassification}
+              />
             </>
           )}
         </div>

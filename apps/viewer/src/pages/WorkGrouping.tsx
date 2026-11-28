@@ -9,9 +9,15 @@
 import { CheckCircle2 } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { Link } from "react-router";
+import { ClassificationChoice } from "../components/EntityPicker.tsx";
 import { useApp } from "../context.tsx";
 import { ENTITY_SUBTYPE_LABELS, EVENT_KIND_SHORT, eventDateLabel } from "../format.ts";
-import type { GroupingWorkOption, WorkGroupingEvent, WorkGroupingGroup } from "../source/types.ts";
+import type {
+  Classification,
+  GroupingWorkOption,
+  WorkGroupingEvent,
+  WorkGroupingGroup,
+} from "../source/types.ts";
 import { useLoad } from "../use-load.ts";
 import { useLayout } from "./Layout.tsx";
 
@@ -67,27 +73,32 @@ function AttachControls({
   const id = useId();
   const [target, setTarget] = useState(initialTarget);
   const [subtype, setSubtype] = useState(initialSubtype ?? "");
+  // 作る作品の公開区分は、既定を置かずに選んでもらう
+  const [classification, setClassification] = useState<Classification | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 回・号の種類に合う作品だけを付け先に出す（掲載は雑誌など、番組の回はそれ以外）
   const options = useMemo(() => works.filter((w) => fits(kind, w.subtype)), [works, kind]);
   const subtypes = WORK_SUBTYPES.filter(([k]) => fits(kind, k));
   const creating = target === NEW;
-  const ready = selectedIds.length > 0 && (!creating || (name.trim() !== "" && subtype !== ""));
+  const ready =
+    selectedIds.length > 0 &&
+    (!creating || (name.trim() !== "" && subtype !== "" && classification !== null));
 
   const attach = () => {
     setBusy(true);
     setError(null);
     void (async () => {
       try {
-        const work = creating
-          ? await source.createEntity({
-              type: "work",
-              subtype,
-              name: name.trim(),
-              classification: "public",
-            })
-          : null;
+        const work =
+          creating && classification
+            ? await source.createEntity({
+                type: "work",
+                subtype,
+                name: name.trim(),
+                classification,
+              })
+            : null;
         const workId = work?.id ?? target;
         const workName = work?.label ?? works.find((w) => w.id === target)?.name ?? name.trim();
         const r = await source.attachToWork(workId, selectedIds);
@@ -150,6 +161,11 @@ function AttachControls({
               ))}
             </select>
           </div>
+          <ClassificationChoice
+            name={`${id}-new-classification`}
+            value={classification}
+            onChange={setClassification}
+          />
         </>
       )}
       <button type="button" className="button primary" disabled={!ready || busy} onClick={attach}>

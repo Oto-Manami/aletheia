@@ -707,10 +707,16 @@ describe("その場で作る出来事に本人の出演を付ける（決定記�
       "架空の歌番組",
     );
     await user.selectOptions(within(create).getByLabelText("作品の種類"), "tv_program");
+    await user.click(within(create).getByRole("radio", { name: "公開" }));
     await user.click(within(create).getByRole("button", { name: "作って紐付ける" }));
     await within(events).findByRole("button", { name: "架空の歌番組 #12 の紐付けを外す" });
     expect(createEntity).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "work", subtype: "tv_program", name: "架空の歌番組" }),
+      expect.objectContaining({
+        type: "work",
+        subtype: "tv_program",
+        name: "架空の歌番組",
+        classification: "public",
+      }),
     );
     const workId = ((await createEntity.mock.results[0]!.value) as { id: string }).id;
     expect(saveEvent.mock.calls[0]![1]).toEqual(

@@ -58,6 +58,9 @@ describe("作品にまとめる", () => {
     // 種類を選ぶまでは付けられない
     expect((button as HTMLButtonElement).disabled).toBe(true);
     await user.selectOptions(within(card).getByLabelText("作品の種類"), "tv_program");
+    // 公開区分も選ぶまでは付けられない（既定を置かない）
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    await user.click(within(card).getByRole("radio", { name: "公開" }));
     await user.click(button);
     await screen.findByText("「見本ミュージック」に 2 件を付けました");
     const grouping = await source.getWorkGrouping();
@@ -80,6 +83,7 @@ describe("作品にまとめる", () => {
     await user.clear(name);
     await user.type(name, "見本チャンネル");
     await user.selectOptions(within(table).getByLabelText("作品の種類"), "web_program");
+    await user.click(within(table).getByRole("radio", { name: "公開" }));
     await user.click(
       within(table).getByRole("button", { name: "作品を作って選んだ 1 件を付ける" }),
     );
