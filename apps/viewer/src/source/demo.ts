@@ -60,6 +60,7 @@ import {
   type PostEdit,
   type ParticipantStatus,
   type ParticipationCheck,
+  type WorkGrouping,
   type PersonEvent,
   type PersonMention,
   type PersonPost,
@@ -359,6 +360,22 @@ export class DemoSource implements ArchiveSource {
               title: e.title,
               parentId: null,
               parentTitle: e.parentTitle,
+              startsOn: e.startsOn,
+            })),
+          };
+        })(),
+        episodesWithoutWork: (() => {
+          const g = this.events.workGrouping();
+          const events = g.groups
+            .flatMap((x) => x.events)
+            .filter((e) => e.kind === "episode" || e.kind === "publication");
+          return {
+            count: g.counts.episodes,
+            events: events.slice(0, 5).map((e) => ({
+              id: e.id,
+              title: e.title,
+              parentId: null,
+              parentTitle: null,
               startsOn: e.startsOn,
             })),
           };
@@ -1135,6 +1152,19 @@ export class DemoSource implements ArchiveSource {
   async getParticipationCheck(): Promise<ParticipationCheck> {
     await this.delay();
     return this.events.participationCheck(new Date().toISOString().slice(0, 10));
+  }
+
+  async getWorkGrouping(): Promise<WorkGrouping> {
+    await this.delay();
+    return this.events.workGrouping();
+  }
+
+  async attachToWork(
+    workId: string,
+    eventIds: string[],
+  ): Promise<{ attached: number; skipped: number }> {
+    await this.delay();
+    return this.events.attachToWork(workId, eventIds);
   }
 
   async setSubjectParticipation(

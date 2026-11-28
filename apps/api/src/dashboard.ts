@@ -48,6 +48,7 @@ async function tasksOf(db: Database, subjectId: string | null) {
     overdue,
     similar,
     participationMissing,
+    withoutWork,
   ] = await Promise.all([
     rows<{ state: string; kind: string; n: string; oldest: string | null }>(
       db,
@@ -147,6 +148,16 @@ async function tasksOf(db: Database, subjectId: string | null) {
                             where p.event_id = e.id and p.entity_id = ${subject})
           order by e.starts_on desc nulls last limit ${EXAMPLES}`,
     ),
+    // データ品質の検査 episode_without_work と同じ条件（決定記録 0080）
+    rows<EventExample & { total: string }>(
+      db,
+      sql`select e.id, e.title, e.parent_id, pe.title as parent_title, e.starts_on::text as starts_on,
+            count(*) over () as total
+          from public.events e
+          left join public.events pe on pe.id = e.parent_id
+          where e.kind in ('episode', 'publication') and e.work_id is null
+          order by e.starts_on desc nulls last limit ${EXAMPLES}`,
+    ),
   ]);
 
   const sum = (state: string, kind?: string) =>
@@ -194,6 +205,7 @@ async function tasksOf(db: Database, subjectId: string | null) {
         }
       : null,
     similar_images: { count: num(similar[0]?.pending), unhashed: num(similar[0]?.unhashed) },
+    episodes_without_work: { count: num(withoutWork[0]?.total), events: withoutWork.map(event) },
   };
 }
 

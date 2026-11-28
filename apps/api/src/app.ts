@@ -36,6 +36,7 @@
 // | GET/POST | /events/:id/article       | 出来事の記事（articles.ts） |
 // | GET      | /people・/people/:id        | 人物の一覧と人物の画面（発言・言及・出演。people.ts。決定記録 0079） |
 // | GET/POST | /participation             | 本人の出演の確認と、押すだけで状態を付ける（participation.ts。決定記録 0080） |
+// | GET/POST | /work-grouping・/works/:id/attach | 作品にまとめる（work-grouping.ts。決定記録 0080） |
 // | GET/POST | /events/:id/setlists・/event-items | セットリストと曲ごとの参加（setlists.ts） |
 
 import type { Database } from "@aletheia/db/client";
@@ -90,6 +91,7 @@ import { registerWorkRoutes } from "./works.ts";
 import { registerPostEditRoutes } from "./post-edit.ts";
 import { registerPeopleRoutes } from "./people.ts";
 import { registerParticipationRoutes } from "./participation.ts";
+import { registerWorkGroupingRoutes } from "./work-grouping.ts";
 import { listTriage, SOURCE_KINDS, triageListQuery } from "./triage-list.ts";
 import {
   assertStagedFiles,
@@ -327,6 +329,7 @@ export function createApp(
   registerPostEditRoutes(app, db);
   registerPeopleRoutes(app, db);
   registerParticipationRoutes(app, db);
+  registerWorkGroupingRoutes(app, db);
   registerSongRoutes(app, db);
   registerAssetRoutes(app, db, files, options.thumbnailFiles, options.thumbnailCache);
 

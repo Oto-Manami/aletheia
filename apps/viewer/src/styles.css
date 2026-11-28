@@ -5733,3 +5733,92 @@ button.participation {
 .quick-absence {
   color: var(--warn-ink);
 }
+
+/* 作品にまとめる（決定記録 0080） */
+.grouping-section {
+  margin-bottom: 32px;
+  max-width: 1080px;
+}
+
+.grouping-card {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.grouping-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.grouping-name {
+  margin: 0;
+  font-size: 16px;
+}
+
+.grouping-events {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.grouping-events li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 14px;
+}
+
+.grouping-event {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  cursor: pointer;
+}
+
+.grouping-title {
+  flex: 1 1 16em;
+  overflow-wrap: anywhere;
+}
+
+.grouping-open {
+  flex: none;
+}
+
+.grouping-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.grouping-actions .field {
+  margin: 0;
+}
+
+.grouping-actions select,
+.grouping-actions input {
+  width: auto;
+  min-width: 12em;
+}
+
+.grouping-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 1080px;
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--success-bg);
+  color: var(--success-ink);
+}
