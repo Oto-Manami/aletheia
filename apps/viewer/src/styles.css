@@ -5822,3 +5822,22 @@ button.participation {
   background: var(--success-bg);
   color: var(--success-ink);
 }
+
+/* 投稿の画面の紐付け（相手の画面へのリンク） */
+.post-link-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.post-link {
+  text-decoration: none;
+}
+
+.post-link:hover {
+  border-color: var(--focus);
+}
+
+.post-link.is-plain {
+  cursor: default;
+}

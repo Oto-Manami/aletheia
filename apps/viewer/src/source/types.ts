@@ -232,7 +232,16 @@ export interface PostView {
   availability: string | null;
   classification: Classification;
   assets: AssetView[];
-  links: { role: string; target: RefLabel }[];
+  /**
+   * 投稿と素材の紐付け（承認済み）。entityType・entitySubtype は相手が人物・作品などのときの種類で、
+   * 紐付けから相手の画面を開くのに使う（無い情報源もある）
+   */
+  links: {
+    role: string;
+    target: RefLabel;
+    entityType?: string | null;
+    entitySubtype?: string | null;
+  }[];
 }
 
 /** 取り込んだ投稿を直すときの中身（承認の画面と同じ下書きの形。素材の ref は素材の ID。決定記録 0076） */

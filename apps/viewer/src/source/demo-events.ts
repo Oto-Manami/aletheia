@@ -734,6 +734,12 @@ export class DemoEvents {
     return { attached, skipped: ids.length - attached };
   }
 
+  /** 人物・作品などの種類（投稿の紐付けから相手の画面を開くのに使う） */
+  entityKind(id: string): { type: string; subtype: string | null } | null {
+    const e = this.entities.find((x) => x.id === id);
+    return e ? { type: e.type, subtype: e.subtype ?? null } : null;
+  }
+
   /** 人物の出演（人物の画面。決定記録 0079） */
   participationOf(entityId: string): PersonEvent[] {
     return this.events.flatMap((e) =>

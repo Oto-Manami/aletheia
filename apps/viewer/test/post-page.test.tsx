@@ -65,3 +65,36 @@ describe("投稿の画面で素材を外す", () => {
     expect(screen.queryByRole("button", { name: /を外す$/ })).toBeNull();
   });
 });
+
+describe("投稿の画面の紐付け", () => {
+  it("役割ごとにまとめ、人物・出来事は相手の画面へのリンクにする", async () => {
+    open({ ...worker, canWork: false });
+    await screen.findByRole("heading", { name: "はじめての公演" });
+    const author = screen.getByRole("link", { name: "試験 花子" });
+    expect(author.getAttribute("href")).toBe("/people/a1000000-0000-4000-8000-000000000001");
+    expect(screen.getByRole("link", { name: "見本 さくら" }).getAttribute("href")).toMatch(
+      /^\/people\//,
+    );
+    expect(
+      screen.getByRole("link", { name: "冬の試験公演（架空ホール）" }).getAttribute("href"),
+    ).toBe("/events/e1000000-0000-4000-8000-000000000003");
+  });
+});
+
+describe("linkGroups", () => {
+  it("同じ役割・同じ相手は 1 つにまとめ、数を数える。役割は発信者・言及・写っている人の順", async () => {
+    const { linkGroups } = await import("../src/pages/Post.tsx");
+    const person = { id: "p1", type: "entity" as const, label: "見本 太郎" };
+    const groups = linkGroups([
+      { role: "appears", target: person },
+      { role: "about", target: { id: "e1", type: "event", label: "見本の出来事" } },
+      { role: "appears", target: person },
+      { role: "author", target: person },
+    ]);
+    expect(groups.map((g) => [g.role, g.targets.map((t) => t.count)])).toEqual([
+      ["author", [1]],
+      ["appears", [2]],
+      ["about", [1]],
+    ]);
+  });
+});

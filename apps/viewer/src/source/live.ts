@@ -1577,7 +1577,18 @@ export class LiveSource implements ArchiveSource {
           ].join(","),
         ),
     );
-    const labels = await this.labels(links.map((l) => ({ id: l.to_id, type: l.to_type })));
+    const entityIds = [...new Set(links.filter((l) => l.to_type === "entity").map((l) => l.to_id))];
+    const [labels, kinds] = await Promise.all([
+      this.labels(links.map((l) => ({ id: l.to_id, type: l.to_type }))),
+      entityIds.length > 0
+        ? this.supabase
+            .from("entities")
+            .select("id, type, subtype")
+            .in("id", entityIds)
+            .then((r) => rowsOf<{ id: string; type: string; subtype: string | null }>(r))
+        : Promise.resolve([]),
+    ]);
+    const kindOf = new Map(kinds.map((k) => [k.id, k]));
     const assetViews: AssetView[] = assets.map((a) => ({
       id: a.id,
       position: a.position,
@@ -1612,7 +1623,12 @@ export class LiveSource implements ArchiveSource {
       availability: post.availability ?? post.channels?.availability ?? null,
       classification: post.classification,
       assets: assetViews,
-      links: links.map((l, i) => ({ role: l.role, target: labels[i]! })),
+      links: links.map((l, i) => ({
+        role: l.role,
+        target: labels[i]!,
+        entityType: l.to_type === "entity" ? (kindOf.get(l.to_id)?.type ?? null) : null,
+        entitySubtype: l.to_type === "entity" ? (kindOf.get(l.to_id)?.subtype ?? null) : null,
+      })),
     };
   }
 
