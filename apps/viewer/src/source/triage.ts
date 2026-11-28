@@ -5,6 +5,7 @@
 // - 画像の表示用の URL は、取り込みのときに下書きに入れた元の画像の URL（attributes.source_url）を使う
 
 import type { DraftInput } from "@aletheia/intake/draft";
+import { absenceHits } from "./absence.ts";
 import type { TriageImage, TriageItem, TriageMentionFilter, TriageSnippet } from "./types.ts";
 
 type Link = NonNullable<DraftInput["links"]>[number];
@@ -18,6 +19,38 @@ interface MentionEvidence {
 }
 
 const CONTEXT = 40;
+
+/** 1 本の記事に出す抜粋の数。残りは「ほかに〇箇所」とだけ出す（決定記録 0080） */
+export const SNIPPET_LIMIT = 5;
+
+/**
+ * 抜粋を整える（決定記録 0080）。同じ文の抜粋（一覧の繰り返しなど）は 1 つにして数を添え、
+ * 欠席・休演の記載のある抜粋を先に出し、多いものは SNIPPET_LIMIT までにする
+ */
+export function arrangeSnippets(snippets: readonly TriageSnippet[]): {
+  snippets: TriageSnippet[];
+  more: number;
+} {
+  const key = (s: TriageSnippet) => s.text.replace(/^…|…$/g, "").replace(/\s+/g, " ").trim();
+  const merged = new Map<string, TriageSnippet>();
+  for (const s of snippets) {
+    const k = key(s);
+    const seen = merged.get(k);
+    if (seen) {
+      seen.repeat = (seen.repeat ?? 1) + 1;
+      if (s.absence) seen.absence = true;
+    } else {
+      merged.set(k, { ...s });
+    }
+  }
+  const all = [...merged.values()];
+  // 欠席・休演の記載を先に（それ以外は記事の順のまま）
+  const ordered = [...all.filter((s) => s.absence), ...all.filter((s) => !s.absence)];
+  return {
+    snippets: ordered.slice(0, SNIPPET_LIMIT),
+    more: Math.max(0, ordered.length - SNIPPET_LIMIT),
+  };
+}
 
 /** 一致した位置の前後を切り出す。近い一致は 1 つの抜粋にまとめる */
 export function snippetsOf(
@@ -132,12 +165,26 @@ export function triageItemOf(
       spansByText.set(key, entry);
     }
   }
-  const snippets: TriageSnippet[] = [];
+  // 本人の欠席・休演の記載（その抜粋に印を付け、記事にも印を付ける。決定記録 0080）
+  const absences = absenceHits(draft, subjectIds);
+  const found: TriageSnippet[] = [];
   for (const m of spansByText.values()) {
     const asset = (draft.assets ?? []).find((a) => a.ref === m.asset);
     const text = asset?.texts?.find((t) => t.text_type === m.textType)?.content;
-    if (text) snippets.push(...snippetsOf(text, m.spans));
+    if (!text) continue;
+    for (const w of snippetWindows(text, m.spans)) {
+      const absence = absences.some(
+        (h) =>
+          h.asset === m.asset &&
+          h.textType === m.textType &&
+          h.span[0] >= w.from &&
+          h.span[1] <= w.to,
+      );
+      found.push(absence ? { ...w.snippet, absence } : w.snippet);
+    }
   }
+  const arranged = arrangeSnippets(found);
+  const snippets = arranged.snippets;
   if (snippets.length === 0) {
     // 言及が無い記事は、冒頭を見せて判断しやすくする
     const first = (draft.assets ?? []).flatMap((a) => a.texts ?? [])[0]?.content ?? "";
@@ -176,6 +223,8 @@ export function triageItemOf(
     aliases: [...new Set(mentions.flatMap((m) => m.aliases))],
     mentions,
     snippets,
+    moreSnippets: arranged.more,
+    absence: absences[0]?.sentence ?? null,
     images,
     draft,
   };

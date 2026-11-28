@@ -8,12 +8,8 @@ import { Ctx } from "../src/context.tsx";
 import { routes } from "../src/routes.tsx";
 import { DemoSource } from "../src/source/demo.ts";
 import { EVENTS } from "../src/source/demo-data.ts";
-import {
-  defaultSubjectRole,
-  sentenceAt,
-  subjectAbsence,
-  subjectStatusDefault,
-} from "../src/source/participation.ts";
+import { sentenceAt, subjectAbsence } from "../src/source/absence.ts";
+import { defaultSubjectRole, subjectStatusDefault } from "../src/source/participation.ts";
 import type { Viewer } from "../src/source/types.ts";
 
 afterEach(cleanup);

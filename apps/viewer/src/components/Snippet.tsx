@@ -5,11 +5,14 @@ export function Snippet({
   snippet,
   className = "triage-snippet",
   inline = false,
+  suffix,
 }: {
   snippet: TriageSnippet;
   className?: string;
   /** ボタンの中に置くときは span にする（ボタンの中に段落は置けない） */
   inline?: boolean;
+  /** 抜粋の後ろに添える注記（同じ文がほかにもあることなど） */
+  suffix?: React.ReactNode;
 }) {
   const parts: React.ReactNode[] = [];
   let at = 0;
@@ -19,5 +22,6 @@ export function Snippet({
     at = e;
   });
   if (at < snippet.text.length) parts.push(snippet.text.slice(at));
+  if (suffix) parts.push(<span key="suffix"> {suffix}</span>);
   return inline ? <span className={className}>{parts}</span> : <p className={className}>{parts}</p>;
 }

@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Ctx } from "../src/context.tsx";
 import { routes } from "../src/routes.tsx";
 import { DemoSource } from "../src/source/demo.ts";
-import { snippetsOf } from "../src/source/triage.ts";
+import type { DraftInput } from "@aletheia/intake/draft";
+import { arrangeSnippets, SNIPPET_LIMIT, snippetsOf, triageItemOf } from "../src/source/triage.ts";
 import type { Viewer } from "../src/source/types.ts";
 
 afterEach(cleanup);
@@ -43,6 +44,75 @@ describe("本文の抜粋", () => {
     ]);
     expect(s!.text.startsWith("…")).toBe(true);
     expect(s!.marks.map(([a, b]) => s!.text.slice(a, b))).toEqual(["花子", "花子"]);
+  });
+});
+
+describe("抜粋の整え方（決定記録 0080）", () => {
+  const SUBJECT = "00000000-0000-4000-8000-0000000000s1";
+  const list = "出演: 見本 さくら、試験 花子、仮名 ゆい、見本 りん、試験 もも";
+
+  function news(body: string, names: string[]) {
+    const spans = names.flatMap((name) => {
+      const found: [number, number][] = [];
+      for (let at = body.indexOf(name); at >= 0; at = body.indexOf(name, at + 1)) {
+        found.push([at, at + name.length]);
+      }
+      return found;
+    });
+    return {
+      id: "i1",
+      channelName: "公式サイト（架空）",
+      capturedAt: "2026-11-01T10:00:00+09:00",
+      draft: {
+        post: { title: "見本の記事" },
+        assets: [{ ref: "a1", media_type: "text", texts: [{ text_type: "body", content: body }] }],
+        links: [
+          {
+            from: "post",
+            to_type: "entity",
+            to_id: SUBJECT,
+            role: "mentioned",
+            origin: "rule",
+            confidence: 0.9,
+            evidence: {
+              subject: "試験 花子",
+              count: spans.length,
+              matches: [{ asset: "a1", text_type: "body", spans }],
+            },
+          },
+        ],
+      } as unknown as DraftInput,
+    };
+  }
+
+  it("同じ文の抜粋は 1 つにして数を添え、欠席・休演の記載を先に出し、記事に印を付ける", () => {
+    const pad = "。".padEnd(60, "　");
+    const body = [
+      list,
+      pad,
+      list,
+      pad,
+      list,
+      pad,
+      "※試験 花子はスケジュールの都合上、欠席いたします。",
+    ].join("\n");
+    const item = triageItemOf(news(body, ["試験 花子"]), new Set([SUBJECT]));
+    expect(item.absence).toBe("試験 花子はスケジュールの都合上、欠席いたします");
+    expect(item.snippets[0]!.absence).toBe(true);
+    expect(item.snippets[0]!.text).toContain("欠席");
+    const repeated = item.snippets.find((s) => s.text.includes("出演:"));
+    expect(repeated?.repeat).toBe(3);
+    expect(item.snippets).toHaveLength(2);
+  });
+
+  it("多い抜粋は上限までにし、残りの数を返す", () => {
+    const many = Array.from({ length: SNIPPET_LIMIT + 3 }, (_, i) => ({
+      text: `抜粋 ${i}`,
+      marks: [] as [number, number][],
+    }));
+    const r = arrangeSnippets(many);
+    expect(r.snippets).toHaveLength(SNIPPET_LIMIT);
+    expect(r.more).toBe(3);
   });
 });
 

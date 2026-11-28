@@ -157,6 +157,11 @@ function TriageCard({
                 {m.name} {m.count}
               </span>
             ))}
+            {item.absence && (
+              <span className="tag triage-absence" title={item.absence}>
+                欠席・休演の記載あり
+              </span>
+            )}
           </span>
         ) : (
           <span className="triage-mentions">
@@ -172,8 +177,20 @@ function TriageCard({
       </div>
 
       {item.snippets.map((s, i) => (
-        <Snippet key={i} snippet={s} />
+        <Snippet
+          key={i}
+          snippet={s}
+          className={`triage-snippet ${s.absence ? "is-absence" : ""}`}
+          suffix={
+            s.repeat ? (
+              <span className="triage-repeat">（同じ文がほかに {s.repeat - 1} 箇所）</span>
+            ) : null
+          }
+        />
       ))}
+      {item.moreSnippets > 0 && (
+        <p className="triage-more">ほかに {item.moreSnippets} 箇所（元の記事で見られます）</p>
+      )}
 
       {item.images.length > 0 && (
         <div className="triage-images" role="group" aria-label="画像（本人が写っているものを選ぶ）">
